@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ship Desk</title>
+<meta name="description" content="Address labels, packing slips and a shipping plan for your TCGplayer orders. Runs on this PC; your orders never leave it.">
+<meta name="theme-color" content="#136f63" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14181a" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the app</a>
+
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand">
+      <img src="icon.svg" alt="" width="40" height="40">
+      <div>
+        <p class="name">Ship Desk</p>
+        <p class="tag">Labels, packing slips and a shipping plan for your TCGplayer orders</p>
+      </div>
+    </div>
+    <p class="private"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z"/></svg> Your orders stay on this PC</p>
+  </div>
+</header>
+
+<nav class="steps" aria-label="Steps">
+  <ol class="wrap">
+    <li data-step="1"><a href="#step1"><span class="n">1</span><span class="t">Drop file</span></a></li>
+    <li data-step="2"><a href="#step2"><span class="n">2</span><span class="t">Check plan</span></a></li>
+    <li data-step="3"><a href="#step3"><span class="n">3</span><span class="t">Print</span></a></li>
+    <li data-step="4"><a href="#step4"><span class="n">4</span><span class="t">Mark shipped</span></a></li>
+  </ol>
+</nav>
+
+<main id="main" class="wrap" data-shipdesk>
+  <h1 class="sr">Ship Desk</h1>
+
+  <div class="top-grid">
+    <!-- 1. Orders in -->
+    <section id="step1" class="card" aria-labelledby="step1-h">
+      <h2 id="step1-h"><span class="step-num" aria-hidden="true">1</span> Add your orders</h2>
+      <div class="tabs" role="tablist" aria-label="How to add orders">
+        <button type="button" role="tab" id="tab-file" aria-controls="panel-file" aria-selected="true">TCGplayer file</button>
+        <button type="button" role="tab" id="tab-paste" aria-controls="panel-paste" aria-selected="false" tabindex="-1">Paste addresses</button>
+      </div>
+
+      <div id="panel-file" role="tabpanel" aria-labelledby="tab-file">
+        <button type="button" id="dropzone" class="dropzone">
+          <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M24 30V8m0 0-8 8m8-8 8 8M8 30v6a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-6"/></svg>
+          <strong>Drop your TCGplayer shipping CSV</strong>
+          <span>anywhere on this page, or tap here to choose the file</span>
+        </button>
+        <input type="file" id="file-input" class="sr" accept=".csv,text/csv,.txt,.pdf,application/pdf" multiple tabindex="-1" aria-hidden="true">
+        <div class="row">
+          <button type="button" id="btn-sample" class="btn secondary">Try the sample</button>
+          <span class="muted small">See how it works with 10 made-up orders.</span>
+        </div>
+        <details class="hint">
+          <summary>How do I get the file?</summary>
+          <ol>
+            <li>Open the TCGplayer <strong>Seller Portal</strong> and go to <strong>Orders</strong>.</li>
+            <li>Tick the orders you are shipping.</li>
+            <li>Click <strong>Export Shipping</strong>. That saves a .csv file: drop it here.</li>
+          </ol>
+          <p>The <strong>Packing Slip</strong> button makes a PDF, not this file. You can add that PDF too (step 3) to put the item lists on your slips.</p>
+        </details>
+      </div>
+
+      <div id="panel-paste" role="tabpanel" aria-labelledby="tab-paste" hidden>
+        <label for="paste-text" class="lbl">Paste addresses from eBay, Whatnot, PayPal, an email or a spreadsheet</label>
+        <p class="muted small" id="paste-help">Leave a blank line between addresses, or put one address per line with commas: Name, Street, City, ST ZIP.</p>
+        <textarea id="paste-text" rows="8" aria-describedby="paste-help" spellcheck="false" placeholder="Jamie Sample&#10;12 Maple Ave Apt 3&#10;Springfield, IL 62701&#10;&#10;Robin Test&#10;400 Harbor Rd&#10;Portland, ME 04101"></textarea>
+        <div class="row">
+          <button type="button" id="btn-paste" class="btn primary">Use these addresses</button>
+          <span class="muted small">Pasted orders print the same way, but can't go in the TCGplayer import file.</span>
+        </div>
+      </div>
+
+      <div id="load-msg" class="msg" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <!-- Return address -->
+    <section id="return" class="card" aria-labelledby="return-h">
+      <h2 id="return-h">Your return address</h2>
+      <p class="muted small">Saved on this PC and printed on every label.</p>
+      <div class="profile-bar">
+        <label for="profile-pick" class="lbl">Address</label>
+        <select id="profile-pick"></select>
+        <button type="button" id="profile-new" class="btn small secondary">+ New</button>
+        <button type="button" id="profile-del" class="btn small ghost">Delete</button>
+      </div>
+      <form id="return-form" class="form-grid" autocomplete="on" novalidate>
+        <label class="f c6">Nickname for this address <input name="label" maxlength="40" placeholder="e.g. Home, Shop"></label>
+        <label class="f c6">Name or store name <input name="name" autocomplete="organization" maxlength="60"></label>
+        <label class="f c6">Street <input name="street" autocomplete="address-line1" maxlength="60"></label>
+        <label class="f c3"><span>Apt / suite <em>optional</em></span> <input name="street2" autocomplete="address-line2" maxlength="60"></label>
+        <label class="f c3"><span>Phone <em>optional</em></span> <input name="phone" type="tel" autocomplete="tel" maxlength="20"></label>
+        <label class="f c3">City <input name="city" autocomplete="address-level2" maxlength="40"></label>
+        <label class="f c1">State <input name="state" autocomplete="address-level1" maxlength="2" autocapitalize="characters"></label>
+        <label class="f c2">ZIP <input name="zip" autocomplete="postal-code" inputmode="numeric" maxlength="10"></label>
+      </form>
+      <p id="return-saved" class="saved small" aria-live="polite"></p>
+    </section>
+  </div>
+
+  <!-- 2. Plan -->
+  <section id="step2" class="card" aria-labelledby="step2-h">
+    <h2 id="step2-h"><span class="step-num" aria-hidden="true">2</span> Check the shipping plan</h2>
+    <p id="plan-empty" class="empty-note">Your orders show up here once you add a file in step 1.</p>
+    <div id="plan-area" hidden>
+      <div id="filters" class="filters" role="group" aria-label="Show"></div>
+      <p id="totals" class="totals" aria-live="polite"></p>
+      <div class="table-wrap">
+        <table id="orders-table" class="orders">
+          <caption class="sr">Orders and their shipping plan. Ticked orders get printed.</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="c-check"><input type="checkbox" id="check-all" aria-label="Tick or untick every order shown"></th>
+              <th scope="col">Order #</th>
+              <th scope="col">Buyer</th>
+              <th scope="col">Ships to</th>
+              <th scope="col" class="num">Items</th>
+              <th scope="col" class="num">Value</th>
+              <th scope="col">Plan</th>
+              <th scope="col">Weight &amp; postage</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="legend small">
+        <span class="chip tag-envelope">Envelope OK</span> under $20, a stamped envelope is fine.
+        <span class="chip tag-tracking-recommended">Tracking recommended</span> $20 or more, or the buyer paid for faster shipping.
+        <span class="chip tag-tracking-required">Tracking required</span> $49.99 or more.
+        <span class="chip tag-signature">Signature required</span> $250 or more.
+      </p>
+    </div>
+    <details class="sub" id="plan-settings">
+      <summary>Weights and postage settings</summary>
+      <form id="plan-form" class="form-grid" novalidate>
+        <label class="f c2">One card (oz) <input name="cardOz" type="number" step="0.01" min="0"></label>
+        <label class="f c2">Envelope (oz) <input name="envelopeOz" type="number" step="0.01" min="0"></label>
+        <label class="f c2">Packing slip (oz) <input name="slipOz" type="number" step="0.01" min="0"></label>
+        <label class="f c2">Toploader (oz) <input name="toploaderOz" type="number" step="0.01" min="0"></label>
+        <label class="f c2">Cards per toploader <input name="cardsPerToploader" type="number" step="1" min="1"></label>
+        <label class="f c2">Forever stamp value ($) <input name="foreverValue" type="number" step="0.01" min="0.01"></label>
+        <label class="check c6"><input name="rigid" type="checkbox"> Envelopes have a toploader (rigid): add the USPS $0.49 non-machinable charge</label>
+      </form>
+      <p class="muted small">Weights are estimates for stamps. Card weight from your TCGplayer file is used when it has one. <button type="button" id="plan-reset" class="link">Reset to the usual values</button></p>
+    </details>
+  </section>
+
+  <!-- 3. Print -->
+  <section id="step3" class="card" aria-labelledby="step3-h">
+    <h2 id="step3-h"><span class="step-num" aria-hidden="true">3</span> Print</h2>
+    <form id="output-form" class="out-grid" novalidate>
+      <div class="out-main">
+        <label for="format" class="lbl">What are you printing on?</label>
+        <select id="format" name="format"></select>
+        <fieldset class="checks">
+          <legend class="sr">Options</legend>
+          <label class="check"><input type="checkbox" name="slips"> Packing slips too</label>
+          <label class="check"><input type="checkbox" name="boldReturn"> Bold return address (darker on thermal printers)</label>
+          <label class="check"><input type="checkbox" name="noDivider"> No divider line (room for stamps or a postage meter)</label>
+        </fieldset>
+      </div>
+      <div class="out-slips">
+        <p class="lbl">TCGplayer packing slips <em>optional</em></p>
+        <p class="muted small">Add the PDF from TCGplayer's Packing Slip button to list each order's cards on your slips.</p>
+        <button type="button" id="btn-slips" class="btn secondary">+ Add TCGplayer packing slips (PDF)</button>
+        <input type="file" id="slip-input" class="sr" accept=".pdf,application/pdf" tabindex="-1" aria-hidden="true">
+        <div id="slip-msg" class="msg" role="status" aria-live="polite" hidden></div>
+        <label class="check" id="slip-order-wrap"><input type="checkbox" name="slipsInLabelOrder" id="slip-order"> Slips in label order: print my TCGplayer slips sorted to match the labels</label>
+      </div>
+    </form>
+
+    <details class="sub" id="design">
+      <summary>Label design</summary>
+      <form id="design-form" class="form-grid" novalidate>
+        <label class="f c2">Accent colour <input name="accent" type="color"></label>
+        <label class="f c2">Font
+          <select name="font">
+            <option value="helvetica">Sans (clean)</option>
+            <option value="times">Serif (classic)</option>
+            <option value="courier">Mono (typewriter)</option>
+          </select>
+        </label>
+        <label class="f c2">Thermal darkness <input name="darkness" type="range" min="0" max="3" step="1" aria-describedby="dark-help"></label>
+        <p id="dark-help" class="muted small c6">Darker text helps on thermal printers that print light. 0 is normal.</p>
+        <div class="f c6">
+          <span class="lbl">Logo <em>optional, stays on this PC</em></span>
+          <div class="logo-row">
+            <img id="logo-preview" alt="Your logo" hidden>
+            <button type="button" id="btn-logo" class="btn small secondary">Choose a logo</button>
+            <button type="button" id="logo-remove" class="btn small ghost" hidden>Remove logo</button>
+            <input type="file" id="logo-input" class="sr" accept="image/*" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <label class="f c6"><span>Note on each label <em>optional</em></span>
+          <input name="note" maxlength="60" aria-describedby="note-count" placeholder="e.g. Thank you for your order!">
+        </label>
+        <p id="note-count" class="muted small c6 count">0 / 60</p>
+        <label class="f c6"><span>QR code link <em>optional, e.g. your TCGplayer store page</em></span> <input name="qrUrl" type="url" inputmode="url" placeholder="https://"></label>
+        <label class="f c6"><span>Message on packing slips <em>optional</em></span> <textarea name="slipMessage" rows="2" maxlength="300"></textarea></label>
+      </form>
+    </details>
+
+    <div class="print-bar">
+      <div>
+        <p id="print-count" class="print-count"></p>
+        <p id="print-warn" class="warn-line small" hidden></p>
+      </div>
+      <div class="print-actions">
+        <button type="button" id="btn-pdf" class="btn primary big">Download PDF</button>
+        <button type="button" id="btn-slip-pdf" class="btn ghost small" hidden>Only my slips, in label order</button>
+      </div>
+    </div>
+    <div id="print-msg" class="msg" role="status" aria-live="polite" hidden></div>
+    <p class="reminder small"><strong>Print at 100% scale</strong> ("Actual size", not "Fit to page"). On a thermal printer set the margins to zero. These are address labels, not postage: add stamps, or buy a tracked label for orders that need tracking.</p>
+  </section>
+
+  <!-- 4. Shipped -->
+  <section id="step4" class="card" aria-labelledby="step4-h">
+    <h2 id="step4-h"><span class="step-num" aria-hidden="true">4</span> Mark shipped</h2>
+    <p id="ship-empty" class="empty-note">Add orders first. After you ship, tell TCGplayer here.</p>
+    <div id="ship-area" hidden>
+      <div class="ship-grid">
+        <div>
+          <label for="track-text" class="lbl">Paste tracking numbers</label>
+          <p class="muted small" id="track-help">One per line. Either just the numbers, in the same order as your labels, or the order number then the tracking number.</p>
+          <textarea id="track-text" rows="5" aria-describedby="track-help" spellcheck="false" placeholder="9400 1000 0000 0000 0000 00&#10;or: SAMPLE-0005 9400 1000 0000 0000 0000 00"></textarea>
+          <button type="button" id="btn-match" class="btn secondary">Match to orders</button>
+          <div id="match-msg" class="msg" role="status" aria-live="polite" hidden></div>
+        </div>
+        <div>
+          <p class="lbl" id="ship-list-h">Orders</p>
+          <p class="muted small">Type a tracking number, or tick <strong>Shipped</strong> for envelopes without tracking.</p>
+          <ul id="ship-list" class="ship-list" aria-labelledby="ship-list-h"></ul>
+        </div>
+      </div>
+      <div id="ship-warn" class="msg warn" role="status" aria-live="polite" hidden></div>
+      <div class="row ship-actions">
+        <button type="button" id="btn-import" class="btn primary">Download TCGplayer import file</button>
+        <button type="button" id="btn-pirate" class="btn secondary">Download Pirate Ship CSV</button>
+      </div>
+      <p class="muted small">Upload the import file in the Seller Portal under <strong>Orders → Import Shipping Info</strong>. The Pirate Ship CSV lists the orders that need a tracked label and don't have one yet, with their estimated weight.</p>
+      <div id="ship-msg" class="msg" role="status" aria-live="polite" hidden></div>
+    </div>
+    <p class="clear-row small"><button type="button" id="btn-clear-shipped" class="link danger">Clear shipped history</button> <span class="muted">Ship Desk remembers which orders you marked shipped, so a re-uploaded file shows them as done.</span></p>
+  </section>
+</main>
+
+<footer class="foot wrap small muted">
+  <p>Ship Desk runs in your browser. Order files are read on this PC and never uploaded. Settings are saved in this browser only.</p>
+</footer>
+
+<div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true"><div><strong>Drop to load</strong><span>CSV for orders, PDF for packing slips</span></div></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

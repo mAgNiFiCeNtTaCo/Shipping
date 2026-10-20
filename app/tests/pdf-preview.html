@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PDF preview</title>
+<!-- QA helper: renders one page of a format's PDF (the sample orders) to a canvas for screenshots.
+     tests/pdf-preview.html?format=thermal4x6&page=1&width=900 -->
+<script src="../vendor/jspdf.umd.min.js"></script>
+<script src="../vendor/pdf.min.js"></script>
+<script src="../vendor/qrcode.js"></script>
+<!-- The worker runs on the page: a separate pdf.js worker stalls under headless Edge's virtual time. -->
+<script src="../vendor/pdf.worker.min.js"></script>
+<style>html,body{margin:0;background:#888} canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import { parseOrders } from "../js/csv.js";
+import { planOrder } from "../js/plan.js";
+import { renderPdf } from "../js/render.js";
+
+const q = new URLSearchParams(location.search);
+const format = q.get("format") || "thermal4x6";
+const pageNo = Number(q.get("page") || 1);
+const width = Number(q.get("width") || 900);
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../vendor/pdf.worker.min.js";
+
+const text = await (await fetch("../samples/tcgplayer-sample.csv")).text();
+const orders = parseOrders(text).orders;
+for (const o of orders) o.plan = planOrder(o, {});
+const doc = renderPdf(orders, {
+  format,
+  slips: q.get("slips") !== "0",
+  returnAddress: { name: "Taco Cards", phone: "555-0100", street: "12 Return Rd", street2: "Suite 5", city: "Austin", state: "TX", zip: "78701" },
+  design: { accent: "#136f63", font: "helvetica", logo: null, darkness: 0, note: q.get("note") ?? "Thanks for your order!", qrUrl: q.get("qr") ?? "https://example.com/store", slipMessage: "Thank you! Questions? Message us on TCGplayer." },
+  plan: Object.fromEntries(orders.map((o) => [o.id, o.plan])),
+});
+const pdf = await pdfjsLib.getDocument({ data: doc.output("arraybuffer") }).promise;
+const page = await pdf.getPage(Math.min(pageNo, pdf.numPages));
+const vp1 = page.getViewport({ scale: 1 });
+const vp = page.getViewport({ scale: width / vp1.width });
+const c = document.getElementById("c");
+c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+document.title = `done ${pdf.numPages}`;
+</script>
+</body>
+</html>

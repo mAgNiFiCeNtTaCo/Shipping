@@ -1,0 +1,39 @@
+{
+  "project": "Shipping",
+  "about": "Ship Desk: TCGplayer shipping CSV -> address labels, packing slips, envelopes, shipping plan + stamps, mark-shipped import file (local, offline browser app)",
+  "runs": [
+    {
+      "title": "First build of Ship Desk + landscape thermal label",
+      "date": "2026-10-20",
+      "summary": "A 4-station nodeterm team built a local copy of what tcgspeedshipper.com does from one contract; QA proved it end to end (113 tests), then a landscape 6x4 thermal label was added (117 tests).",
+      "stages": [
+        {"name": "Plan", "kind": "lead", "note": "research, contract, briefs, test harness, vendored libraries",
+         "sessions": [
+           {"id": "bce15ced", "role": "Orchestrator", "start": "2026-10-20T13:42", "end": "2026-10-20T13:48",
+            "did": "Read the site and sample CSV, wrote CONTRACT.md + 4 briefs, serve.py, headless-Edge test harness, vendored jsPDF/pdf.js/qrcode", "outcome": "done", "files": 10}]},
+        {"name": "Builders", "kind": "build", "note": "in parallel, shared working tree",
+         "sessions": [
+           {"id": "6b69dd20", "role": "Data", "start": "2026-10-20T13:48", "end": "2026-10-20T13:59",
+            "did": "CSV reader, shipping plan + stamps, tracking match, TCGplayer import + Pirate Ship files, paste parser, sample CSV; 39 tests", "outcome": "done", "files": 6},
+           {"id": "c8819c4f", "role": "PDF", "start": "2026-10-20T13:48", "end": "2026-10-20T14:05",
+            "did": "8 label formats, packing slips, design options, TCGplayer slip-PDF reader; 50 tests", "outcome": "done", "files": 3},
+           {"id": "37946309", "role": "UI", "start": "2026-10-20T13:48", "end": "2026-10-20T14:05",
+            "did": "4-step page, return-address profiles, offline service worker, Start Ship Desk.bat; 13 tests", "outcome": "done", "files": 8}]},
+        {"name": "QA", "kind": "review", "note": "armed after-success on all three builders",
+         "sessions": [
+           {"id": "f3bbcddd", "role": "QA + integration", "start": "2026-10-20T14:02", "end": "2026-10-20T14:17",
+            "did": "9 end-to-end tests (113 total), 16 screenshots checked, README + test report, 3 small fixes", "outcome": "done", "files": 6}]},
+        {"name": "Check + user request", "kind": "fix",
+         "sessions": [
+           {"id": "bce15ced", "role": "Orchestrator", "start": "2026-10-20T14:17", "end": "2026-10-20T14:29",
+            "did": "Re-ran all tests, looked at screenshots, added landscape thermal 6x4 label (117 tests)", "outcome": "done", "files": 5}]}
+      ],
+      "events": [],
+      "lessons": [
+        "A test harness proven before launch (headless Edge, results POSTed back) let every station test on a PC without Node.",
+        "File ownership + a Requests section in each brief kept parallel stations out of each other's files.",
+        "Check each vendored download separately: one failed silently in an && chain."
+      ]
+    }
+  ]
+}

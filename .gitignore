@@ -1,0 +1,23 @@
+# secrets (none expected, kept out just in case)
+.env*
+*.key
+*session*
+*token*
+
+# Python / tools
+__pycache__/
+.venv/
+venv/
+node_modules/
+*.log
+
+# nodeterm canvas state
+.nodeterm/
+
+# real order files: buyers' names and addresses never go into git
+# (the invented sample in app/samples/ is the only CSV kept)
+*.csv
+!app/samples/tcgplayer-sample.csv
+*ShippingExport*
+*PackingSlip*.pdf
+orders/

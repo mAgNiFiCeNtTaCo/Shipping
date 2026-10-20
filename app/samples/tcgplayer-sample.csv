@@ -1,0 +1,11 @@
+Order #,FirstName,LastName,Address1,Address2,City,State,PostalCode,Country,Order Date,Product Weight,Shipping Method,Item Count,Value Of Products,Shipping Fee Paid,Tracking #,Carrier
+SAMPLE-0001,Ash,Example,45 Example St,,Los Angeles,CA,90012,US,10/14/2026,0.12,Standard (7-10 days),2,3.48,0.99,,
+SAMPLE-0002,Brenna,O'Callahan,1820 Larkspur Ln,Apt 3B,Portland,OR,97214,US,10/14/2026,0.06,Standard (7-10 days),1,1.25,0.99,,
+SAMPLE-0003,Dmitri,Vale,77 Harbor View Rd,,Boston,MA,02127,US,10/15/2026,0.24,Standard (7-10 days),4,12.40,1.29,,
+SAMPLE-0004,Priya,Raman,"310 Commerce Blvd, Suite 210",,Princeton,NJ,8540,US,10/15/2026,0.18,Standard (7-10 days),3,19.99,0.99,,
+SAMPLE-0005,Marcus,Delgado,9 Quarry Hill Dr,,Austin,TX,78704,US,10/15/2026,0.36,Standard (7-10 days),6,34.75,1.99,,
+SAMPLE-0006,Tess,Okafor,604 W Maple Ave,Unit 12,Columbus,OH,43215,US,10/16/2026,0.06,Expedited (1-5 days),1,6.50,4.99,,
+SAMPLE-0007,Gideon,Marsh,2215 Pine Ridge Ct,,Denver,CO,80205,US,10/16/2026,0.48,Standard (7-10 days),8,49.99,0.00,,
+SAMPLE-0008,Lena,Fairweather,58 Orchard St,Apt 5,Burlington,VT,05401,US,10/16/2026,0.30,Standard (7-10 days),5,88.20,0.00,,
+SAMPLE-0009,Rafael,Ito-Brandt,1400 Lakeshore Dr,Suite 900,Chicago,IL,60611,US,10/17/2026,0.18,Standard (7-10 days),3,312.00,0.00,,
+SAMPLE-0010,June,Whitlock,733 Cedar Bluff Way,,Asheville,NC,28801,US,10/17/2026,0.06,Standard (7-10 days),1,0.79,0.99,,

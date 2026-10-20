@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ship Desk tests</title>
+<script src="../vendor/jspdf.umd.min.js"></script>
+<script src="../vendor/pdf.min.js"></script>
+<script src="../vendor/qrcode.js"></script>
+<style>body{font:13px/1.4 Consolas,monospace;margin:16px} .f{color:#b00}</style>
+</head>
+<body>
+<h1>Ship Desk tests</h1>
+<pre id="out"></pre>
+<script type="module">
+import { runSuites, SUITES } from "./runner.js";
+const out = document.getElementById("out");
+const lines = [];
+const log = (s) => { lines.push(s); const d = document.createElement("div"); d.textContent = s; if (s.startsWith("FAIL")) d.className = "f"; out.appendChild(d); };
+const q = new URLSearchParams(location.search).get("suites");
+const names = q ? q.split(",") : SUITES;
+let res;
+try { res = await runSuites(names, log); } catch (e) { log("FAIL runner: " + e); res = { passed: 0, failed: 1 }; }
+log(`RESULT: ${res.passed} passed, ${res.failed} failed`);
+try {
+  await fetch("/__test-result", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...res, lines }) });
+} catch { /* opened by hand: nothing to report to */ }
+</script>
+</body>
+</html>

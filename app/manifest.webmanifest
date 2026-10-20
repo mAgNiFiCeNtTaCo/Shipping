@@ -1,0 +1,14 @@
+{
+  "name": "Ship Desk",
+  "short_name": "Ship Desk",
+  "description": "Address labels, packing slips and a shipping plan for your TCGplayer orders. Works offline; your orders stay on this PC.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f1eb",
+  "theme_color": "#136f63",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
