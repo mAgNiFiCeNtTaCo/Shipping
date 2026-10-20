@@ -9,6 +9,7 @@ export const KEYS = {
   output: "shipdesk.output",
   plan: "shipdesk.plan",
   shipped: "shipdesk.shipped",
+  history: "shipdesk.history",
 };
 
 const memory = new Map(); // key -> JSON text written during this visit

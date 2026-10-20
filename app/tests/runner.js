@@ -20,7 +20,7 @@ export async function throws(fn, msg = "expected an error") {
   throw new Error(msg);
 }
 
-export const SUITES = ["harness", "data", "render", "ui", "e2e"];
+export const SUITES = ["harness", "data", "render", "ui", "history", "e2e"];
 
 export async function runSuites(names, log) {
   let passed = 0, failed = 0;

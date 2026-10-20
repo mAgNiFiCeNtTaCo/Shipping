@@ -80,9 +80,47 @@ toploader, how many cards go in one toploader, whether your envelopes are rigid 
 - Ship Desk remembers what you marked shipped, so if you drop the same file again those orders aren't ticked
   for printing. **Clear shipped history** forgets it.
 
+## Where your files go (the Saved folder)
+
+Everything Ship Desk makes is saved straight into the **`Saved`** folder inside the Ship Desk folder
+(`D:\ClaudeProjects\Shipping\Saved`), not into your Downloads. Your browser's other downloads still go to Downloads as before.
+
+| Folder | What's in it |
+|---|---|
+| `Saved\Labels` | the label PDFs (`labels-2026-10-20.pdf`) |
+| `Saved\Packing slips` | "Only my slips, in label order" PDFs |
+| `Saved\TCGplayer import files` | the files you upload under Orders -> Import Shipping Info |
+| `Saved\Pirate Ship` | Pirate Ship CSVs |
+| `Saved\History` | History downloads |
+
+- A second file with the same name on the same day is kept as `labels-2026-10-20 (2).pdf`; nothing is overwritten.
+- After each save the message shows where the file is, with an **Open the folder** button. Under the Download PDF
+  button there is also **Open the Saved folder**.
+- Prefer your Downloads folder? Under the Download PDF button, **Where files go** -> **My Downloads folder**. Ship
+  Desk remembers the choice.
+- The black Ship Desk window does the saving. If it was closed, files fall back to your Downloads folder and the
+  message says so.
+- These files contain your buyers' names and addresses: they stay on this PC (the folder is never put in git or on GitHub).
+
+## History
+
+Click **History** at the top to see every order you made labels for or marked shipped, newest first.
+
+- An order is added when you click **Download PDF**, and updated when you mark it shipped (tracking number
+  or the Shipped tick). Orders you mark shipped without printing here are added too.
+- Each row shows when its labels were made and on what (4x6, Avery, ...; "2 times" if you reprinted), the order,
+  buyer, city, value, plan, and whether it shipped (date, tracking number, a "Track on USPS/UPS" link).
+- You can tick **Shipped** or type a tracking number right there, even days later without the file: a TCGplayer
+  order then also counts as shipped in step 4, so it goes in the import file next time you load its CSV.
+- Buttons: **All / Labels made, not shipped / Shipped**, a search box (order #, buyer, city or tracking),
+  **Download history (CSV)** for Excel or Google Sheets, **Remove** on a row, and **Clear history**.
+- Only the buyer's name, city, state and ZIP are kept, never the street address. Up to 5,000 orders; the oldest
+  drop off after that.
+
 ## Where your data is kept
 
-Only in this browser on this PC: your return addresses, design and settings, and which orders you marked shipped.
+Only in this browser on this PC: your return addresses, design and settings, which orders you marked shipped,
+and the History list.
 Order files are read in the browser and never uploaded or saved in the Ship Desk folder. A different browser
 (or another PC) starts empty.
 

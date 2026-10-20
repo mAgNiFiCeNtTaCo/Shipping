@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>History preview</title>
+<!-- Screenshot helper: fills this browser's History with the sample orders (some printed, some shipped)
+     and opens the app on its History page. Used by docs/make_screens.py. -->
+</head>
+<body>
+<script type="module">
+import { parseOrders } from "../js/csv.js";
+import { planOrder } from "../js/plan.js";
+import { recordPrinted, recordShipped } from "../js/history.js";
+import { KEYS, save } from "../js/store.js";
+
+const text = await (await fetch("../samples/tcgplayer-sample.csv")).text();
+const orders = parseOrders(text).orders.map((o) => ({ ...o, plan: planOrder(o) }));
+const h = {};
+recordPrinted(h, orders.slice(0, 6), { format: "thermal4x6", when: "2026-10-18 10:12" });
+recordPrinted(h, orders.slice(6), { format: "thermal6x4", when: "2026-10-20 09:30" });
+recordPrinted(h, orders.slice(0, 1), { format: "thermal4x6", when: "2026-10-18 10:20" });
+recordShipped(h, orders[4], { tracking: "9400111899223344556677", carrier: "USPS", shipped: true }, { when: "2026-10-18 16:05" });
+recordShipped(h, orders[6], { tracking: "1Z999AA10123456784", carrier: "UPS", shipped: true }, { when: "2026-10-20 15:40" });
+for (const o of orders.slice(0, 4)) recordShipped(h, o, { shipped: true }, { when: "2026-10-18 16:00" });
+save(KEYS.history, h);
+location.replace("../index.html#history");
+</script>
+</body>
+</html>

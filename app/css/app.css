@@ -92,6 +92,12 @@ code { font-family: var(--mono); font-size: .86em; }
 .brand .tag { color: var(--muted); font-size: .9rem; }
 .private { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--ok-text); background: var(--ok-bg); border: 1px solid var(--ok-line); padding: 4px 10px; border-radius: 999px; }
 
+.views { display: flex; gap: 4px; padding: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; }
+.view-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; min-height: 38px; border-radius: 9px; text-decoration: none; color: var(--muted); font-weight: 650; font-size: .93rem; }
+.view-btn:hover { color: var(--text); }
+.view-btn[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / .12), inset 0 0 0 1px var(--line); }
+.view-btn .count { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 999px; background: var(--brand); color: var(--brand-ink); font-size: .78rem; text-align: center; line-height: 1.6; }
+
 .steps { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .steps ol { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding-top: 8px; padding-bottom: 8px; }
 .steps a { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--muted); padding: 6px 10px; border-radius: 10px; font-weight: 600; font-size: .92rem; min-height: 40px; }
@@ -300,6 +306,10 @@ table.orders { width: 100%; border-collapse: collapse; font-size: .93rem; }
 .warn-line::before { content: "⚠ "; }
 .print-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .reminder { margin-top: 12px; color: var(--muted); }
+.save-to { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 12px 0 0; padding: 0; border: 0; font-size: .92rem; }
+.save-to legend { float: left; margin: 0 4px 0 0; padding: 0; }
+.save-to .check { margin: 0; }
+.saved-where code { word-break: break-all; }
 
 /* ---------- shipped ---------- */
 
@@ -324,6 +334,40 @@ table.orders { width: 100%; border-collapse: collapse; font-size: .93rem; }
 .ship-actions + p { margin-top: 10px; }
 #ship-warn { margin-top: 16px; }
 .clear-row { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* ---------- history ---------- */
+
+.history-intro { margin: -6px 0 14px; }
+.history-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; }
+.history-bar .filters { margin-bottom: 8px; }
+.history-search { flex: 0 1 340px; min-width: 0; }
+.history-search input { width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); }
+.history .c-printed { white-space: nowrap; }
+.history .c-printed .sub { margin-top: 2px; }
+.history .hship { display: grid; grid-template-columns: auto minmax(120px, 210px); align-items: center; gap: 4px 10px; }
+.history .hship a { grid-column: 1 / -1; justify-self: start; }
+.history .trk-input { min-height: 34px; }
+.history .c-del { text-align: right; padding-right: 16px; }
+.history .c-del .link { font-size: .85rem; }
+
+@media (max-width: 760px) {
+  .history thead tr { display: none; }
+  .history tbody tr {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "id plan" "buyer buyer" "dest value" "printed printed" "ship ship" "del del";
+  }
+  .history .c-printed { grid-area: printed; margin-top: 4px; }
+  .history .c-printed .sub { display: inline; margin-left: 8px; }
+  .history .c-value { grid-area: value; justify-self: end; }
+  .history .c-ship { grid-area: ship; margin-top: 8px; }
+  .history .hship { grid-template-columns: auto minmax(0, 1fr); }
+  .history .c-del { grid-area: del; text-align: left; margin-top: 6px; }
+}
+@media (max-width: 600px) {
+  .top-in { row-gap: 10px; }
+  .views { order: 3; width: 100%; }
+  .view-btn { flex: 1; justify-content: center; }
+}
 
 /* ---------- overlay, toast, footer ---------- */
 

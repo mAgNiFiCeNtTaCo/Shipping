@@ -55,6 +55,8 @@ async function openApp({ width = 1200, returnAddress = true } = {}) {
     else click.call(this);
   };
   const doc = f.contentDocument, app = win.shipdesk;
+  // These tests catch browser downloads; the Saved-folder route is tested in history.test.js.
+  app.state.output.saveTo = "downloads";
   if (returnAddress) {
     const form = doc.querySelector("#return-form");
     for (const [k, v] of Object.entries(RETURN)) {

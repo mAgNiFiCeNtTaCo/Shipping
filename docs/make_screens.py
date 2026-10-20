@@ -46,6 +46,8 @@ def main():
         shot(base, f"app-{w}-empty.png", w, h, light)
         shot(base + "?sample", f"app-{w}-sample.png", w, h, light)
         shot(base + "?sample", f"app-{w}-sample-dark.png", w, h, dark)
+        shot(base + "tests/history-preview.html", f"app-{w}-history.png", w, 1800 if w > 600 else 4200, light)
+        shot(base + "tests/history-preview.html", f"app-{w}-history-dark.png", w, 1800 if w > 600 else 4200, dark)
     for fid, (pw, ph) in FORMATS.items():
         width = 600 if fid == "thermal4x6" else 900
         height = round(width * ph / pw)

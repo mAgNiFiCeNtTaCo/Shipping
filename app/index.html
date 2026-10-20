@@ -28,6 +28,10 @@
         <p class="tag">Labels, packing slips and a shipping plan for your TCGplayer orders</p>
       </div>
     </div>
+    <nav class="views" aria-label="Pages">
+      <a href="#" id="view-ship" class="view-btn" aria-current="page">Ship orders</a>
+      <a href="#history" id="view-history" class="view-btn">History <span id="history-count" class="count" hidden></span></a>
+    </nav>
     <p class="private"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z"/></svg> Your orders stay on this PC</p>
   </div>
 </header>
@@ -225,6 +229,12 @@
         <button type="button" id="btn-slip-pdf" class="btn ghost small" hidden>Only my slips, in label order</button>
       </div>
     </div>
+    <fieldset class="save-to" form="output-form">
+      <legend class="lbl">Where files go</legend>
+      <label class="check"><input type="radio" name="saveTo" value="folder" form="output-form"> <span>Ship Desk's <strong>Saved</strong> folder (keeps your Downloads tidy)</span></label>
+      <label class="check"><input type="radio" name="saveTo" value="downloads" form="output-form"> My Downloads folder</label>
+      <button type="button" id="btn-open-folder" class="link">Open the Saved folder</button>
+    </fieldset>
     <div id="print-msg" class="msg" role="status" aria-live="polite" hidden></div>
     <p class="reminder small"><strong>Print at 100% scale</strong> ("Actual size", not "Fit to page"). On a thermal printer set the margins to zero. These are address labels, not postage: add stamps, or buy a tracked label for orders that need tracking.</p>
   </section>
@@ -257,6 +267,45 @@
       <div id="ship-msg" class="msg" role="status" aria-live="polite" hidden></div>
     </div>
     <p class="clear-row small"><button type="button" id="btn-clear-shipped" class="link danger">Clear shipped history</button> <span class="muted">Ship Desk remembers which orders you marked shipped, so a re-uploaded file shows them as done.</span></p>
+  </section>
+</main>
+
+<main id="history-view" class="wrap" hidden>
+  <section class="card" aria-labelledby="history-h">
+    <h2 id="history-h">History</h2>
+    <p class="muted small history-intro">Every order you made labels for or marked shipped, newest first. Kept in this browser on this PC: buyer name, city and ZIP only, no street addresses.</p>
+    <p id="history-empty" class="empty-note">Nothing here yet. Orders show up here after you download labels (step 3) or mark them shipped (step 4).</p>
+    <div id="history-area" hidden>
+      <div class="history-bar">
+        <div id="history-filters" class="filters" role="group" aria-label="Show"></div>
+        <label class="history-search"><span class="sr">Search the history</span><input id="history-search" type="search" placeholder="Search order #, buyer, city or tracking" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <p id="history-totals" class="totals" aria-live="polite"></p>
+      <div class="table-wrap">
+        <table id="history-table" class="orders history">
+          <caption class="sr">Orders you made labels for or marked shipped.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Labels made</th>
+              <th scope="col">Order #</th>
+              <th scope="col">Buyer</th>
+              <th scope="col">Ships to</th>
+              <th scope="col" class="num">Value</th>
+              <th scope="col">Plan</th>
+              <th scope="col">Shipped</th>
+              <th scope="col"><span class="sr">Remove</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row">
+        <button type="button" id="btn-history-csv" class="btn secondary">Download history (CSV)</button>
+        <span class="muted small">Opens in Excel or Google Sheets.</span>
+      </div>
+      <div id="history-msg" class="msg" role="status" aria-live="polite" hidden></div>
+    </div>
+    <p class="clear-row small"><button type="button" id="btn-clear-history" class="link danger">Clear history</button> <span class="muted">Forgets this list. It doesn't change anything on TCGplayer.</span></p>
   </section>
 </main>
 

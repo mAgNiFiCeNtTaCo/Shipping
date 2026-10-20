@@ -27,12 +27,40 @@ EDGE_PATHS = [
 
 result = {}
 done = threading.Event()
+opened = []  # folders the app asked to open (never really opened during tests)
 
 
 class Handler(serve.Handler):
+    # Files the app saves during tests land in a throwaway folder, never in the real Saved folder.
+    save_root = tempfile.mkdtemp(prefix="shipdesk-saved-")
+
+    def open_folder(self, folder):
+        opened.append(folder)
+
+    def do_GET(self):
+        # Test-only: read back a file the app saved (?rel=Saved\Labels\x.pdf), or list what was opened.
+        if self.path.startswith("/__saved"):
+            import urllib.parse
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            rel = (q.get("rel") or [""])[0]
+            path = os.path.normpath(os.path.join(os.path.dirname(self.save_root), rel))
+            if not path.startswith(self.save_root) or not os.path.isfile(path):
+                self.send_error(404)
+                return
+            data = open(path, "rb").read()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if self.path == "/__opened":
+            self.reply(200, {"opened": opened})
+            return
+        super().do_GET()
+
     def do_POST(self):
         if self.path != "/__test-result":
-            self.send_error(404)
+            super().do_POST()
             return
         n = int(self.headers.get("Content-Length") or 0)
         if n < 0 or n > 5_000_000:
@@ -78,6 +106,7 @@ def main():
         proc.kill()
         srv.shutdown()
         shutil.rmtree(profile, ignore_errors=True)
+        shutil.rmtree(Handler.save_root, ignore_errors=True)
     for line in result.get("lines", []):
         print(line)
     print(f"RESULT: {result.get('passed', 0)} passed, {result.get('failed', 0)} failed")

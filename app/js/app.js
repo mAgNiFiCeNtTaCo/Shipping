@@ -4,11 +4,13 @@
 
 import { load, save, KEYS } from "./store.js";
 import { parseOrders } from "./csv.js";
-import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize } from "./plan.js";
+import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS } from "./plan.js";
 import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv } from "./tracking.js";
 import { parseAddresses } from "./paste.js";
 import { renderPdf, FORMATS, slipsInLabelOrderPdf } from "./render.js";
 import { readSlipPdf, attachSlips } from "./slips.js";
+import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
+  trackingUrl, formatName } from "./history.js";
 
 // ---------- small helpers ----------
 
@@ -72,10 +74,57 @@ function downloadBlob(name, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+/**
+ * Save a file the app made. With saveTo "folder" (the default) serve.py writes it into Ship Desk's Saved
+ * folder (Saved\<kind folder>\name); with "downloads", or when that fails (server not running), the browser
+ * downloads it. kind: labels | slips | import | pirate | history. getBlob() makes the file; download() is the
+ * browser way (jsPDF's doc.save or a download link). The browser download happens before any await, so a
+ * click handler still counts as the user's action. Resolves to { where: "folder" | "downloads", name, path?, fellBack? }.
+ */
+function deliver(name, kind, getBlob, download) {
+  if (state.output.saveTo === "downloads") {
+    download();
+    return Promise.resolve({ where: "downloads", name });
+  }
+  return (async () => {
+    try {
+      const r = await fetch(`api/save?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, {
+        method: "POST", headers: { "X-Ship-Desk": "1", "Content-Type": "application/octet-stream" }, body: getBlob(),
+      });
+      const info = r.ok ? await r.json() : null;
+      if (info && info.ok) return { where: "folder", name: info.name, path: info.path, folder: info.folder, kind };
+    } catch { /* server not running: fall back to a normal download */ }
+    download();
+    return { where: "downloads", name, fellBack: true };
+  })();
+}
+
+const saveBlob = (name, kind, blob) => deliver(name, kind, () => blob, () => downloadBlob(name, blob));
+const savePdf = (doc, name, kind) => deliver(name, kind, () => doc.output("blob"), () => doc.save(name));
+
+/** Ask serve.py to open the Saved folder (or one kind's subfolder) in Explorer. */
+export async function openSavedFolder(kind = "") {
+  try {
+    const r = await fetch(`api/open-folder?kind=${encodeURIComponent(kind)}`, { method: "POST", headers: { "X-Ship-Desk": "1" } });
+    if (r.ok) return true;
+  } catch { /* not running */ }
+  toast("The Saved folder couldn't be opened. Start Ship Desk with \"Start Ship Desk.bat\".");
+  return false;
+}
+
+// The lines of a "Saved ..." message: where the file went, and a button to open that folder.
+function savedLines(res) {
+  if (res.where === "folder") {
+    return [el("p", { class: "saved-where" }, "In ", el("code", { text: res.path }), " ",
+      el("button", { type: "button", class: "link", text: "Open the folder", onclick: () => openSavedFolder(res.kind) }))];
+  }
+  return [res.fellBack ? "Ship Desk's Saved folder couldn't be reached (is the Ship Desk window still open?), so it went to your Downloads folder." : "In your Downloads folder."];
+}
+
 // ---------- state ----------
 
 const DEFAULT_DESIGN = { accent: "#136f63", font: "helvetica", logo: null, darkness: 0, note: "", qrUrl: "", slipMessage: "" };
-const DEFAULT_OUTPUT = { format: "", slips: true, boldReturn: false, noDivider: false, slipsInLabelOrder: false };
+const DEFAULT_OUTPUT = { format: "", slips: true, boldReturn: false, noDivider: false, slipsInLabelOrder: false, saveTo: "folder" };
 const ADDRESS_FIELDS = ["name", "phone", "street", "street2", "city", "state", "zip"];
 const formatList = asList(FORMATS);
 const filterList = asList(FILTERS);
@@ -95,6 +144,9 @@ export const state = {
   output: { ...DEFAULT_OUTPUT },
   plan: { ...DEFAULT_PLAN_SETTINGS },
   shipped: {},
+  history: {},         // history.js records, by key
+  historyFilter: "all",
+  historySearch: "",
 };
 
 function newProfile(label = "My store") {
@@ -112,6 +164,8 @@ function loadSettings() {
   state.plan = { ...DEFAULT_PLAN_SETTINGS, ...load(KEYS.plan, {}) };
   const shipped = load(KEYS.shipped, {});
   state.shipped = shipped && typeof shipped === "object" ? shipped : {};
+  const history = load(KEYS.history, {});
+  state.history = history && typeof history === "object" && !Array.isArray(history) ? history : {};
 }
 
 const activeProfile = () => state.profiles.find((p) => p.id === state.activeProfile) || state.profiles[0];
@@ -233,6 +287,11 @@ async function handleFiles(files) {
   if (!list.length) return;
   const isPdf = (f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf";
   const csvs = list.filter((f) => !isPdf(f)), pdfs = list.filter(isPdf);
+  if (!$("#history-view").hidden) {
+    // A file dropped on the History page goes to the main page.
+    if (location.hash) window.history.pushState(null, "", location.pathname + location.search);
+    showView("ship");
+  }
   if (csvs.length) {
     const f = csvs[0];
     if (/\.(xlsx?|numbers|ods)$/i.test(f.name)) {
@@ -332,11 +391,17 @@ export function downloadPdf() {
     return null;
   }
   const name = `labels-${today()}.pdf`;
-  doc.save(name);
+  state.lastSave = savePdf(doc, name, "labels").then((res) => {
+    showMsg(box, "ok", `Saved ${res.name} with ${plural(orders.length, "order")}.`,
+      [...savedLines(res), "Open it and print at 100% scale (Actual size).", "These orders are now in your History."]);
+    return res;
+  });
   state.lastPrinted = orders.map((o) => o.id);
   state.done[3] = true;
-  showMsg(box, "ok", `Saved ${name} with ${plural(orders.length, "order")}.`, ["Open it and print at 100% scale (Actual size)."]);
+  recordPrinted(state.history, orders, { source: state.source, format: state.output.format });
+  saveHistory();
   renderSteps();
+  renderHistory();
   return doc;
 }
 
@@ -352,20 +417,32 @@ function downloadSlipsOnly() {
     return null;
   }
   const name = `slips-${today()}.pdf`;
-  doc.save(name);
-  showMsg(box, "ok", `Saved ${name}: ${plural(pages.length, "slip page")} in label order.`);
+  state.lastSave = savePdf(doc, name, "slips").then((res) => {
+    showMsg(box, "ok", `Saved ${res.name}: ${plural(pages.length, "slip page")} in label order.`, savedLines(res));
+    return res;
+  });
   return doc;
 }
 
 // ---------- tracking / shipped ----------
 
 function saveShipped() { save(KEYS.shipped, state.shipped); }
+function saveHistory() { save(KEYS.history, state.history); }
+
+// Copy an order's shipped state (from this batch) into the history.
+function noteShipped(id) {
+  const o = state.orders.find((x) => x.id === id);
+  if (!o) return;
+  recordShipped(state.history, o, state.shipped[id] || null, { source: state.source });
+  saveHistory();
+}
 
 function setTracking(id, tracking) {
   const t = String(tracking || "").trim();
   if (t) state.shipped[id] = { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true, at: today() };
   else if (state.shipped[id]) state.shipped[id] = { ...state.shipped[id], tracking: "", carrier: "" };
   saveShipped();
+  noteShipped(id);
 }
 
 function setShipped(id, on) {
@@ -373,6 +450,7 @@ function setShipped(id, on) {
   if (on) state.shipped[id] = { tracking: "", carrier: "", ...cur, shipped: true, at: today() };
   else delete state.shipped[id];
   saveShipped();
+  noteShipped(id);
 }
 
 /** Orders in label order: as last printed, else the ticked ones, else all. */
@@ -393,6 +471,7 @@ export function matchPasted(text) {
     state.shipped[m.orderId] = { tracking: m.tracking, carrier: m.carrier || detectCarrier(m.tracking) || "USPS", shipped: true, at: today() };
   }
   saveShipped();
+  for (const m of res.matches) noteShipped(m.orderId);
   const lines = [...(res.warnings || [])];
   if (res.unmatched && res.unmatched.length) lines.push(el("div", {}, "Not matched: ", res.unmatched.map((u) => el("code", { text: u }))));
   showMsg(box, res.matches.length ? (lines.length ? "warn" : "ok") : "error",
@@ -414,11 +493,13 @@ export function downloadImportFile() {
   const r = importFile();
   if (!r.count) { showMsg(box, "warn", "Nothing to import yet.", ["Add a tracking number or tick Shipped for at least one order."]); return null; }
   const name = `tcgplayer-import-${today()}.csv`;
-  downloadBlob(name, new Blob([r.csv], { type: "text/csv" }));
+  state.lastSave = saveBlob(name, "import", new Blob([r.csv], { type: "text/csv" })).then((res) => {
+    showMsg(box, r.missingRequired.length ? "warn" : "ok", `Saved ${res.name} with ${plural(r.count, "order")}.`,
+      [...savedLines(res), r.missingRequired.length ? `TCGplayer will refuse ${r.missingRequired.join(", ")} without a tracking number.` : null,
+        "Upload it in the Seller Portal: Orders → Import Shipping Info."]);
+    return res;
+  });
   state.done[4] = true;
-  showMsg(box, r.missingRequired.length ? "warn" : "ok", `Saved ${name} with ${plural(r.count, "order")}.`,
-    [r.missingRequired.length ? `TCGplayer will refuse ${r.missingRequired.join(", ")} without a tracking number.` : null,
-      "Upload it in the Seller Portal: Orders → Import Shipping Info."]);
   renderSteps();
   return r;
 }
@@ -433,8 +514,10 @@ export function downloadPirateShip() {
   const rows = csv.trim().split(/\r?\n/).length - 1;
   if (rows < 1) { showMsg(box, "info", "No orders need a tracked label right now.", ["Pirate Ship is for orders of $20 or more, or with paid faster shipping, that don't have tracking yet."]); return null; }
   const name = `pirate-ship-${today()}.csv`;
-  downloadBlob(name, new Blob([csv], { type: "text/csv" }));
-  showMsg(box, "ok", `Saved ${name} with ${plural(rows, "order")}.`, ["In Pirate Ship choose Import → Spreadsheet and pick this file."]);
+  state.lastSave = saveBlob(name, "pirate", new Blob([csv], { type: "text/csv" })).then((res) => {
+    showMsg(box, "ok", `Saved ${res.name} with ${plural(rows, "order")}.`, [...savedLines(res), "In Pirate Ship choose Import → Spreadsheet and pick this file."]);
+    return res;
+  });
   return csv;
 }
 
@@ -517,6 +600,8 @@ function renderOutput() {
   const f = $("#output-form");
   f.elements.format.value = state.output.format;
   for (const k of ["slips", "boldReturn", "noDivider", "slipsInLabelOrder"]) f.elements[k].checked = !!state.output[k];
+  for (const r of f.elements.saveTo) r.checked = r.value === (state.output.saveTo === "downloads" ? "downloads" : "folder");
+  $("#btn-open-folder").hidden = state.output.saveTo === "downloads";
   const slipOrder = $("#slip-order");
   slipOrder.disabled = !state.slips;
   $("#slip-order-wrap").classList.toggle("disabled", !state.slips);
@@ -568,6 +653,149 @@ function renderShipWarn() {
   } else showMsg(box, "", "");
 }
 
+// ---------- history ----------
+
+function historyRow(r) {
+  const tid = "htrk-" + r.key.replace(/[^\w-]/g, "_");
+  const link = trackingUrl(r.tracking, r.carrier);
+  const label = r.id || r.name;
+  return el("tr", { "data-key": r.key },
+    el("td", { class: "c-printed" },
+      r.printCount ? el("span", { text: String(r.lastPrintedAt).slice(0, 10) }) : el("span", { class: "muted", text: "Not made here" }),
+      r.printCount ? el("span", { class: "sub muted", text: formatName(r.format) + (r.printCount > 1 ? ` · ${r.printCount} times` : "") }) : null),
+    el("td", { class: "c-id" }, el("span", { class: "oid", text: r.id || "Pasted" }), r.orderDate ? el("span", { class: "sub muted", text: r.orderDate }) : null),
+    el("td", { class: "c-buyer", text: r.name }),
+    el("td", { class: "c-dest", text: `${r.city}${r.city && r.state ? ", " : ""}${r.state} ${r.zip}`.trim() }),
+    el("td", { class: "num c-value", text: money(r.value) }),
+    el("td", { class: "c-plan" }, r.tag ? chip({ tag: r.tag, label: TAG_LABELS[r.tag] || r.tag }) : null),
+    el("td", { class: "c-ship" },
+      el("div", { class: "hship" },
+        el("label", { class: "check ship-check" },
+          el("input", { type: "checkbox", class: "h-shipped", checked: !!r.shipped, disabled: !!r.tracking }),
+          r.shipped ? ` Shipped ${String(r.shippedAt).slice(0, 10)}` : " Shipped"),
+        el("label", { class: "sr", for: tid, text: `Tracking number for ${label}` }),
+        el("input", { id: tid, class: "trk-input h-trk", type: "text", value: r.tracking || "", placeholder: "Tracking #", autocomplete: "off", spellcheck: "false" }),
+        link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", class: "small", text: `Track on ${r.carrier} ↗` }) : null)),
+    el("td", { class: "c-del" }, el("button", { type: "button", class: "link danger h-del", "aria-label": `Remove ${label} from the history`, text: "Remove" })));
+}
+
+export function renderHistory() {
+  const counts = historyCounts(state.history);
+  const badge = $("#history-count");
+  badge.hidden = !counts.all;
+  badge.textContent = String(counts.all);
+  const has = counts.all > 0;
+  $("#history-empty").hidden = has;
+  $("#history-area").hidden = !has;
+  if (!has) return;
+  for (const b of $$("#history-filters button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.filter === state.historyFilter));
+    b.querySelector(".count").textContent = String(counts[b.dataset.filter] ?? 0);
+  }
+  $("#history-totals").textContent = `${plural(counts.all, "order")} · ${counts.printed} with labels made here · ${counts.shipped} shipped · ${counts.waiting} not shipped yet`;
+  const rows = historyList(state.history, { filter: state.historyFilter, search: state.historySearch });
+  const body = $("#history-table tbody");
+  body.replaceChildren(...(rows.length ? rows.map(historyRow)
+    : [el("tr", { class: "none" }, el("td", { colspan: "8", text: state.historySearch ? "No orders match your search." : "No orders here." }))]));
+}
+
+// A Shipped tick or tracking number changed on the History page. TCGplayer orders also update the
+// shipped list used by step 4, so the import file and a re-uploaded file agree with the history.
+function updateHistoryShipped(key, entry) {
+  const r = state.history[key];
+  if (!r) return;
+  applyShipped(r, entry);
+  saveHistory();
+  if (r.source === "csv" && r.id) {
+    if (r.shipped) state.shipped[r.id] = { tracking: r.tracking, carrier: r.carrier, shipped: true, at: today() };
+    else delete state.shipped[r.id];
+    saveShipped();
+  }
+  renderAll();
+}
+
+export function historyFile() {
+  return historyCsv(historyList(state.history, { filter: state.historyFilter, search: state.historySearch }), TAG_LABELS);
+}
+
+function bindHistory() {
+  $("#history-filters").replaceChildren(...HISTORY_FILTERS.map((f) =>
+    el("button", { type: "button", class: "filter", "data-filter": f.id, "aria-pressed": "false" }, f.label, " ", el("span", { class: "count" }))));
+  $("#history-filters").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-filter]");
+    if (!b) return;
+    state.historyFilter = b.dataset.filter;
+    renderHistory();
+  });
+  $("#history-search").addEventListener("input", (e) => { state.historySearch = e.target.value; renderHistory(); });
+  const body = $("#history-table tbody");
+  body.addEventListener("change", (e) => {
+    const tr = e.target.closest("tr[data-key]");
+    if (!tr) return;
+    const key = tr.dataset.key;
+    if (e.target.classList.contains("h-shipped")) {
+      const r = state.history[key];
+      updateHistoryShipped(key, e.target.checked ? { shipped: true, tracking: r && r.tracking, carrier: r && r.carrier } : null);
+    } else if (e.target.classList.contains("h-trk")) {
+      const t = e.target.value.trim();
+      const r = state.history[key];
+      updateHistoryShipped(key, t ? { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true } : (r && r.shipped ? { shipped: true } : null));
+    }
+  });
+  body.addEventListener("click", (e) => {
+    const b = e.target.closest(".h-del");
+    if (!b) return;
+    const key = b.closest("tr[data-key]").dataset.key;
+    const r = state.history[key];
+    if (!r || !window.confirm(`Remove ${r.id || r.name} from the history? (Nothing changes on TCGplayer.)`)) return;
+    delete state.history[key];
+    saveHistory();
+    renderHistory();
+  });
+  $("#btn-history-csv").addEventListener("click", () => {
+    state.lastSave = saveBlob(`ship-desk-history-${today()}.csv`, "history", new Blob([historyFile()], { type: "text/csv" })).then((res) => {
+      showMsg($("#history-msg"), "ok", `Saved ${res.name}.`, savedLines(res));
+      return res;
+    });
+  });
+  $("#btn-clear-history").addEventListener("click", () => {
+    if (!Object.keys(state.history).length) { toast("The history is already empty."); return; }
+    if (!window.confirm("Forget the whole history list? This doesn't change anything on TCGplayer.")) return;
+    clearHistory();
+    toast("History cleared.");
+  });
+}
+
+export function clearHistory() {
+  state.history = {};
+  saveHistory();
+  renderHistory();
+}
+
+/** Show the main page ("ship") or the History page ("history"). */
+export function showView(name) {
+  const hist = name === "history";
+  $("#main").hidden = hist;
+  $(".steps").hidden = hist;
+  $("#history-view").hidden = !hist;
+  for (const [id, on] of [["#view-ship", !hist], ["#view-history", hist]]) {
+    if (on) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
+  }
+  if (hist) renderHistory();
+}
+
+function bindViews() {
+  const sync = () => showView(location.hash === "#history" ? "history" : "ship");
+  window.addEventListener("hashchange", sync);
+  $("#view-ship").addEventListener("click", (e) => {
+    e.preventDefault();
+    if (location.hash) window.history.pushState(null, "", location.pathname + location.search);
+    showView("ship");
+    window.scrollTo(0, 0);
+  });
+  sync();
+}
+
 function renderProfiles() {
   const pick = $("#profile-pick");
   pick.replaceChildren(...state.profiles.map((p) => el("option", { value: p.id, text: p.label || p.name || "Unnamed address" })));
@@ -616,6 +844,7 @@ export function renderAll() {
   renderTable();
   renderOutput();
   renderShip();
+  renderHistory();
 }
 
 // ---------- wiring ----------
@@ -784,6 +1013,14 @@ function bindOutput() {
   $("#btn-slips").addEventListener("click", () => slipInput.click());
   slipInput.addEventListener("change", () => { if (slipInput.files[0]) loadSlipFile(slipInput.files[0]); slipInput.value = ""; });
   $("#btn-pdf").addEventListener("click", downloadPdf);
+  $("#btn-open-folder").addEventListener("click", () => openSavedFolder());
+  // The "Where files go" choice sits below the print bar, outside the form, so it has its own listener.
+  $(".save-to").addEventListener("change", (e) => {
+    if (e.target.name !== "saveTo") return;
+    state.output.saveTo = e.target.value === "downloads" ? "downloads" : "folder";
+    save(KEYS.output, state.output);
+    renderOutput();
+  });
   $("#btn-slip-pdf").addEventListener("click", downloadSlipsOnly);
 
   const d = $("#design-form");
@@ -887,6 +1124,8 @@ export function init() {
   bindTable();
   bindOutput();
   bindShip();
+  bindHistory();
+  bindViews();
   renderPlanForm();
   renderDesign();
   renderAll();
@@ -901,6 +1140,7 @@ export const api = {
   state, init, loadCsvText, loadPastedText, setFilter, visibleOrders, printOrders, returnAddress, planSettings,
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
   clearShipped, renderAll, handleFiles, loadSlipFile, today,
+  renderHistory, historyFile, clearHistory, showView, openSavedFolder,
 };
 
 if (document.querySelector("[data-shipdesk]")) init();

@@ -14,6 +14,9 @@ node_modules/
 # nodeterm canvas state
 .nodeterm/
 
+# files Ship Desk makes (labels, slips, import/Pirate Ship/history CSVs): real buyers' addresses
+Saved/
+
 # real order files: buyers' names and addresses never go into git
 # (the invented sample in app/samples/ is the only CSV kept)
 *.csv
