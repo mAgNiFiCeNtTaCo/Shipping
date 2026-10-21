@@ -41,6 +41,25 @@ export function today(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * A file name that says what's inside: "Labels 2026-10-21 14-05 - 3 orders - Zackery Twork, Ash Example, Pat Doe.pdf",
+ * "Label 2026-10-21 14-05 - Zackery Twork - 1A2B3C4D.pdf", or with no orders given "TCGplayer import 2026-10-21 14-05 - 5 orders.csv".
+ * what = [one, several] words; count = how many orders when `orders` isn't the list.
+ */
+export function fileName(what, ext, orders = [], count = orders.length, d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  const when = `${today(d)} ${p(d.getHours())}-${p(d.getMinutes())}`;
+  const clean = (t) => String(t || "").normalize("NFC").replace(/[^\p{L}\p{N} ,.'&()+-]/gu, " ").replace(/\s+/g, " ").trim();
+  const names = [...new Set(orders.map((o) => clean(o.name)).filter(Boolean))];
+  let who;
+  if (orders.length === 1) who = [names[0], clean(orders[0].id)].filter(Boolean).join(" - ");
+  else if (names.length) who = `${count} orders - ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""}`;
+  else who = plural(count, "order");
+  let base = `${count === 1 ? what[0] : what[1]} ${when}${who ? " - " + who : ""}`;
+  if (base.length > 140) base = base.slice(0, 140).replace(/[\s,.-]+\S*$/, "") + " and more";
+  return `${base.replace(/^[.\s]+|[.\s]+$/g, "")}.${ext}`;
+}
+
 function asList(x) {
   if (Array.isArray(x)) return x;
   return Object.entries(x || {}).map(([id, v]) => (typeof v === "string" ? { id, label: v } : { id, ...v }));
@@ -393,7 +412,7 @@ export function downloadPdf() {
     showMsg(box, "error", "The PDF couldn't be made.", [e && e.message ? `Details: ${e.message}` : null]);
     return null;
   }
-  const name = `labels-${today()}.pdf`;
+  const name = fileName(["Label", "Labels"], "pdf", orders);
   state.lastSave = savePdf(doc, name, "labels").then((res) => {
     showMsg(box, "ok", `Saved ${res.name} with ${plural(orders.length, "order")}.`,
       [...savedLines(res), "Open it and print at 100% scale (Actual size).", "These orders are now in your History."]);
@@ -419,7 +438,7 @@ function downloadSlipsOnly() {
     showMsg(box, "error", "The slips PDF couldn't be made.", [e && e.message ? `Details: ${e.message}` : null]);
     return null;
   }
-  const name = `slips-${today()}.pdf`;
+  const name = fileName(["Packing slip", "Packing slips"], "pdf", orders);
   state.lastSave = savePdf(doc, name, "slips").then((res) => {
     showMsg(box, "ok", `Saved ${res.name}: ${plural(pages.length, "slip page")} in label order.`, savedLines(res));
     return res;
@@ -495,7 +514,7 @@ export function downloadImportFile() {
   if (state.source !== "csv") { showMsg(box, "warn", "The import file only works with orders from a TCGplayer CSV.", ["Pasted addresses aren't TCGplayer orders, so there's nothing to mark shipped there."]); return null; }
   const r = importFile();
   if (!r.count) { showMsg(box, "warn", "Nothing to import yet.", ["Add a tracking number or tick Shipped for at least one order."]); return null; }
-  const name = `tcgplayer-import-${today()}.csv`;
+  const name = fileName(["TCGplayer import", "TCGplayer import"], "csv", [], r.count);
   state.lastSave = saveBlob(name, "import", new Blob([r.csv], { type: "text/csv" })).then((res) => {
     showMsg(box, r.missingRequired.length ? "warn" : "ok", `Saved ${res.name} with ${plural(r.count, "order")}.`,
       [...savedLines(res), r.missingRequired.length ? `TCGplayer will refuse ${r.missingRequired.join(", ")} without a tracking number.` : null,
@@ -516,7 +535,7 @@ export function downloadPirateShip() {
   const csv = pirateFile();
   const rows = csv.trim().split(/\r?\n/).length - 1;
   if (rows < 1) { showMsg(box, "info", "No orders need a tracked label right now.", ["Pirate Ship is for orders of $20 or more, or with paid faster shipping, that don't have tracking yet."]); return null; }
-  const name = `pirate-ship-${today()}.csv`;
+  const name = fileName(["Pirate Ship", "Pirate Ship"], "csv", [], rows);
   state.lastSave = saveBlob(name, "pirate", new Blob([csv], { type: "text/csv" })).then((res) => {
     showMsg(box, "ok", `Saved ${res.name} with ${plural(rows, "order")}.`, [...savedLines(res), "In Pirate Ship choose Import → Spreadsheet and pick this file."]);
     return res;
@@ -804,7 +823,8 @@ function bindHistory() {
     renderHistory();
   });
   $("#btn-history-csv").addEventListener("click", () => {
-    state.lastSave = saveBlob(`ship-desk-history-${today()}.csv`, "history", new Blob([historyFile()], { type: "text/csv" })).then((res) => {
+    const n = historyList(state.history, { filter: state.historyFilter, search: state.historySearch }).length;
+    state.lastSave = saveBlob(fileName(["Ship Desk history", "Ship Desk history"], "csv", [], n), "history", new Blob([historyFile()], { type: "text/csv" })).then((res) => {
       showMsg($("#history-msg"), "ok", `Saved ${res.name}.`, savedLines(res));
       return res;
     });

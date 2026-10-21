@@ -30,7 +30,10 @@ explain in plain words and finish jobs end to end.
   leaving; turn from `devicemotion` gravity (`onMotion`, iOS sign differs from Android; flat keeps the last turn;
   no turn when the page itself is landscape); `#cam-turn` overrides. A post office photo leaves a "shipped" note
   (`links.json`, empty tracking) that `takePhoneLinks` applies only to orders not shipped yet. PC turn buttons:
-  canvas rotate + `POST /api/photo-rotate`.
+  canvas rotate + `POST /api/photo-rotate`. The camera stream is reused and kept 5 min after Done (`KEEP_CAMERA_MS`):
+  iPhone home-screen apps re-ask on every `getUserMedia`.
+- Saved file names come from app.js `fileName()` ("Labels <date> <HH-MM> - N orders - buyer, buyer ...pdf"); serve.py
+  `NAME_OK` must keep allowing what it produces (any-language letters, `,'&+()`).
 - `app/sw.js` offline cache (bump `VERSION` whenever app files change), `app/manifest.webmanifest`, `app/icon.svg`.
 - `app/vendor/` jsPDF 2.5.2, pdf.js 3.11.174, qrcode-generator 1.4.4, @zxing/library 0.21.3 (no CDN: the app works offline).
 - `app/samples/tcgplayer-sample.csv` invented sample orders. `app/tests/` browser test suites.

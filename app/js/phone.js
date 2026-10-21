@@ -329,6 +329,7 @@ const ZXING = new URL("../vendor/zxing-library-0.21.3.min.js", import.meta.url).
 const SCAN_MS = 90;                     // pause between two looks at the camera picture
 const SCAN_SIDE = 1280;                 // longest side of the picture the reader looks at
 const SAME_CODE_MS = 2500;              // the same code seen again within this long is the same scan
+const KEEP_CAMERA_MS = 5 * 60 * 1000;   // after Done the camera stays ready this long: opening again doesn't ask again
 const compact = (s) => String(s || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
 
 /**
@@ -465,8 +466,9 @@ export const scan = {
   ask: null,        // { tracking, carrier }: a tracking number no order has yet
   askSearch: "",
   msg: "",
-  stream: null,
+  stream: null,     // the camera, kept a while after Done (see KEEP_CAMERA_MS)
   timer: 0,
+  keepTimer: 0,
   last: "", lastAt: 0,
 };
 
@@ -565,12 +567,19 @@ export async function linkTracking(key, tracking, carrier = "") {
   return true;
 }
 
+const live = (s) => !!s && s.getVideoTracks().some((t) => t.readyState === "live");
+
 async function startCamera() {
   const video = $("#scan-video");
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no camera");
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
-    video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1920 } } });
-  if (!scan.open) { stream.getTracks().forEach((t) => t.stop()); return; }
+  clearTimeout(scan.keepTimer);
+  // iPhones ask for the camera on every request: keep using the stream we already have.
+  let stream = live(scan.stream) ? scan.stream : null;
+  if (!stream) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no camera");
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1920 } } });
+  }
+  if (!scan.open) { scan.stream = stream; stopCamera(); return; }
   scan.stream = stream;
   video.srcObject = stream;
   video.setAttribute("playsinline", "");
@@ -592,12 +601,18 @@ async function startCamera() {
   look();
 }
 
-function stopCamera() {
+/** Stop looking at the camera. now = switch it off; otherwise it stays ready for KEEP_CAMERA_MS. */
+function stopCamera(now = false) {
   clearTimeout(scan.timer);
-  if (scan.stream) scan.stream.getTracks().forEach((t) => t.stop());
-  scan.stream = null;
+  clearTimeout(scan.keepTimer);
   const v = $("#scan-video");
   if (v) v.srcObject = null;
+  const off = () => {
+    if (scan.open) return;
+    if (scan.stream) scan.stream.getTracks().forEach((t) => t.stop());
+    scan.stream = null;
+  };
+  if (now) off(); else scan.keepTimer = setTimeout(off, KEEP_CAMERA_MS);
 }
 
 // ---------- the camera: several photos in a row, turned the way the phone is held ----------
@@ -996,7 +1011,10 @@ function bind() {
   window.addEventListener("online", () => refresh());
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refresh();
-    else if (scan.open) closeScanner(true); // don't keep the camera on in the background
+    else {
+      if (scan.open) closeScanner(true);
+      stopCamera(true); // don't keep the camera on in the background
+    }
   });
   window.addEventListener("pageshow", (e) => { if (e.persisted) refresh(); });
   setInterval(() => {
@@ -1028,7 +1046,7 @@ export async function init() {
   return api;
 }
 
-export const api = { state, scan, turn, init, refresh, pump, addFiles, queueAll, setCode, render, parseScan, handleScan, linkTracking, newMailerEntry,
+export const api = { state, scan, turn, stopCamera, init, refresh, pump, addFiles, queueAll, setCode, render, parseScan, handleScan, linkTracking, newMailerEntry,
   shoot, photoTurn, onMotion,
   openScanner, closeScanner, scanFile, decodeCanvas };
 

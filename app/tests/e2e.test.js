@@ -160,7 +160,7 @@ export const tests = {
         saved.length = 0;
         doc.querySelector("#btn-pdf").click();
         eq(saved.length, 1, `${f.id}: one PDF saved`);
-        ok(/^labels-\d{4}-\d{2}-\d{2}\.pdf$/.test(saved[0].name), `${f.id}: file name ${saved[0].name}`);
+        ok(/^Labels \d{4}-\d{2}-\d{2} \d{2}-\d{2} - \d+ orders - [^/\\]+\.pdf$/.test(saved[0].name), `${f.id}: file name ${saved[0].name}`);
         const r = await readBack(saved[0].doc);
         const labels = labelPages(f, orders.length);
         const expected = slips && f.id !== "labelSlip" ? labels + orders.length : labels;
@@ -179,7 +179,7 @@ export const tests = {
         if (slips) for (const o of orders) ok(r.text.includes(o.id), `${f.id}: order # ${o.id} on a slip`);
       }
     }
-    ok(/Saved labels-/.test(doc.querySelector("#print-msg").textContent), "the page says the file was saved");
+    ok(/Saved Labels \d{4}-/.test(doc.querySelector("#print-msg").textContent), "the page says the file was saved");
   },
 
   "the print selection and filters decide what goes in the PDF": async () => {
@@ -283,7 +283,7 @@ export const tests = {
     ok(/Matched 3 tracking numbers/.test(doc.querySelector("#match-msg").textContent), "match message");
     doc.querySelector("#btn-import").click();
     eq(saved.length, 1, "one file saved");
-    ok(/^tcgplayer-import-\d{4}-\d{2}-\d{2}\.csv$/.test(saved[0].name), saved[0].name);
+    ok(/^TCGplayer import \d{4}-\d{2}-\d{2} \d{2}-\d{2} - \d+ orders?\.csv$/.test(saved[0].name), saved[0].name);
     const text = await savedText(saved[0]);
     ok(text.includes("\r\n"), "CRLF line ends");
     const rows = parseCsv(text);
@@ -331,7 +331,7 @@ export const tests = {
     app.matchPasted("SAMPLE-0007 9400111899223344556677");
     doc.querySelector("#btn-pirate").click();
     const s = saved.pop();
-    ok(/^pirate-ship-\d{4}-\d{2}-\d{2}\.csv$/.test(s.name), s.name);
+    ok(/^Pirate Ship \d{4}-\d{2}-\d{2} \d{2}-\d{2} - \d+ orders?\.csv$/.test(s.name), s.name);
     const rows = parseCsv(await savedText(s));
     eq(rows[0], ["Order ID", "Name", "Address", "Address Line 2", "City", "State", "Zipcode", "Country", "Ounces"]);
     eq(rows.slice(1).map((r) => r[0]), ["SAMPLE-0005", "SAMPLE-0006", "SAMPLE-0008", "SAMPLE-0009"], "tracked orders minus the one with tracking");

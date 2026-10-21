@@ -11,7 +11,8 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 - Tests: `python tools/test.py` = **148 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 17).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
-- History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored).
+- History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
+  named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`).
 - Phone page (`/phone.html`, iPhone through Tailscale serve, pairing code): photos per order (contents / packed /
   post office) into `Saved\Photos`, offline queue. Its camera screen scans order QR codes and mailer tracking
   barcodes and takes any number of photos in a row, turned upright by the tilt sensor. Post office photos mark
@@ -19,6 +20,22 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-21: file names that say what's inside, camera asked for once
+- **File names** (user: label names too generic, e.g. `labels-2026-10-20 (2).pdf` ... `(5)`): app.js `fileName()`
+  names every saved file by date, time and buyers: `Labels 2026-10-21 14-05 - 3 orders - Zackery Twork, Ash Example,
+  Pat Doe.pdf` ("... and N more" past 3; one order: `Label <date time> - <buyer> - <order #>.pdf`), `Packing slips ...`,
+  `TCGplayer import <date time> - 5 orders.csv`, `Pirate Ship ...`, `Ship Desk history ...`. serve.py `NAME_OK`
+  now allows letters of any language, commas, apostrophes, `&`, `+` (max 150). The 5 old `labels-2026-10-20*.pdf`
+  files keep their names (renaming them would mean reading each PDF; offered, not done).
+- **Camera permission asked every time** (user): each opening of the camera screen called `getUserMedia`, which an
+  iPhone home-screen app re-asks. phone.js now keeps the stream for 5 minutes after Done (`KEEP_CAMERA_MS`) and
+  reuses it; it stops at once when the app goes to the background. The motion prompt was already once per launch.
+  iOS may still ask once per app start (not in the page's control); Safari's Settings for Websites → Camera →
+  Allow suggested to the user, not confirmed for home-screen apps.
+- Tests stay 148 (file-name patterns updated; the live-camera test now checks a second open doesn't ask again),
+  passed twice. Caches `shipdesk-v11` / `shipdesk-phone-v5`. Ship Desk restarted at the user's OK; the live server
+  accepts a name like "José O'Hara".
+
 ### 2026-10-21: mailer entries, camera screen, post office = shipped, photo turning
 - **Mailer not in the list** (user: a scanned USPS label wanted an existing entry; make the entry from name +
   tracking, order # later): the phone's question screen now starts with **Make a new entry** (buyer's name, typed

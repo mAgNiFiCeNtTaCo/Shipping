@@ -393,7 +393,16 @@ Object.assign(tests, {
       eq(doc.querySelector("#scan-done").textContent, "Done (1)");
       doc.querySelector("#scan-done").click();
       ok(doc.querySelector("#scanner").hidden, "closed");
-      ok(!phone.scan.stream, "camera off");
+      ok(phone.scan.stream && phone.scan.stream.getVideoTracks()[0].readyState === "live", "the camera stays ready for a while");
+      let asked = 0;
+      const ask = win.navigator.mediaDevices.getUserMedia;
+      win.navigator.mediaDevices.getUserMedia = (...a) => { asked++; return ask(...a); };
+      doc.querySelector("#btn-scan").click();
+      await waitFor(() => phone.scan.open && !doc.querySelector("#scan-msg").textContent.startsWith("Starting"), "the camera screen again");
+      eq(asked, 0, "opening the camera again doesn't ask for it again");
+      phone.closeScanner(false);
+      phone.stopCamera(true);
+      ok(!phone.scan.stream, "switched off when the app goes to the background");
       eq([...phone.state.pick], ["SAMPLE-0007"], "the scanned order is picked");
       ok(doc.querySelector("#picked").textContent.includes("SAMPLE-0007"), "bar names it");
       ok(!doc.querySelector("#btn-cam").disabled, "ready for the photo");
@@ -546,7 +555,7 @@ Object.assign(tests, {
       ok(doc.querySelector("#scan-msg").textContent.includes("Packed photo 1"), doc.querySelector("#scan-msg").textContent);
       await waitFor(async () => (await phone.queueAll()).length === 0, "the photos to reach the PC");
       doc.querySelector("#scan-done").click();
-      ok(doc.querySelector("#scanner").hidden && !phone.scan.stream, "closed, camera off");
+      ok(doc.querySelector("#scanner").hidden, "closed");
       const pc = (await photosOnPc())["SAMPLE-0010"];
       eq([pc.contents, pc.packed], [2, 1], "2 contents + 1 packed saved");
       const look = async (p) => {

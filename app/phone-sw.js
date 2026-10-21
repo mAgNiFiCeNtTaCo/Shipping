@@ -3,7 +3,7 @@
 // the PC doesn't answer within a few seconds. The waiting photos themselves live in IndexedDB (phone.js).
 // Registered with scope "./phone", so it never touches the PC app's own service worker (sw.js).
 
-const VERSION = "shipdesk-phone-v4";
+const VERSION = "shipdesk-phone-v5";
 const FILES = ["phone.html", "css/phone.css", "js/phone.js", "icon.svg", "apple-touch-icon.png", "vendor/zxing-library-0.21.3.min.js"];
 const WAIT_MS = 4000;
 

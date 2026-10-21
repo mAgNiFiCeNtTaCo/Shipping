@@ -184,6 +184,32 @@
     "On Windows, os.replace onto a JSON file that another thread is reading raises PermissionError: retry briefly.",
     "Photos shot straight down at a desk lose their orientation; a web camera can use devicemotion gravity and keep the last turn while flat."
    ]
+  },
+  {
+   "title": "File names that say what is inside, camera asked for once",
+   "date": "2026-10-21",
+   "summary": "The orchestrator session named saved files by time and buyers and kept the phone camera ready between uses so the iPhone stops re-asking (148 tests).",
+   "stages": [
+    {
+     "name": "Follow-up requests",
+     "kind": "solo",
+     "sessions": [
+      {
+       "id": "bce15ced",
+       "role": "Orchestrator (solo)",
+       "start": "2026-10-21T00:25",
+       "end": "2026-10-21T00:35",
+       "did": "fileName() for labels/slips/import/Pirate Ship/history, wider NAME_OK; camera stream kept 5 min after Done and reused; tests updated",
+       "outcome": "done",
+       "files": 9
+      }
+     ]
+    }
+   ],
+   "events": [],
+   "lessons": [
+    "An iPhone home-screen web app re-asks for the camera on each getUserMedia call: keep and reuse the stream for a while."
+   ]
   }
  ]
 }

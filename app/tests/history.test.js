@@ -127,7 +127,7 @@ tests["app: Download PDF puts the printed orders in History; the header switch s
   app.loadCsvText(await sampleText(), "sample.csv");
   app.setFilter("tracked");
   doc.querySelector("#btn-pdf").click();
-  eq(saved.filter((s) => /^labels-/.test(s.name)).length, 1, "PDF saved");
+  eq(saved.filter((s) => /^Labels? \d{4}-/.test(s.name)).length, 1, "PDF saved");
   eq(Object.keys(app.state.history).length, 5, "5 tracked orders recorded");
   eq(doc.querySelector("#history-count").textContent, "5");
   eq(Object.keys(load(KEYS.history, {})).length, 5, "saved in browser storage");
@@ -184,7 +184,7 @@ tests["app: History survives a reload, opens from #history, downloads CSV, remov
   ok(visible(doc.querySelector("#history-view")), "#history opens the History page");
   eq(doc.querySelectorAll("#history-table tbody tr[data-key]").length, 10);
   doc.querySelector("#btn-history-csv").click();
-  const file = saved.find((s) => /^ship-desk-history-\d{4}-\d{2}-\d{2}\.csv$/.test(s.name));
+  const file = saved.find((s) => /^Ship Desk history \d{4}-\d{2}-\d{2} \d{2}-\d{2} - \d+ orders?\.csv$/.test(s.name));
   ok(file, "history CSV saved");
   const rows = parseCsv(await (await fetch(file.href)).text());
   eq(rows.length, 11, "header + 10 orders");
@@ -217,25 +217,26 @@ tests["saved folder: every file goes to its own subfolder, not to the browser's 
   doc.querySelector("#btn-pdf").click();
   const pdf = await app.state.lastSave;
   eq(pdf.where, "folder");
-  ok(/Labels[\\/]labels-\d{4}-\d{2}-\d{2}\.pdf$/.test(pdf.path), "labels path: " + pdf.path);
+  ok(/Labels[\\/]Labels \d{4}-\d{2}-\d{2} \d{2}-\d{2} - 10 orders - [^\\/]+ and \d+ more\.pdf$/.test(pdf.path), "labels path: " + pdf.path);
   eq(ascii(await savedBytes(pdf.path), 5), "%PDF-", "a real PDF was written");
   ok(doc.querySelector("#print-msg").textContent.includes(pdf.path), "message says where");
   ok(doc.querySelector("#print-msg .saved-where button"), "Open the folder button");
   // Same name again: kept, not overwritten.
   doc.querySelector("#btn-pdf").click();
   const again = await app.state.lastSave;
-  ok(/labels-\d{4}-\d{2}-\d{2} \(2\)\.pdf$/.test(again.name), "second copy numbered: " + again.name);
+  ok(again.name !== pdf.name, "second copy kept under its own name: " + again.name);
+  eq(ascii(await savedBytes(pdf.path), 5), "%PDF-", "the first copy is still there");
   // CSVs go to their own folders.
   app.matchPasted("SAMPLE-0005 9400100000000000000000");
   doc.querySelector("#btn-import").click();
   const imp = await app.state.lastSave;
-  ok(/TCGplayer import files[\\/]tcgplayer-import-/.test(imp.path), "import path: " + imp.path);
+  ok(/TCGplayer import files[\\/]TCGplayer import \d{4}-/.test(imp.path), "import path: " + imp.path);
   ok(ascii(await savedBytes(imp.path), 7) === "Order #", "import file starts with the header");
   doc.querySelector("#btn-pirate").click();
-  ok(/Pirate Ship[\\/]pirate-ship-/.test((await app.state.lastSave).path), "Pirate Ship path");
+  ok(/Pirate Ship[\\/]Pirate Ship \d{4}-/.test((await app.state.lastSave).path), "Pirate Ship path");
   app.showView("history");
   doc.querySelector("#btn-history-csv").click();
-  ok(/History[\\/]ship-desk-history-/.test((await app.state.lastSave).path), "history path");
+  ok(/History[\\/]Ship Desk history \d{4}-/.test((await app.state.lastSave).path), "history path");
   eq(saved.length, 0, "nothing went through the browser's downloads");
   // Open the folder (the test server only records it).
   ok(await app.openSavedFolder("labels"), "open folder answered");

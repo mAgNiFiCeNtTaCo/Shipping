@@ -90,7 +90,7 @@ Everything Ship Desk makes is saved straight into the **`Saved`** folder inside 
 
 | Folder | What's in it |
 |---|---|
-| `Saved\Labels` | the label PDFs (`labels-2026-10-20.pdf`) |
+| `Saved\Labels` | the label PDFs, named by time and buyers: `Labels 2026-10-21 14-05 - 3 orders - Zackery Twork, Ash Example, Pat Doe.pdf` (one order: `Label 2026-10-21 14-05 - Zackery Twork - <order #>.pdf`) |
 | `Saved\Packing slips` | "Only my slips, in label order" PDFs |
 | `Saved\TCGplayer import files` | the files you upload under Orders -> Import Shipping Info |
 | `Saved\Pirate Ship` | Pirate Ship CSVs |
@@ -98,7 +98,9 @@ Everything Ship Desk makes is saved straight into the **`Saved`** folder inside 
 | `Saved\Photos` | photos from your phone, one folder per order (see "Phone photos") |
 | `Saved\Phone` | the phone's pairing code and the order list it picks from (name, city, ZIP) |
 
-- A second file with the same name on the same day is kept as `labels-2026-10-20 (2).pdf`; nothing is overwritten.
+- Every file is named by what it holds and when (`Packing slips ...`, `TCGplayer import 2026-10-21 14-05 - 5 orders.csv`,
+  `Pirate Ship ...`, `Ship Desk history ...`). Two files with the same name (same minute) are kept as `... (2).pdf`;
+  nothing is overwritten.
 - After each save the message shows where the file is, with an **Open the folder** button. Under the Download PDF
   button there is also **Open the Saved folder**.
 - Prefer your Downloads folder? Under the Download PDF button, **Where files go** -> **My Downloads folder**. Ship
@@ -178,7 +180,8 @@ turned). Orders of the loaded file that get photos, and orders given a tracking 
 - **New pairing code** (in the Phone photos window) stops phones that used the old one, until they scan
   the new code. Their waiting photos are kept. **Switch off phone access** closes the address again.
 - The camera needs the page to be allowed to use it; if it won't start, **Take a picture of the code** reads the
-  code from a photo instead.
+  code from a photo instead. After **Done** the camera stays ready for 5 minutes, so opening it again doesn't ask
+  again; it switches off when you leave the app.
 - The phone marks an order shipped only with a post office photo or a mailer's tracking number. Contents and
   packed photos don't.
 

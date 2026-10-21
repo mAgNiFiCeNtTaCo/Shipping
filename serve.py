@@ -73,7 +73,7 @@ FOLDERS = {
     "history": "History",
     "photos": "Photos",
 }
-NAME_OK = re.compile(r"^[A-Za-z0-9 ._()-]{1,100}\.(pdf|csv)$")
+NAME_OK = re.compile(r"^[\w ,.'&()+-]{1,150}\.(pdf|csv)$")  # \w: letters of any language, digits, _
 
 # Photo kinds -> the word that starts the file name.
 PHOTO_KINDS = {"contents": "Contents", "packed": "Packed", "postoffice": "Post office"}
