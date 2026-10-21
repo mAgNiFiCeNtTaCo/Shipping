@@ -19,7 +19,10 @@ explain in plain words and finish jobs end to end.
 - `app/phone.html` + `js/phone.js` + `css/phone.css` + `phone-sw.js` (scope `./phone`, network-first): the iPhone page for
   order photos (contents / packed / post office). Photos wait in the phone's IndexedDB (`shipdesk-phone`) until
   `POST /api/phone/photo` succeeds; saved to `Saved/Photos/<order # buyer>/`, listed in `Saved/Photos/photos.json`.
-- Scanning (phone.js): `vendor/zxing-library-0.21.3.min.js` (loaded only when the scanner opens) reads QR + Code 128.
+- Scanning (phone.js `decodeFrame`): main reader `vendor/zxing-wasm-3.1.6/` (zxing-cpp as WebAssembly, `readBarcodes`, all codes
+  in the picture at once, turns sideways ones; served as application/wasm, `locateFile` points at the local .wasm). Fallback
+  `vendor/zxing-library-0.21.3.min.js` (JS): Code 128 from two squashed strips with patch-by-patch thresholds, QR from the
+  whole picture. Both loaded only when the scanner opens.
   Order QR = `SHIPDESK:<history key>` (render.js `orderQrText`, design option `orderQr`, not on Avery). A mailer's
   unknown tracking number is linked to an order on the phone, queued like a photo (`link: true`), sent to
   `POST /api/phone/link` -> `Saved/Phone/links.json`; the PC page takes them (`takePhoneLinks`, `GET /api/links`,
@@ -35,7 +38,7 @@ explain in plain words and finish jobs end to end.
 - Saved file names come from app.js `fileName()` ("Labels <date> <HH-MM> - N orders - buyer, buyer ...pdf"); serve.py
   `NAME_OK` must keep allowing what it produces (any-language letters, `,'&+()`).
 - `app/sw.js` offline cache (bump `VERSION` whenever app files change), `app/manifest.webmanifest`, `app/icon.svg`.
-- `app/vendor/` jsPDF 2.5.2, pdf.js 3.11.174, qrcode-generator 1.4.4, @zxing/library 0.21.3 (no CDN: the app works offline).
+- `app/vendor/` jsPDF 2.5.2, pdf.js 3.11.174, qrcode-generator 1.4.4, @zxing/library 0.21.3, zxing-wasm 3.1.6 reader (MIT) (no CDN: the app works offline).
 - `app/samples/tcgplayer-sample.csv` invented sample orders. `app/tests/` browser test suites.
 - `Saved/` (gitignored, real buyer addresses): files the app makes, written by `serve.py` (`POST /api/save`,
   `/api/open-folder`; only Ship Desk's own page may call them: Host + Origin + `X-Ship-Desk` header). Tests write to a temp folder.
@@ -67,5 +70,7 @@ explain in plain words and finish jobs end to end.
 - The `thermal6x4` label is an upright 4x6 page with the layout turned (render.js `sideways`): thermal printers cut a wide page off.
 - Patch scripts: encode before opening for "wb" (a failed write must not empty the file), keep each file's
   line endings (CRLF files exist), and never re-run a script whose `new` text contains its `old` text.
-- zxing finds one code per look and doesn't turn 1D barcodes by itself: phone.js covers a useless code and looks
-  again (`decodeUseful`), and turns the picture every other frame. Scanner tests use a canvas `captureStream()` as the camera.
+- zxing-js (the fallback) finds one code per look, doesn't turn 1D barcodes, and its row reader fails when a darker
+  mailer is beside the label (whole-row threshold): hence strips + HybridBinarizer rows. On 96 phone-like test pictures
+  the old look read 15, JS strips 24, zxing-wasm 50 (the misses are very soft small barcodes). `cameraPicture()` in
+  phone.test.js makes such pictures. Scanner tests use a canvas `captureStream()` as the camera.

@@ -86,7 +86,8 @@ MAX_LINK_BYTES = 4096
 
 # The only files a phone (anything through the Tailscale proxy) may load.
 PHONE_FILES = {"/phone.html", "/css/phone.css", "/js/phone.js", "/phone-sw.js", "/icon.svg", "/apple-touch-icon.png",
-               "/vendor/zxing-library-0.21.3.min.js"}
+               "/vendor/zxing-library-0.21.3.min.js", "/vendor/zxing-wasm-3.1.6/reader.js",
+               "/vendor/zxing-wasm-3.1.6/zxing_reader.wasm"}
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I
 
 TYPES = {
@@ -95,6 +96,7 @@ TYPES = {
     ".webmanifest": "application/manifest+json",
     ".svg": "image/svg+xml",
     ".csv": "text/csv",
+    ".wasm": "application/wasm",
 }
 
 lock = threading.Lock()  # photos.json, orders.json, links.json and the pairing code

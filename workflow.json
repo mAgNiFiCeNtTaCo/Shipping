@@ -210,6 +210,33 @@
    "lessons": [
     "An iPhone home-screen web app re-asks for the camera on each getUserMedia call: keep and reuse the stream for a while."
    ]
+  },
+  {
+   "title": "Tracking barcodes read much better",
+   "date": "2026-10-21",
+   "summary": "The orchestrator session benchmarked barcode reading on 96 phone-like mailer pictures, found zxing-js failing beside darker mailers, and switched the phone to zxing-wasm (15 -> 50 of 96) with a JS fallback (150 tests).",
+   "stages": [
+    {
+     "name": "Follow-up requests",
+     "kind": "solo",
+     "sessions": [
+      {
+       "id": "bce15ced",
+       "role": "Orchestrator (solo)",
+       "start": "2026-10-21T00:35",
+       "end": "2026-10-21T00:58",
+       "did": "barcode benchmark; JS strip reader with local thresholds; zxing-wasm 3.1.6 vendored as main reader; serve.py wasm type + phone files; 2 new tests",
+       "outcome": "done",
+       "files": 7
+      }
+     ]
+    }
+   ],
+   "events": [],
+   "lessons": [
+    "zxing-js 1D reading uses a whole-row threshold: a dark surface beside a white label makes it fail; zxing-wasm (zxing-cpp) read 3x more phone-like barcode pictures.",
+    "Measure barcode readers on generated camera-like pictures (blur, tilt, grain, background) before tuning."
+   ]
   }
  ]
 }

@@ -179,6 +179,8 @@ turned). Orders of the loaded file that get photos, and orders given a tracking 
   phone's location data.
 - **New pairing code** (in the Phone photos window) stops phones that used the old one, until they scan
   the new code. Their waiting photos are kept. **Switch off phone access** closes the address again.
+- Tracking barcodes: hold the phone so the label fills about half the screen and the barcode is sharp; it reads
+  on white, grey or brown mailers, upright or sideways.
 - The camera needs the page to be allowed to use it; if it won't start, **Take a picture of the code** reads the
   code from a photo instead. After **Done** the camera stays ready for 5 minutes, so opening it again doesn't ask
   again; it switches off when you leave the app.

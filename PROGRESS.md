@@ -8,7 +8,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; not yet tried
   on a real TCGplayer import.
 - Start: double-click `Start Ship Desk.bat` (runs `python serve.py`) -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **148 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 17).
+- Tests: `python tools/test.py` = **150 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 19).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -20,6 +20,26 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-21: tracking barcodes read much better (zxing-wasm)
+- User: QR codes scan great, but a mailer's tracking barcode took forever and needed the camera moved around.
+- Cause found with a 96-picture benchmark (1440x1920 phone-like pictures of a USPS label: bar width 1.4-3 px,
+  blur 0.6/1.2 px, 0/4 degree tilt, upright/sideways, on white / grey / kraft mailers, grain, uneven light):
+  zxing-js decides black/white over a whole row, so a darker mailer beside the white label made it fail outright
+  (it only read once the label filled the picture); it also looked at a picture shrunk to 1280 px and spent every
+  other look on the sideways copy. Old look: 15/96, 51 ms.
+- Tried: zxing-js on two full-sharpness strips squashed across the bars + patch-by-patch thresholds (HybridBinarizer
+  rows): 24/96. zxing-wasm 3.1.6 (zxing-cpp as WebAssembly, MIT) on the whole picture: **50/96, 45 ms**, every code
+  at once, turns sideways barcodes itself; on strips it did worse (25), and its options (no downscale, denoise,
+  global binarizer) changed nothing. The misses are very soft, small barcodes.
+- Now: phone.js `decodeFrame` uses zxing-wasm (`vendor/zxing-wasm-3.1.6/`, local .wasm via `locateFile`, picture up
+  to 1920 px, QR + Code 128, up to 4 codes, the useful one wins); the JS strips + QR look is the fallback when
+  WebAssembly can't start. serve.py serves `.wasm` as application/wasm and lets the phone load both files;
+  phone-sw caches them (`shipdesk-phone-v6`).
+- Tests 148 -> 150: `cameraPicture()` makes those mailer pictures; kraft/grey/white, tilted and sideways cases must
+  read in one look, and the JS fallback must read too; through Tailscale the reader files load. Passed twice.
+  Ship Desk restarted at the user's OK; checked the phone's address serves the reader files.
+- Open: confirm on the real iPhone with real mailers.
+
 ### 2026-10-21: file names that say what's inside, camera asked for once
 - **File names** (user: label names too generic, e.g. `labels-2026-10-20 (2).pdf` ... `(5)`): app.js `fileName()`
   names every saved file by date, time and buyers: `Labels 2026-10-21 14-05 - 3 orders - Zackery Twork, Ash Example,

@@ -101,6 +101,9 @@ const tests = {
     eq((await get("/phone.html")).status, 200, "phone page");
     eq((await get("/js/phone.js")).status, 200, "phone script");
     eq((await get("/vendor/zxing-library-0.21.3.min.js")).status, 200, "barcode reader");
+    eq((await get("/vendor/zxing-wasm-3.1.6/reader.js")).status, 200, "main barcode reader");
+    const bin = await get("/vendor/zxing-wasm-3.1.6/zxing_reader.wasm");
+    eq([bin.status, bin.headers.get("Content-Type")], [200, "application/wasm"], "its compiled part");
     eq((await get("/vendor/jspdf.umd.min.js")).status, 404, "other libraries");
     ok((await get("/")).url.endsWith("/phone.html"), "the bare address goes to the phone page");
     eq((await get("/api/phone-link", PC)).status, 403, "pairing code is PC-only");
@@ -320,6 +323,45 @@ function code128Canvas(groups, { module = 3, height = 140, turn = false } = {}) 
   return c;
 }
 
+// A 1440 x 1920 phone camera picture of a mailer: the white label (with its tracking barcode, module px per bar
+// unit) on a coloured mailer, tilted, a bit soft, grainy and unevenly lit. The old reader read 15 of 96 of these.
+function cameraPicture({ module = 2.2, blur = 0.6, tilt = 0, sideways = false, mailer = "#6d5c48", digits = ["42090012", "9400111899223344550001"] } = {}) {
+  const W = 1440, H = 1920;
+  const bar = document.createElement("canvas");
+  bar.width = W; bar.height = H;
+  const g = bar.getContext("2d");
+  g.fillStyle = mailer; g.fillRect(0, 0, W, H);
+  g.translate(W / 2, H / 2);
+  g.rotate(((sideways ? 90 : 0) + tilt) * Math.PI / 180);
+  const values = [105];
+  for (const d of digits) { values.push(102); for (let i = 0; i < d.length; i += 2) values.push(Number(d.slice(i, i + 2))); }
+  values.push(values.reduce((s, v, i) => s + v * (i || 1), 0) % 103, 106);
+  const widths = values.map((v) => C128[v]).join("").split("").map(Number);
+  const bw = widths.reduce((a, b) => a + b, 0) * module, bh = Math.max(60, bw * 0.22);
+  g.fillStyle = "#f4f2ec"; g.fillRect(-bw / 2 - 120, -bh * 2.5, bw + 240, bh * 5);
+  g.fillStyle = "#222"; g.font = "bold 40px sans-serif"; g.fillText("USPS TRACKING # EP", -bw / 2, -bh / 2 - 30);
+  let x = -bw / 2;
+  widths.forEach((w, i) => { if (i % 2 === 0) g.fillRect(x, -bh / 2, w * module, bh); x += w * module; });
+  const out = document.createElement("canvas");
+  out.width = W; out.height = H;
+  const o = out.getContext("2d");
+  o.filter = `blur(${blur}px)`;
+  o.drawImage(bar, 0, 0);
+  o.filter = "none";
+  const light = o.createLinearGradient(0, 0, W, H);
+  light.addColorStop(0, "rgba(0,0,0,0)"); light.addColorStop(1, "rgba(0,0,0,0.35)");
+  o.fillStyle = light; o.fillRect(0, 0, W, H);
+  const img = o.getImageData(0, 0, W, H);
+  let r = 7;
+  for (let i = 0; i < img.data.length; i += 4) {
+    r = (r * 9301 + 49297) % 233280;
+    const n = (r / 233280 - 0.5) * 40;
+    img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n;
+  }
+  o.putImageData(img, 0, 0);
+  return out;
+}
+
 async function phoneWithOrders() {
   clearAll();
   await clearQueue();
@@ -370,6 +412,38 @@ Object.assign(tests, {
     for (const turn of [false, true]) {
       const text = await decodeCanvas(code128Canvas(["42090012", "9400111899223344556677"], { turn }));
       eq(parseScan(text).tracking, "9400111899223344556677", (turn ? "sideways: " : "upright: ") + JSON.stringify(text));
+    }
+  },
+
+  "scan: a tracking barcode on a darker mailer, a bit soft and tilted, reads in one look": async () => {
+    const { decodeFrame, parseScan } = await import("../js/phone.js");
+    const cases = [
+      { mailer: "#6d5c48", module: 2.2, blur: 0.6, tilt: 4 },                 // kraft mailer, tilted
+      { mailer: "#6d5c48", module: 2.2, blur: 0.6, tilt: 4, sideways: true }, // ...held sideways
+      { mailer: "#9a9a9a", module: 3, blur: 1.2 },                            // grey mailer, soft
+      { mailer: "#ffffff", module: 1.8, blur: 0.6, sideways: true },          // white mailer, small
+    ];
+    for (const c of cases) {
+      const pic = cameraPicture(c);
+      const t = performance.now();
+      const text = await decodeFrame(pic, pic.width, pic.height);
+      const ms = performance.now() - t;
+      const s = parseScan(text);
+      eq(s && s.tracking, "9400111899223344550001", JSON.stringify(c) + " read " + JSON.stringify(text));
+      ok(ms < 1500, `${JSON.stringify(c)}: one look took ${ms.toFixed(0)} ms`);
+    }
+  },
+
+  "scan: if the main reader can't start, the JavaScript reader still reads barcodes and QR codes": async () => {
+    const { decodeFrame, parseScan, readers } = await import("../js/phone.js");
+    readers.wasm = false;
+    try {
+      const pic = cameraPicture({ mailer: "#ffffff", module: 3, blur: 0.6 });
+      eq(parseScan(await decodeFrame(pic, pic.width, pic.height)).tracking, "9400111899223344550001", "barcode");
+      const side = cameraPicture({ mailer: "#9a9a9a", module: 3, blur: 0.6, sideways: true });
+      eq(parseScan(await decodeFrame(side, side.width, side.height)).tracking, "9400111899223344550001", "sideways, grey mailer");
+    } finally {
+      readers.wasm = true;
     }
   },
 

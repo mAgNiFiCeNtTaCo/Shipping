@@ -327,7 +327,7 @@ async function forget(id) {
 export const QR_PREFIX = "SHIPDESK:";   // render.js ORDER_QR_PREFIX
 const ZXING = new URL("../vendor/zxing-library-0.21.3.min.js", import.meta.url).href;
 const SCAN_MS = 90;                     // pause between two looks at the camera picture
-const SCAN_SIDE = 1280;                 // longest side of the picture the reader looks at
+const SCAN_SIDE = 1280;                 // longest side of a still picture's slow fallback look
 const SAME_CODE_MS = 2500;              // the same code seen again within this long is the same scan
 const KEEP_CAMERA_MS = 5 * 60 * 1000;   // after Done the camera stays ready this long: opening again doesn't ask again
 const compact = (s) => String(s || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
@@ -382,7 +382,7 @@ let reader = null;
  */
 export async function decodeCanvas(canvas, turn = "both") {
   if (turn !== "yes") {
-    const text = await decodeUseful(canvas);
+    const text = (await decodeFrame(canvas, canvas.width, canvas.height)) || (await decodeUseful(canvas));
     if (text || turn === "no") return text;
   }
   const t = document.createElement("canvas");
@@ -449,6 +449,115 @@ async function decodeOnce(canvas) {
   } finally {
     reader.reset();
   }
+}
+
+// ---------- one look at the camera picture ----------
+// A tracking barcode only needs sharpness along its length, so it's read from two strips through the middle of
+// the picture at full camera sharpness, squashed the other way (small, so quick): one across, one up and down
+// for a barcode held sideways. The 1D reader also tries each strip backwards (upside down). A QR code is read
+// from the whole picture made smaller.
+
+const STRIP_ROWS = 192;   // a strip is squashed to this many rows
+const STRIP_MAX = 2560;   // ...and at most this long
+const QR_SIDE = 1024;     // longest side of the picture the QR reader looks at
+const strips = { across: null, upDown: null, qr: null, frame: null };
+let reader1D = null;
+
+function strip(src, w, h, across) {
+  const key = across ? "across" : "upDown";
+  const c = strips[key] || (strips[key] = document.createElement("canvas"));
+  const len = Math.min(across ? w : h, STRIP_MAX);
+  if (c.width !== len) c.width = len;
+  if (c.height !== STRIP_ROWS) c.height = STRIP_ROWS;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  if (across) {
+    // The middle 80% of the picture's height, full width.
+    g.drawImage(src, 0, h * 0.1, w, h * 0.8, 0, 0, len, STRIP_ROWS);
+  } else {
+    // The middle 80% of its width, full height, turned a quarter so the barcode runs along the strip.
+    const sw = w * 0.8;
+    g.setTransform(0, -STRIP_ROWS / sw, len / h, 0, 0, STRIP_ROWS);
+    g.drawImage(src, w * 0.1, 0, sw, h, 0, 0, sw, h);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  return c;
+}
+
+// The 1D reader normally decides black/white over a whole row at once, so a dark mailer beside the white label
+// throws it off (it only read once the label filled the picture). Here each row comes from the picture
+// thresholded patch by patch (HybridBinarizer's matrix) instead.
+function localRows(Z, canvas) {
+  const hb = new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas));
+  let matrix = null;
+  hb.getBlackRow = (y, row) => (matrix || (matrix = hb.getBlackMatrix())).getRow(y, row);
+  return new Z.BinaryBitmap(hb);
+}
+
+function read1D(Z, canvas) {
+  if (!reader1D) reader1D = new Z.Code128Reader();
+  try {
+    return reader1D.decode(localRows(Z, canvas), new Map([[Z.DecodeHintType.TRY_HARDER, true]])).getText() || "";
+  } catch {
+    return "";
+  } finally {
+    reader1D.reset();
+  }
+}
+
+// The main reader: zxing-cpp compiled to WebAssembly (zxing-wasm). Measured on 96 phone-like pictures of a
+// tracking barcode (small to large, soft, tilted, on white / grey / kraft mailers) it read 50, against 15 for
+// the old JavaScript look and 24 for the JavaScript strips above, in less time. It finds every code in the
+// picture at once and turns sideways ones itself. Phones where it can't start use the JavaScript reader.
+const WASM_JS = new URL("../vendor/zxing-wasm-3.1.6/reader.js", import.meta.url).href;
+const WASM_BIN = new URL("../vendor/zxing-wasm-3.1.6/zxing_reader.wasm", import.meta.url).href;
+const FRAME_SIDE = 1920;  // longest side of the picture the main reader looks at
+let wasmLoad = null;
+export const readers = { wasm: true }; // tests switch the main reader off to check the JavaScript one
+
+function loadWasm() {
+  if (!readers.wasm || typeof WebAssembly !== "object") return Promise.resolve(null);
+  wasmLoad = wasmLoad || new Promise((resolve, reject) => {
+    if (window.ZXingWASM) { resolve(); return; }
+    const sc = document.createElement("script");
+    sc.src = WASM_JS;
+    sc.onload = resolve;
+    sc.onerror = reject;
+    document.head.append(sc);
+  }).then(async () => {
+    await window.ZXingWASM.prepareZXingModule({ fireImmediately: true,
+      overrides: { locateFile: (path, prefix) => (path.endsWith(".wasm") ? WASM_BIN : prefix + path) } });
+    return window.ZXingWASM;
+  }).catch(() => null);
+  return wasmLoad;
+}
+
+// Every code the main reader finds in the picture, or null when it isn't available.
+async function readAll(src, w, h) {
+  const W = await loadWasm();
+  if (!W) return null;
+  const c = toCanvas(src, w, h, FRAME_SIDE, strips.frame || (strips.frame = document.createElement("canvas")));
+  try {
+    const found = await W.readBarcodes(c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height),
+      { formats: ["QRCode", "Code128"], tryHarder: true, maxNumberOfSymbols: 4 });
+    return found.filter((r) => r.isValid !== false && r.text).map((r) => r.text);
+  } catch {
+    return null;
+  }
+}
+
+/** The code in one picture (a video frame, photo or canvas of w x h): a tracking barcode or a QR code, or "". */
+export async function decodeFrame(src, w, h) {
+  const all = await readAll(src, w, h);
+  if (all) return all.find(useful) || all[0] || "";
+  const Z = await loadZxing();
+  for (const across of [true, false]) {
+    const text = read1D(Z, strip(src, w, h, across));
+    if (text && useful(text)) return text;
+  }
+  return decodeUseful(toCanvas(src, w, h, QR_SIDE, strips.qr || (strips.qr = document.createElement("canvas"))));
 }
 
 // Draw a picture (video frame or photo) onto a canvas no bigger than `side`.
@@ -585,15 +694,11 @@ async function startCamera() {
   video.setAttribute("playsinline", "");
   video.muted = true;
   await video.play().catch(() => {});
-  await loadZxing();
-  const c = document.createElement("canvas");
-  let turn = false;
+  if (!(await loadWasm())) await loadZxing();
   const look = async () => {
     if (!scan.open || scan.stream !== stream) return;
     if (video.readyState >= 2 && video.videoWidth && !scan.ask) {
-      // Every other look turns the picture, so a tracking barcode held sideways reads too.
-      turn = !turn;
-      const text = await decodeCanvas(toCanvas(video, video.videoWidth, video.videoHeight, SCAN_SIDE, c), turn ? "yes" : "no");
+      const text = await decodeFrame(video, video.videoWidth, video.videoHeight);
       if (text && scan.open) handleScan(text);
     }
     scan.timer = setTimeout(look, SCAN_MS);
@@ -1048,6 +1153,6 @@ export async function init() {
 
 export const api = { state, scan, turn, stopCamera, init, refresh, pump, addFiles, queueAll, setCode, render, parseScan, handleScan, linkTracking, newMailerEntry,
   shoot, photoTurn, onMotion,
-  openScanner, closeScanner, scanFile, decodeCanvas };
+  openScanner, closeScanner, scanFile, decodeCanvas, decodeFrame, readers };
 
 if (document.querySelector("[data-shipdesk-phone]")) init();
