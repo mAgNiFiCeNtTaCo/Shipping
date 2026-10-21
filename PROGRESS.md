@@ -5,13 +5,50 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 stamps, and the TCGplayer import file that marks the batch shipped.
 
 ## Where it stands (2026-10-20)
-- Working, not yet tried on a real TCGplayer batch or a real printer.
+- Working. First real labels printed on 2026-10-20 (thermal); not yet tried on a real TCGplayer import.
 - Start: double-click `Start Ship Desk.bat` (runs `python serve.py`) -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **130 passed, 0 failed** (harness 2, data 39, render 54, ui 13, history 13, e2e 9).
-- 9 print formats: thermal 4x6, thermal 6x4 landscape, letter 1/2/3/4 per page, label + slip, Avery 5160, #10 envelope.
+- Tests: `python tools/test.py` = **144 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 13).
+- 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
+  label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored).
+- Phone page (`/phone.html`, iPhone through Tailscale serve, pairing code): photos per order (contents / packed /
+  post office) into `Saved\Photos`, offline queue; **Scan labels** reads the order QR codes and mailer tracking
+  barcodes. Phone access is switched on from the PC's "Phone photos" window (not yet switched on for real).
 
 ## Log
+### 2026-10-20: phone photos, label scanning, sideways label fix
+- **Phone photos** (user: pick the order, attach contents / packed / post office photos from the phone, save them
+  here, queue them when the server is down): new `app/phone.html` + `js/phone.js` + `css/phone.css` + `phone-sw.js`.
+  Pick a photo kind, tick one or more orders, Take photo / Choose photos. Every photo goes into the phone's
+  IndexedDB first (bytes as ArrayBuffer) and is deleted only after `POST /api/phone/photo` says saved; retries on
+  load, online, visible, every 15 s. Photos re-encoded to JPEG, max 2560 px (strips location). Saved to
+  `Saved\Photos\<order # buyer>\<Kind> <date time> <id>.jpg`, indexed in `photos.json`, same id saved once.
+  History got a Photos column + photos window; the PC sends the phone its order list (name/city/ZIP, no street).
+- **How the phone reaches the PC**: double NAT at home, so `tailscale serve --https=5091` (tailnet only, never
+  Funnel), switched on/off from the PC's new "Phone photos" window (QR link + 12-character pairing code in
+  `Saved\Phone\pairing-code.txt`, a secret). serve.py still listens on 127.0.0.1 only; anything through the proxy
+  (X-Forwarded-For / Tailscale-User-* headers / non-local Host) gets only the phone files and `/api/phone/*` with the
+  code. Checked once against the real Tailscale on a spare port, then switched off; port 5091 is not switched on yet.
+- **Sideways label printed cut off** (user's photo: name, return address and order # missing on the left): the
+  6x4 PDF page was 6 in wide and the 4 in thermal roll cut it. Now `thermal6x4` is an upright 4x6 page with the
+  layout turned a quarter turn (render.js `sideways`, a PDF `cm` transform); new test checks page size, text
+  direction and that nothing runs off.
+- **Scanning** (user: QR codes on envelopes to scan with the phone, and scan bubble mailer labels into History
+  with photos): render.js prints `SHIPDESK:<history key>` as a QR code on labels, envelopes and packing slips
+  (design option "Order QR code", default on, not on Avery). The phone's **Scan labels** uses vendored
+  `@zxing/library` 0.21.3 (MIT, QR + Code 128, loaded only when scanning): picks orders from Ship Desk's QR codes
+  or a known tracking number; an unknown mailer tracking number (USPS `420`+ZIP prefix handled, UPS) asks which
+  order, then is queued like a photo and sent to `POST /api/phone/link` (`Saved\Phone\links.json`). The PC page
+  takes them (`GET /api/links`, `/api/links-done`) into History (shipped + tracking) and step 4's shipped list,
+  so they go in the TCGplayer import file. zxing reads one code per look and doesn't turn 1D codes: phone.js
+  covers a useless code (e.g. the shop-link QR) and looks again, and turns every other camera frame.
+- Tests 130 -> 144 (new `phone` suite: Tailscale split, pairing window, photo upload, offline queue, wrong code,
+  duplicates, History photos, QR read back from every rendered format incl. sideways, a drawn USPS barcode
+  upright + sideways, the live scanner on a canvas `captureStream()` camera, an offline mailer link landing in
+  History + the import file). Phone screenshots use real-time DevTools capture (virtual time ignores IndexedDB).
+- Open: the user must restart Ship Desk, switch on phone access and add the page to the iPhone home screen;
+  scanning not yet tried with the real iPhone camera or a real mailer label; iOS only uploads while the page is open.
+
 ### 2026-10-20: History tab + files saved into the Saved folder
 - **History page** (user asked for a tab of every order labelled and shipped): "Ship orders / History" switch in the
   header (`#history` opens it). New `app/js/history.js`: a record per order when Download PDF runs (date, label

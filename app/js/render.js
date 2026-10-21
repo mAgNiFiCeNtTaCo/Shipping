@@ -1,9 +1,9 @@
 // render.js: address labels, envelopes and packing slips as one PDF (jsPDF, all layout in inches).
 // renderPdf(orders, opts) -> jsPDF doc; the caller saves it (doc.save(name) / doc.output("blob")).
+import { historyKey } from "./history.js";
 
 const LETTER = [8.5, 11];
 const THERMAL = [4, 6];
-const THERMAL_WIDE = [6, 4]; // the same label stock, landscape
 const isThermal = (format) => format === "thermal4x6" || format === "thermal6x4";
 const ENVELOPE = [9.5, 4.125];
 const PT = 1 / 72; // one point in inches
@@ -12,8 +12,9 @@ const LH = 1.2; // line height, as a multiple of the font size
 export const FORMATS = [
   { id: "thermal4x6", label: "Thermal label 4 x 6 in (Rollo, MUNBYN, Dymo)", pageSize: THERMAL, perPage: 1,
     slipSize: THERMAL, hint: "One 4x6 label per page. Print at 100% with zero margins." },
-  { id: "thermal6x4", label: "Thermal label 6 x 4 in, landscape (sideways)", pageSize: THERMAL_WIDE, perPage: 1,
-    slipSize: THERMAL, hint: "Same 4x6 label, turned sideways. Print at 100% with zero margins; if it prints cut off, set the print box to 4 x 6 paper with auto-rotate on." },
+  // An upright 4x6 page with the label drawn a quarter turn: thermal printers don't rotate a wide page, they cut it off.
+  { id: "thermal6x4", label: "Thermal label 6 x 4 in, landscape (sideways)", pageSize: THERMAL, perPage: 1, sideways: true,
+    slipSize: THERMAL, hint: "Same 4x6 label with the address turned sideways. Print at 100% with zero margins, paper 4 x 6." },
   { id: "letter1", label: "Letter paper, 1 label per page (full sheet)", pageSize: LETTER, perPage: 1,
     slipSize: LETTER, hint: "Full-sheet labels or plain paper." },
   { id: "letter2", label: "Letter paper, 2 labels per page (half sheets)", pageSize: LETTER, perPage: 2,
@@ -31,7 +32,11 @@ export const FORMATS = [
 ];
 for (const f of FORMATS) { f.width = f.pageSize[0]; f.height = f.pageSize[1]; }
 
-const DEFAULT_DESIGN = { accent: "#1f6feb", font: "helvetica", logo: null, darkness: 0, note: "", qrUrl: "", slipMessage: "" };
+const DEFAULT_DESIGN = { accent: "#1f6feb", font: "helvetica", logo: null, darkness: 0, note: "", qrUrl: "", slipMessage: "", orderQr: true };
+
+/** What an order's own QR code says: the phone page (phone.js parseScan) reads it to pick the order. */
+export const ORDER_QR_PREFIX = "SHIPDESK:";
+export const orderQrText = (order, source = "csv") => ORDER_QR_PREFIX + historyKey(order, source);
 const INK = [17, 17, 17];
 const MUTED = [90, 90, 90];
 const RULE = [200, 200, 200];
@@ -325,18 +330,24 @@ function drawLabel(doc, ctx, o, box) {
     top += gap * 1.5;
   }
 
-  // Bottom row: [logo when no divider] note + order # ... QR.
+  // Bottom row: [logo when no divider] [order QR] note + order # ... QR.
   const qrSize = ctx.qr ? clamp(0.75 * u, 0.6, 1.1) : 0;
+  const orderQr = ctx.orderQr(o);
+  const oqSize = orderQr ? clamp(0.62 * u, 0.55, 0.85) : 0;
   const smallPt = clamp(7.5 * u, 6.5, 10);
   const note = cleanText(ctx.note);
   const textH = (note ? smallPt * LH * PT : 0) + smallPt * LH * PT;
   const logoBottom = ctx.logo && ctx.noDivider ? Math.min(0.5 * u, iw * 0.25) : 0;
-  const bottomH = Math.max(qrSize, textH, logoBottom ? 0.4 * u : 0);
+  const bottomH = Math.max(qrSize, oqSize, textH, logoBottom ? 0.4 * u : 0);
   const bottomTop = iy + ih - bottomH;
   let tx = ix;
   if (logoBottom) {
     const drawn = drawImage(doc, ctx.logo, ix, bottomTop + bottomH - 0.4 * u, logoBottom, 0.4 * u, "shipdesk-logo", "left", "bottom");
     if (drawn) tx += drawn + gap;
+  }
+  if (orderQr) {
+    drawQr(doc, orderQr, tx, bottomTop + bottomH - oqSize, oqSize);
+    tx += oqSize + gap * 1.5;
   }
   if (ctx.qr) drawQr(doc, ctx.qr, ix + iw - qrSize, bottomTop, qrSize);
   const textW = ix + iw - tx - (qrSize ? qrSize + gap : 0);
@@ -398,10 +409,12 @@ function drawEnvelope(doc, ctx, o) {
   put(doc, ctx, "SHIP TO", bx, by + tagPt * PT * 0.86);
   drawBlock(doc, ctx, fit, bx, by + tagH);
 
-  // Bottom-left: QR, note, order #.
+  // Bottom-left: order QR, QR, note, order # (the bottom-right is kept clear for the post office's barcode).
+  let tx = 0.35;
+  const orderQr = ctx.orderQr(o);
+  if (orderQr) { drawQr(doc, orderQr, tx, H - 0.3 - 0.65, 0.65); tx += 0.65 + 0.12; }
   const qrSize = ctx.qr ? 0.7 : 0;
-  if (ctx.qr) drawQr(doc, ctx.qr, 0.35, H - 0.3 - qrSize, qrSize);
-  const tx = 0.35 + (qrSize ? qrSize + 0.12 : 0);
+  if (ctx.qr) { drawQr(doc, ctx.qr, tx, H - 0.3 - qrSize, qrSize); tx += qrSize + 0.12; }
   const tw = 3.4 - tx;
   let ty = H - 0.3 - 8 * LH * PT;
   line1(doc, ctx, "Order " + cleanText(o.id), tx, ty, { pt: 8, floor: 5.5, maxW: tw, rgb: MUTED });
@@ -489,13 +502,19 @@ function slipPass(doc, ctx, o, box, scale, maxItems, draw) {
     ["Plan", planText(ctx.plan && ctx.plan[o.id])]].filter((f) => f[1]);
   const factPt = base * 0.9;
   const keyW = width(doc, ctx, "Order date  ", "bold", factPt);
+  // The order's QR code sits right of the facts (scan it with the phone for photos of the contents).
+  const orderQr = ctx.orderQr(o);
+  const oqSize = orderQr ? clamp(w * 0.14, 0.55, 0.9) * Math.max(scale, 0.8) : 0;
+  const factsTop = cy;
+  if (draw && orderQr) drawQr(doc, orderQr, ix + iw - oqSize, cy, oqSize);
   for (const [k, v] of facts) {
     if (draw) {
       line1(doc, ctx, k, ix, cy, { style: "bold", pt: factPt, maxW: keyW, rgb: muted });
-      line1(doc, ctx, v, ix + keyW, cy, { pt: factPt, floor: 5.5, maxW: iw - keyW });
+      line1(doc, ctx, v, ix + keyW, cy, { pt: factPt, floor: 5.5, maxW: iw - keyW - (oqSize ? oqSize + gap : 0) });
     }
     cy += factPt * LH * PT;
   }
+  cy = Math.max(cy, factsTop + oqSize);
   cy += gap;
 
   // Items table.
@@ -591,12 +610,36 @@ function pageMaker(doc) {
   };
 }
 
+// Draw a landscape layout (page height x page width) turned a quarter turn clockwise onto the upright page:
+// the label's top edge ends up on the page's right side. draw(box) gets the landscape box.
+function sideways(doc, pad, draw) {
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+  const k = doc.internal.scaleFactor;
+  // jsPDF writes (x, y from the top) as PDF point (X, Y) = (x, H - y). The landscape frame sits at Y - (H - W);
+  // turning it clockwise sends (X, Y) to (Y - (H - W), H - X).
+  doc.internal.write("q", 0, -1, 1, 0, +(-(H - W) * k).toFixed(4), +(H * k).toFixed(4), "cm");
+  draw({ x: 0, y: 0, w: H, h: W, pad });
+  doc.internal.write("Q");
+}
+
 function newDoc(size, compress = true) {
   const [w, h] = size;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "in", format: [w, h], orientation: w > h ? "landscape" : "portrait", compress });
   doc.setProperties({ title: "Shipping labels", creator: "Ship Desk" });
   return doc;
+}
+
+// The order's own QR code (null when switched off), made once per order for its label and slip.
+function orderQrMaker(on, source) {
+  const cache = new Map();
+  return (o) => {
+    if (!on || !o) return null;
+    const text = orderQrText(o, source === "paste" ? "paste" : "csv");
+    if (text === ORDER_QR_PREFIX || text === ORDER_QR_PREFIX + "paste:|") return null;
+    if (!cache.has(text)) cache.set(text, qrMatrix(text));
+    return cache.get(text);
+  };
 }
 
 function makeCtx(doc, opts, format) {
@@ -612,6 +655,7 @@ function makeCtx(doc, opts, format) {
     logo: d.logo ? imageInfo(doc, d.logo) : null,
     note: cleanText(d.note).slice(0, 60),
     qr: qrMatrix(d.qrUrl),
+    orderQr: orderQrMaker(d.orderQr !== false && format !== "avery5160", opts.source),
     slipMessage: d.slipMessage,
     ret: opts.returnAddress || null,
     boldReturn: !!opts.boldReturn,
@@ -698,7 +742,8 @@ export function renderPdf(orders, opts = {}) {
     const [w, h] = fmt.pageSize;
     for (const o of orders) {
       page(fmt.pageSize);
-      drawLabel(doc, ctx, o, { x: 0, y: 0, w, h, pad: 0.16 });
+      if (fmt.sideways) sideways(doc, 0.16, (box) => drawLabel(doc, ctx, o, box));
+      else drawLabel(doc, ctx, o, { x: 0, y: 0, w, h, pad: 0.16 });
     }
   } else if (format === "envelope10") {
     for (const o of orders) {

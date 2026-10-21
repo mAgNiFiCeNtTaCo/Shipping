@@ -40,7 +40,7 @@ No internet needed. (It needs Python; if it's missing, the window tells you how 
 | Choice | What you get |
 |---|---|
 | Thermal label 4 x 6 in | One label per 4x6 label (Rollo, MUNBYN, Dymo and similar). Packing slips come after, also 4x6. |
-| Thermal label 6 x 4 in, landscape | The same 4x6 label turned sideways (wide). Packing slips come after, upright 4x6. If the printer cuts it off, pick 4 x 6 paper with auto-rotate on in the print box. |
+| Thermal label 6 x 4 in, landscape | The same 4x6 label with the address turned sideways (reads along the long side). The PDF page is a normal upright 4x6, so the printer prints it whole; packing slips come after, upright. |
 | Letter paper, 1 / 2 / 3 / 4 labels per page | Full sheet, halves, thirds or quarters, with dashed cut lines. |
 | Letter paper, label + packing slip | Label on the top half, packing slip on the bottom half of each page. |
 | Avery 5160 / 8160 | 30 address labels per sheet (just the buyer's address). |
@@ -65,6 +65,9 @@ can't go in the TCGplayer import file, because they aren't TCGplayer orders.)
 
 Open **Label design** in step 3: accent colour, font (Sans, Serif or Mono), your logo, thermal darkness, a short
 note on each label (up to 60 characters), a QR code to your store, and a message on the packing slips.
+**Order QR code** (on by default) prints a small QR code for the order on every label, envelope and packing slip,
+for the phone's **Scan labels** (see "Phone photos"). It holds only the order number (for pasted addresses: the
+buyer's name and ZIP).
 
 **Weights and postage settings** (under the table in step 2) set the weight of a card, envelope, slip and
 toploader, how many cards go in one toploader, whether your envelopes are rigid (adds USPS's non-machinable charge) and the Forever stamp price.
@@ -92,6 +95,8 @@ Everything Ship Desk makes is saved straight into the **`Saved`** folder inside 
 | `Saved\TCGplayer import files` | the files you upload under Orders -> Import Shipping Info |
 | `Saved\Pirate Ship` | Pirate Ship CSVs |
 | `Saved\History` | History downloads |
+| `Saved\Photos` | photos from your phone, one folder per order (see "Phone photos") |
+| `Saved\Phone` | the phone's pairing code and the order list it picks from (name, city, ZIP) |
 
 - A second file with the same name on the same day is kept as `labels-2026-10-20 (2).pdf`; nothing is overwritten.
 - After each save the message shows where the file is, with an **Open the folder** button. Under the Download PDF
@@ -117,12 +122,59 @@ Click **History** at the top to see every order you made labels for or marked sh
 - Only the buyer's name, city, state and ZIP are kept, never the street address. Up to 5,000 orders; the oldest
   drop off after that.
 
+## Phone photos
+
+Take photos of each order with your iPhone: **what's inside** (the cards), the **packed** mail ready to go, and the
+**post office** drop-off or receipt. They're saved on this PC in `Saved\Photos\<order # and buyer>\`, named
+like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
+
+**Set it up once:**
+1. Your phone reaches this PC through **Tailscale** (already on this PC and your iPhone). The Tailscale app on
+   the iPhone must say Connected.
+2. In Ship Desk click **Phone photos** (top right), then **Switch on phone access**. That gives the phone page an
+   address only your own Tailscale devices can open (not the internet). The rest of Ship Desk stays on this PC.
+3. Point the iPhone's **Camera** at the QR code and tap the link. In Safari tap **Share → Add to Home Screen**:
+   next time it's one tap.
+
+**Taking photos:** on the phone pick what's in the photo (Contents / Packed / Post office), pick the orders, then
+**Take photo** (or **Choose photos** for ones you already took). Two ways to pick the orders:
+- **Scan labels**: point the camera at the order QR code Ship Desk printed (label, envelope or packing slip), or at
+  the **tracking barcode** on a bubble mailer's label (Pirate Ship, USPS, UPS). Scan one after another for a
+  stack, then **Take photo**. The order list is picked for you.
+- Or tap the orders in the list (one photo of a stack can go to several orders). It shows orders not shipped yet
+  first; **All** shows the rest.
+
+**Bubble mailers:** the first time you scan a mailer's tracking barcode that Ship Desk doesn't know yet, the phone
+asks **which order is in this mailer** and you tap it. The tracking number then goes to the PC (it waits on the
+phone if the PC can't be reached, like photos) and Ship Desk puts it on that order: it shows in **History** as
+shipped with its tracking number, and goes in the **TCGplayer import file**, so there's nothing to paste. Next
+time that barcode is scanned it picks the order straight away. Tracking numbers you pasted in Ship Desk work the
+same way.
+
+**No connection? Nothing is lost.** Every photo is kept on the phone until the PC says it saved it. At the post
+office, or with the PC off or Ship Desk closed, the phone shows "PC offline · 2 waiting". The page still opens with no
+signal (from the home-screen icon), and the photos go to the PC by themselves the next time Ship Desk is running
+and you open the page.
+
+**On the PC:** History has a **Photos** column ("4 photos: 2 contents, 2 packed"); click it to see them, or
+**Open this order's photo folder**. Orders of the loaded file that get photos, and orders given a tracking number
+on the phone, are added to History.
+
+- Photos are shrunk to at most 2560 pixels on the long side and re-saved as JPEG, which also strips the
+  phone's location data.
+- **New pairing code** (in the Phone photos window) stops phones that used the old one, until they scan
+  the new code. Their waiting photos are kept. **Switch off phone access** closes the address again.
+- The camera needs the page to be allowed to use it; if it won't start, **Take a picture of the code** reads the
+  code from a photo instead.
+- The phone only marks an order shipped when you give it a mailer's tracking number. Plain photos don't.
+
 ## Where your data is kept
 
 Only in this browser on this PC: your return addresses, design and settings, which orders you marked shipped,
 and the History list.
-Order files are read in the browser and never uploaded or saved in the Ship Desk folder. A different browser
-(or another PC) starts empty.
+Order files are read in the browser and never uploaded. Once a phone is set up, Ship Desk keeps the list
+the phone picks from (order #, buyer name, city, state, ZIP; no street) in `Saved\Phone`. Photos are in
+`Saved\Photos`. Both stay on this PC and are never put on GitHub. A different browser (or another PC) starts empty.
 
 ## Honest limits
 

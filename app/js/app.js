@@ -10,7 +10,7 @@ import { parseAddresses } from "./paste.js";
 import { renderPdf, FORMATS, slipsInLabelOrderPdf } from "./render.js";
 import { readSlipPdf, attachSlips } from "./slips.js";
 import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
-  trackingUrl, formatName } from "./history.js";
+  trackingUrl, formatName, historyKey, recordSeen } from "./history.js";
 
 // ---------- small helpers ----------
 
@@ -102,10 +102,10 @@ function deliver(name, kind, getBlob, download) {
 const saveBlob = (name, kind, blob) => deliver(name, kind, () => blob, () => downloadBlob(name, blob));
 const savePdf = (doc, name, kind) => deliver(name, kind, () => doc.output("blob"), () => doc.save(name));
 
-/** Ask serve.py to open the Saved folder (or one kind's subfolder) in Explorer. */
-export async function openSavedFolder(kind = "") {
+/** Ask serve.py to open the Saved folder (or one kind's subfolder, or one order's photo folder) in Explorer. */
+export async function openSavedFolder(kind = "", order = "") {
   try {
-    const r = await fetch(`api/open-folder?kind=${encodeURIComponent(kind)}`, { method: "POST", headers: { "X-Ship-Desk": "1" } });
+    const r = await fetch(`api/open-folder?kind=${encodeURIComponent(kind)}&order=${encodeURIComponent(order)}`, { method: "POST", headers: { "X-Ship-Desk": "1" } });
     if (r.ok) return true;
   } catch { /* not running */ }
   toast("The Saved folder couldn't be opened. Start Ship Desk with \"Start Ship Desk.bat\".");
@@ -123,7 +123,7 @@ function savedLines(res) {
 
 // ---------- state ----------
 
-const DEFAULT_DESIGN = { accent: "#136f63", font: "helvetica", logo: null, darkness: 0, note: "", qrUrl: "", slipMessage: "" };
+const DEFAULT_DESIGN = { accent: "#136f63", font: "helvetica", logo: null, darkness: 0, note: "", qrUrl: "", slipMessage: "", orderQr: true };
 const DEFAULT_OUTPUT = { format: "", slips: true, boldReturn: false, noDivider: false, slipsInLabelOrder: false, saveTo: "folder" };
 const ADDRESS_FIELDS = ["name", "phone", "street", "street2", "city", "state", "zip"];
 const formatList = asList(FORMATS);
@@ -147,6 +147,8 @@ export const state = {
   history: {},         // history.js records, by key
   historyFilter: "all",
   historySearch: "",
+  photos: {},          // order key -> { contents, packed, postoffice, total, photos: [{ id, kind, taken, file }] } from serve.py
+  phone: null,         // serve.py's /api/phone-link answer while the Phone photos window is open
 };
 
 function newProfile(label = "My store") {
@@ -361,6 +363,7 @@ export function pdfOptions(orders = printOrders()) {
   const pages = useOwnSlips ? slipPagesFor(orders) : [];
   return {
     format: state.output.format,
+    source: state.source,
     slips: !!state.output.slips || pages.length > 0, // "Slips in label order" prints them even with slips off
     returnAddress: returnAddress(),
     boldReturn: !!state.output.boldReturn,
@@ -676,10 +679,20 @@ function historyRow(r) {
         el("label", { class: "sr", for: tid, text: `Tracking number for ${label}` }),
         el("input", { id: tid, class: "trk-input h-trk", type: "text", value: r.tracking || "", placeholder: "Tracking #", autocomplete: "off", spellcheck: "false" }),
         link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", class: "small", text: `Track on ${r.carrier} ↗` }) : null)),
+    photoCell(r, label),
     el("td", { class: "c-del" }, el("button", { type: "button", class: "link danger h-del", "aria-label": `Remove ${label} from the history`, text: "Remove" })));
 }
 
+function photoCell(r, label) {
+  const ph = state.photos[r.key];
+  if (!ph || !ph.total) return el("td", { class: "c-photos" }, el("span", { class: "muted", text: "No photos" }));
+  return el("td", { class: "c-photos" },
+    el("button", { type: "button", class: "link h-photos", "aria-label": `See the ${plural(ph.total, "photo")} for ${label}`, text: plural(ph.total, "photo") }),
+    PHOTO_KINDS.filter((k) => ph[k.id]).map((k) => el("span", { class: "sub muted", text: `${ph[k.id]} ${k.short}` })));
+}
+
 export function renderHistory() {
+  schedulePhoneSync();
   const counts = historyCounts(state.history);
   const badge = $("#history-count");
   badge.hidden = !counts.all;
@@ -696,7 +709,7 @@ export function renderHistory() {
   const rows = historyList(state.history, { filter: state.historyFilter, search: state.historySearch });
   const body = $("#history-table tbody");
   body.replaceChildren(...(rows.length ? rows.map(historyRow)
-    : [el("tr", { class: "none" }, el("td", { colspan: "8", text: state.historySearch ? "No orders match your search." : "No orders here." }))]));
+    : [el("tr", { class: "none" }, el("td", { colspan: "9", text: state.historySearch ? "No orders match your search." : "No orders here." }))]));
 }
 
 // A Shipped tick or tracking number changed on the History page. TCGplayer orders also update the
@@ -743,6 +756,8 @@ function bindHistory() {
     }
   });
   body.addEventListener("click", (e) => {
+    const pb = e.target.closest(".h-photos");
+    if (pb) { openPhotos(pb.closest("tr[data-key]").dataset.key); return; }
     const b = e.target.closest(".h-del");
     if (!b) return;
     const key = b.closest("tr[data-key]").dataset.key;
@@ -781,7 +796,7 @@ export function showView(name) {
   for (const [id, on] of [["#view-ship", !hist], ["#view-history", hist]]) {
     if (on) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
   }
-  if (hist) renderHistory();
+  if (hist) { renderHistory(); refreshPhotos(); }
 }
 
 function bindViews() {
@@ -794,6 +809,265 @@ function bindViews() {
     window.scrollTo(0, 0);
   });
   sync();
+}
+
+// ---------- phone photos ----------
+// The phone page (phone.html) takes photos for orders and serve.py saves them in Saved\Photos. The PC
+// page sends serve.py the order list the phone picks from, shows the pairing QR code, and shows each
+// order's photos in History.
+
+export const PHOTO_KINDS = [
+  { id: "contents", label: "Contents", short: "contents" },
+  { id: "packed", label: "Packed, ready to ship", short: "packed" },
+  { id: "postoffice", label: "At the post office", short: "post office" },
+];
+
+const shipdeskFetch = (path, opts = {}) => fetch(path, { ...opts, headers: { ...(opts.headers || {}), "X-Ship-Desk": "1" } });
+
+/** The orders the phone can pick from: the History list plus the batch loaded now (name, city, ZIP; no street). */
+export function phoneOrders() {
+  const out = new Map();
+  for (const r of Object.values(state.history)) {
+    out.set(r.key, { key: r.key, id: r.id, source: r.source, name: r.name, city: r.city, state: r.state, zip: r.zip,
+      labelled: r.lastPrintedAt || r.printedAt || "", format: formatName(r.format), shipped: r.shipped ? (r.shippedAt || today()) : "",
+      inBatch: false, tracking: r.tracking || "" });
+  }
+  for (const o of state.orders) {
+    const key = historyKey(o, state.source);
+    if (!key || key === "paste:|") continue;
+    const cur = out.get(key);
+    const tracking = (state.shipped[o.id] || {}).tracking || o.tracking || "";
+    out.set(key, cur ? { ...cur, inBatch: true, tracking: cur.tracking || tracking } : { key, id: state.source === "paste" ? "" : String(o.id || ""),
+      source: state.source === "paste" ? "paste" : "csv", name: o.name || "", city: o.city || "", state: o.state || "", zip: o.zip || "",
+      labelled: "", format: "", shipped: isShippedNow(o) ? today() : "", inBatch: true, tracking });
+  }
+  return [...out.values()];
+}
+
+let phoneSyncTimer = 0;
+let phoneSynced = "";
+function schedulePhoneSync() {
+  clearTimeout(phoneSyncTimer);
+  phoneSyncTimer = setTimeout(syncPhoneOrders, 400);
+}
+
+/** Send the order list to serve.py for the phone (only kept once a phone has been set up). */
+export async function syncPhoneOrders(force = false) {
+  clearTimeout(phoneSyncTimer);
+  const body = JSON.stringify({ orders: phoneOrders() });
+  if (!force && body === phoneSynced) return true;
+  try {
+    const r = await shipdeskFetch("api/phone-orders", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    if (r.ok) { phoneSynced = body; return true; }
+  } catch { /* Ship Desk's window is closed: nothing to sync with */ }
+  return false;
+}
+
+/** Ask serve.py which orders have photos, then redraw History. Orders of this batch with photos join History. */
+export async function refreshPhotos() {
+  try {
+    const r = await shipdeskFetch("api/photos");
+    if (r.ok) state.photos = (await r.json()).orders || {};
+  } catch { /* not running: keep what we had */ }
+  let added = 0;
+  for (const o of state.orders) {
+    const key = historyKey(o, state.source);
+    if (state.photos[key] && !state.history[key]) { recordSeen(state.history, o, { source: state.source }); added++; }
+  }
+  if (added) saveHistory();
+  if (!$("#history-view").hidden || added) renderHistory();
+  return state.photos;
+}
+
+/**
+ * Tracking numbers scanned on the phone (a mailer's label given to an order): put them on the order in History
+ * and, for TCGplayer orders, in the shipped list step 4 uses for the import file. Returns how many were taken.
+ */
+export async function takePhoneLinks() {
+  let links = [];
+  try {
+    const r = await shipdeskFetch("api/links");
+    if (r.ok) links = (await r.json()).links || [];
+  } catch { return 0; }
+  if (!links.length) return 0;
+  for (const ln of links) {
+    const entry = { tracking: ln.tracking, carrier: ln.carrier || detectCarrier(ln.tracking) || "USPS", shipped: true };
+    const o = state.orders.find((x) => historyKey(x, state.source) === ln.order);
+    const source = o ? state.source : ln.source === "paste" ? "paste" : "csv";
+    const order = o || { id: ln.orderId || "", name: ln.name, city: ln.city, state: ln.state, zip: ln.zip };
+    if (state.history[ln.order] && !o) applyShipped(state.history[ln.order], entry);
+    else recordShipped(state.history, order, entry, { source });
+    if (source === "csv" && order.id) state.shipped[order.id] = { ...entry, at: today() };
+  }
+  saveHistory();
+  saveShipped();
+  try {
+    await shipdeskFetch("api/links-done", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: links.map((l) => l.id) }) });
+  } catch { /* taken again next time: applying twice gives the same result */ }
+  renderAll();
+  toast(`${plural(links.length, "tracking number")} from your phone added to History.`);
+  return links.length;
+}
+
+const svgNode = (tag, attrs) => {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  return n;
+};
+
+function qrSvg(text) {
+  const qr = window.qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount();
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + 4} ${r + 4}h1v1h-1z`;
+  const svg = svgNode("svg", { viewBox: `0 0 ${n + 8} ${n + 8}`, class: "qr", role: "img", "aria-label": "QR code with the phone link" });
+  svg.append(svgNode("rect", { width: n + 8, height: n + 8, fill: "#fff" }), svgNode("path", { d, fill: "#000", "shape-rendering": "crispEdges" }));
+  return svg;
+}
+
+async function loadPhoneLink(method = "GET", path = "api/phone-link") {
+  try {
+    const r = await shipdeskFetch(path, { method });
+    const data = await r.json();
+    state.phone = data;
+    return data;
+  } catch {
+    state.phone = { ok: false, error: "Ship Desk's window isn't running. Start it with \"Start Ship Desk.bat\"." };
+    return state.phone;
+  }
+}
+
+function renderPhone() {
+  const box = $("#phone-body");
+  const body = { replaceChildren: (...kids) => box.replaceChildren(...kids.filter(Boolean)) };
+  const p = state.phone;
+  if (!p) { body.replaceChildren(el("p", { class: "muted", text: "Checking…" })); return; }
+  const ts = p.tailscale || {};
+  const err = p.error ? el("div", { class: "msg error" }, el("p", { class: "msg-title", text: "That didn't work." }), el("p", { text: p.error })) : null;
+  const again = el("button", { type: "button", class: "btn secondary", "data-phone": "check", text: "Check again" });
+  if (!p.tailscale) { body.replaceChildren(err || el("p", { text: "Ship Desk's window isn't running." }), el("div", { class: "row" }, again)); return; }
+  if (!ts.installed) {
+    body.replaceChildren(el("p", { text: "Your phone reaches this PC through Tailscale, and Tailscale isn't installed here." }),
+      el("p", { class: "muted", text: "Install Tailscale on this PC and on your phone, log in to the same account on both, then click Check again." }),
+      el("div", { class: "row" }, again));
+    return;
+  }
+  if (!ts.running) {
+    body.replaceChildren(el("p", { text: "Tailscale isn't connected on this PC." }),
+      el("p", { class: "muted", text: "Click the Tailscale icon by the clock and choose Connect (log in if it asks), then click Check again." }),
+      err, el("div", { class: "row" }, again));
+    return;
+  }
+  if (!p.ready) {
+    body.replaceChildren(
+      el("p", { text: "Phone access is off." }),
+      el("p", { class: "muted" }, "Switching it on gives Ship Desk's phone page an address that only your own Tailscale devices can open (not the internet): ",
+        el("code", { text: p.address || "" }), ". The rest of Ship Desk stays on this PC only."),
+      err,
+      el("div", { class: "row" }, el("button", { type: "button", class: "btn primary", "data-phone": "on", text: "Switch on phone access" })));
+    return;
+  }
+  body.replaceChildren(
+    el("div", { class: "phone-grid" },
+      el("div", { class: "qr-box" }, qrSvg(p.link)),
+      el("ol", { class: "phone-steps" },
+        el("li", {}, "On your iPhone, open the ", el("strong", { text: "Tailscale" }), " app and check it says Connected."),
+        el("li", {}, "Open the ", el("strong", { text: "Camera" }), " app, point it at this code and tap the link that pops up."),
+        el("li", {}, "In Safari tap ", el("strong", { text: "Share → Add to Home Screen" }), ". Next time it's one tap, and it opens even with no signal."))),
+    el("dl", { class: "phone-facts" },
+      el("dt", { text: "Address" }), el("dd", {}, el("code", { text: p.address })),
+      el("dt", { text: "Pairing code" }), el("dd", {}, el("code", { class: "pair-code", text: p.code }), el("span", { class: "muted small", text: " (type it on the phone if the QR code doesn't work)" }))),
+    el("p", { class: "muted small", text: "Photos taken where the PC can't be reached (at the post office, or with the PC off) wait on the phone and are sent when Ship Desk is running again and you open the page." }),
+    err,
+    el("div", { class: "row" },
+      el("button", { type: "button", class: "btn secondary", "data-phone": "folder", text: "Open the Photos folder" }),
+      el("button", { type: "button", class: "link", "data-phone": "newcode", text: "New pairing code" }),
+      el("button", { type: "button", class: "link danger", "data-phone": "off", text: "Switch off phone access" })));
+}
+
+export async function openPhone() {
+  const dlg = $("#phone-dialog");
+  state.phone = null;
+  renderPhone();
+  if (!dlg.open) dlg.showModal();
+  await loadPhoneLink();
+  renderPhone();
+  if (state.phone && state.phone.code) syncPhoneOrders(true);
+  return state.phone;
+}
+
+async function phoneAction(what) {
+  if (what === "check") { state.phone = null; renderPhone(); await loadPhoneLink(); }
+  else if (what === "on" || what === "off") {
+    if (what === "off" && !window.confirm("Switch off phone access? The phone can't send photos until you switch it on again (photos it takes meanwhile wait on the phone).")) return;
+    state.phone = null;
+    renderPhone();
+    await loadPhoneLink("POST", `api/phone-access?on=${what === "on" ? 1 : 0}`);
+  } else if (what === "newcode") {
+    if (!window.confirm("Make a new pairing code? Phones that were set up must scan the new QR code (their waiting photos are kept).")) return;
+    await loadPhoneLink("POST", "api/phone-key");
+  } else if (what === "folder") { openSavedFolder("photos"); return; }
+  renderPhone();
+}
+
+let photoUrls = [];
+function closePhotos() {
+  for (const u of photoUrls) URL.revokeObjectURL(u);
+  photoUrls = [];
+}
+
+/** The photos window for one order (History → Photos). */
+export async function openPhotos(key) {
+  const r = state.history[key] || {};
+  const ph = state.photos[key] || { photos: [] };
+  const dlg = $("#photos-dialog");
+  closePhotos();
+  $("#photos-h").textContent = `Photos · ${r.id || r.name || key}${r.id && r.name ? " · " + r.name : ""}`;
+  const groups = PHOTO_KINDS.map((k) => {
+    const list = ph.photos.filter((p) => p.kind === k.id).sort((a, b) => String(a.taken).localeCompare(String(b.taken)));
+    if (!list.length) return null;
+    return el("section", { class: "photo-group" }, el("h3", { text: `${k.label} (${list.length})` }),
+      el("div", { class: "photo-grid" }, list.map((p) => {
+        const img = el("img", { alt: `${k.label} photo, ${String(p.taken).replace("T", " ")}`, loading: "lazy" });
+        const a = el("a", { class: "photo", target: "_blank", rel: "noopener" }, img, el("span", { class: "small muted", text: String(p.taken).replace("T", " ").slice(0, 16) }));
+        shipdeskFetch(`api/photo?id=${encodeURIComponent(p.id)}&order=${encodeURIComponent(key)}`).then((res) => (res.ok ? res.blob() : null)).then((blob) => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          photoUrls.push(url);
+          img.src = url;
+          a.href = url;
+        }).catch(() => {});
+        return a;
+      })));
+  }).filter(Boolean);
+  $("#photos-body").replaceChildren(...(groups.length ? groups : [el("p", { class: "muted", text: "No photos for this order yet." })]),
+    el("div", { class: "row" }, el("button", { type: "button", class: "btn secondary", text: "Open this order's photo folder", onclick: () => openSavedFolder("photos", key) })));
+  if (!dlg.open) dlg.showModal();
+  return groups.length;
+}
+
+function bindPhone() {
+  $("#btn-phone").addEventListener("click", () => openPhone());
+  $("[data-open-phone]").addEventListener("click", () => openPhone());
+  $("#phone-body").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-phone]");
+    if (b) phoneAction(b.dataset.phone);
+  });
+  for (const dlg of [$("#phone-dialog"), $("#photos-dialog")]) {
+    dlg.addEventListener("click", (e) => { if (e.target === dlg || e.target.closest("[data-close]")) dlg.close(); });
+  }
+  $("#phone-dialog").addEventListener("close", () => { state.phone = null; refreshPhotos(); });
+  $("#photos-dialog").addEventListener("close", closePhotos);
+  // Pick up tracking numbers the phone scans, and (while History is on screen) the photos it sends.
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    takePhoneLinks();
+    if (!$("#history-view").hidden) refreshPhotos();
+  }, 20000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") takePhoneLinks(); });
+  takePhoneLinks();
 }
 
 function renderProfiles() {
@@ -810,6 +1084,7 @@ function renderDesign() {
   const f = $("#design-form");
   const d = state.design;
   for (const k of ["accent", "font", "darkness", "note", "qrUrl", "slipMessage"]) if (document.activeElement !== f.elements[k]) f.elements[k].value = d[k] ?? "";
+  f.elements.orderQr.checked = d.orderQr !== false;
   $("#note-count").textContent = `${(d.note || "").length} / 60`;
   const img = $("#logo-preview");
   img.hidden = !d.logo;
@@ -1027,7 +1302,7 @@ function bindOutput() {
   const onDesign = (e) => {
     const k = e.target.name;
     if (!k) return;
-    state.design[k] = k === "darkness" ? Number(e.target.value) : e.target.value;
+    state.design[k] = k === "darkness" ? Number(e.target.value) : e.target.type === "checkbox" ? e.target.checked : e.target.value;
     if (k === "note") $("#note-count").textContent = `${e.target.value.length} / 60`;
     save(KEYS.design, state.design);
   };
@@ -1125,6 +1400,7 @@ export function init() {
   bindOutput();
   bindShip();
   bindHistory();
+  bindPhone();
   bindViews();
   renderPlanForm();
   renderDesign();
@@ -1141,6 +1417,7 @@ export const api = {
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
   clearShipped, renderAll, handleFiles, loadSlipFile, today,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
+  phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, openPhone, openPhotos,
 };
 
 if (document.querySelector("[data-shipdesk]")) init();

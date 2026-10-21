@@ -85,6 +85,12 @@ export function recordPrinted(hist, orders, { source = "csv", format = "", when 
   return prune(hist);
 }
 
+/** The order has photos from the phone: list it (without changing its labels or shipped state). */
+export function recordSeen(hist, order, { source = "csv" } = {}) {
+  upsert(hist, order, source);
+  return prune(hist);
+}
+
 /**
  * The order's shipped state changed (entry = the app's shippedState entry, or null when unmarked).
  * Records orders marked shipped without labels from Ship Desk too. Mutates and returns hist.

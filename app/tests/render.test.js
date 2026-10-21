@@ -54,6 +54,8 @@ async function readBack(doc) {
     const items = (await page.getTextContent()).items.filter((it) => it.str.trim()).map((it) => ({
       s: it.str, x: it.transform[4] / 72, base: h - it.transform[5] / 72, w: it.width / 72,
       size: Math.hypot(it.transform[2], it.transform[3]),
+      // direction of the text along the page (1, 0 = normal; 0, 1 = turned clockwise, reading down the page)
+      dx: it.transform[0] / Math.hypot(it.transform[0], it.transform[1]), dy: -it.transform[1] / Math.hypot(it.transform[0], it.transform[1]),
     }));
     pages.push({ w, h, items, text: items.map((i) => i.s).join(" "), page });
   }
@@ -70,8 +72,9 @@ function checkSizes(pages, size, from = 0, to = pages.length, what = "") {
 function inBounds(pages, what) {
   for (const [i, p] of pages.entries()) {
     for (const it of p.items) {
-      ok(it.x >= -0.005 && it.x + it.w <= p.w + 0.005, `${what} page ${i + 1}: "${it.s}" runs off the side (x ${it.x.toFixed(2)}, w ${it.w.toFixed(2)})`);
-      ok(it.base > 0 && it.base <= p.h, `${what} page ${i + 1}: "${it.s}" off the page vertically`);
+      const ex = it.x + it.dx * it.w, ey = it.base + it.dy * it.w; // where the text ends
+      ok(Math.min(it.x, ex) >= -0.005 && Math.max(it.x, ex) <= p.w + 0.005, `${what} page ${i + 1}: "${it.s}" runs off the side (x ${it.x.toFixed(2)} to ${ex.toFixed(2)})`);
+      ok(Math.min(it.base, ey) > 0 && Math.max(it.base, ey) <= p.h + 0.005, `${what} page ${i + 1}: "${it.s}" off the page vertically`);
     }
   }
 }
@@ -104,6 +107,22 @@ const tests = {
     }
     eq(FORMATS.find((f) => f.id === "avery5160").perPage, 30);
     eq(FORMATS.find((f) => f.id === "envelope10").pageSize, [9.5, 4.125]);
+  },
+
+  "thermal6x4: an upright 4x6 page with the label turned sideways (printers cut a wide page off)": async () => {
+    const list = orders(2);
+    const { pages } = await readBack(renderPdf(list, { format: "thermal6x4", slips: true, returnAddress: RETURN }));
+    eq(pages.length, 4);
+    checkSizes(pages, [4, 6]);
+    for (const p of pages.slice(0, 2)) {
+      ok(p.items.length > 3, "label has text");
+      for (const it of p.items) ok(Math.abs(it.dx) < 0.01 && Math.abs(it.dy - 1) < 0.01, `"${it.s}" is turned (reads down the page)`);
+      // The label's top (return address) is on the right, its bottom (order #) on the left.
+      const ret = p.items.find((it) => it.s.includes(RETURN.name)), ord = p.items.find((it) => it.s.startsWith("Order "));
+      ok(ret && ord && ret.x > 3 && ord.x < 1, `return address right, order # left (${ret && ret.x}, ${ord && ord.x})`);
+    }
+    for (const p of pages.slice(2)) ok(p.items.every((it) => Math.abs(it.dx - 1) < 0.01), "packing slips stay upright");
+    inBounds(pages, "thermal6x4");
   },
 };
 

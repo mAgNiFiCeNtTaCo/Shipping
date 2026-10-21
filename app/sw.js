@@ -1,7 +1,7 @@
 // Ship Desk offline support: cache-first for the app shell, scripts, styles, vendored libraries and
 // the sample file. Change VERSION whenever app files change so every browser picks up the new copy.
 
-const VERSION = "shipdesk-v5";
+const VERSION = "shipdesk-v8";
 
 const FILES = [
   "./",
@@ -25,8 +25,9 @@ const FILES = [
   "samples/tcgplayer-sample.csv",
 ];
 
-// Paths that must always come from the server (the test pages and the test result endpoint).
-const SKIP = /\/(tests\/|__)/;
+// Paths that must always come from the server (the test pages, the test result endpoint, and the API:
+// saved files, phone photos, the pairing link).
+const SKIP = /\/(tests\/|__|api\/)/;
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
@@ -39,7 +40,7 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) if (key !== VERSION) await caches.delete(key);
+    for (const key of await caches.keys()) if (key.startsWith("shipdesk-v") && key !== VERSION) await caches.delete(key);
     await self.clients.claim();
   })());
 });

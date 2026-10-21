@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone photos preview</title>
+<!-- Screenshot helper for docs/make_screens.py (needs its private server: fake Tailscale, temp Saved folder).
+     ?mode=online  the phone page with photos sent to the PC     ?mode=offline  photos waiting on the phone
+     ?mode=pc      the PC's Phone photos window                  ?mode=photos   History + one order's photos
+     ?mode=scan    the scanner reading an envelope's order QR    ?mode=ask      a mailer's tracking number, which order? -->
+<style>html, body { margin: 0; height: 100%; } iframe { border: 0; width: 100%; height: 100%; display: block; }</style>
+<script src="../vendor/qrcode.js"></script>
+</head>
+<body>
+<script type="module">
+import { parseOrders } from "../js/csv.js";
+import { planOrder } from "../js/plan.js";
+import { recordPrinted, recordShipped } from "../js/history.js";
+import { KEYS, save } from "../js/store.js";
+
+const mode = new URLSearchParams(location.search).get("mode") || "online";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (fn) => { for (let i = 0; i < 400; i++) { try { if (await fn()) return; } catch { /* not yet */ } await sleep(25); } };
+
+const orders = parseOrders(await (await fetch("../samples/tcgplayer-sample.csv")).text()).orders.map((o) => ({ ...o, plan: planOrder(o) }));
+const h = {};
+recordPrinted(h, orders.slice(0, 6), { format: "thermal4x6", when: "2026-10-18 10:12" });
+recordPrinted(h, orders.slice(6), { format: "thermal6x4", when: "2026-10-20 09:30" });
+recordShipped(h, orders[4], { tracking: "9400111899223344556677", carrier: "USPS", shipped: true }, { when: "2026-10-18 16:05" });
+for (const o of orders.slice(0, 3)) recordShipped(h, o, { shipped: true }, { when: "2026-10-18 16:00" });
+save(KEYS.history, h);
+
+const link = await (await fetch("/api/phone-link", { headers: { "X-Ship-Desk": "1" } })).json();
+// What the PC app sends for the phone (app.js phoneOrders), so the phone has a list to pick from.
+await fetch("/api/phone-orders", { method: "POST", headers: { "X-Ship-Desk": "1", "Content-Type": "application/json" },
+  body: JSON.stringify({ orders: Object.values(h).map((r) => ({ key: r.key, id: r.id, source: r.source, name: r.name, city: r.city,
+    state: r.state, zip: r.zip, labelled: r.lastPrintedAt, format: r.format, shipped: r.shipped ? r.shippedAt : "", inBatch: false })) }) });
+
+async function picture(label, bg, fg) {
+  const c = document.createElement("canvas");
+  c.width = 900; c.height = 1200;
+  const g = c.getContext("2d");
+  g.fillStyle = bg; g.fillRect(0, 0, 900, 1200);
+  g.fillStyle = fg; g.fillRect(170, 260, 560, 680);
+  g.fillStyle = "#fff"; g.fillRect(230, 330, 440, 140);
+  g.fillStyle = fg; g.font = "bold 80px sans-serif"; g.fillText(label, 250, 430);
+  const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+  return new File([blob], label + ".png", { type: "image/png" });
+}
+
+const frame = document.createElement("iframe");
+if (mode === "pc" || mode === "photos" || mode === "history") {
+  frame.src = "../index.html#history";
+  document.body.append(frame);
+  await until(() => frame.contentWindow.shipdesk);
+  const app = frame.contentWindow.shipdesk;
+  if (mode === "pc") await app.openPhone();
+  else if (mode === "history") await app.refreshPhotos();
+  else {
+    await app.refreshPhotos();
+    await app.openPhotos("SAMPLE-0007");
+    const doc = frame.contentDocument;
+    await until(() => [...doc.querySelectorAll("#photos-dialog .photo img")].every((i) => i.complete && i.naturalWidth));
+  }
+} else {
+  localStorage.setItem("shipdesk.phone.code", JSON.stringify(link.code.replace(/-/g, "")));
+  frame.src = "../phone.html";
+  document.body.append(frame);
+  await until(() => frame.contentWindow.shipdeskPhone && frame.contentWindow.shipdeskPhone.state.orders.length);
+  const win = frame.contentWindow, phone = win.shipdeskPhone;
+  if (mode === "scan") {
+    // A fake camera: an envelope on a desk with Ship Desk's order QR code on its label.
+    const doc = frame.contentDocument, cam = doc.createElement("canvas");
+    cam.width = 960; cam.height = 1280;
+    const qr = window.qrcode(0, "M");
+    qr.addData("SHIPDESK:SAMPLE-0007");
+    qr.make();
+    const paint = () => {
+      const g = cam.getContext("2d");
+      g.fillStyle = "#6b5a46"; g.fillRect(0, 0, 960, 1280);
+      g.fillStyle = "#f4f1ea"; g.fillRect(90, 300, 780, 560);
+      g.fillStyle = "#222"; g.font = "bold 34px sans-serif"; g.fillText("SHIP TO", 400, 420);
+      g.font = "bold 44px sans-serif"; g.fillText("Ash Example", 400, 480);
+      g.font = "38px sans-serif"; g.fillText("45 Example St", 400, 530); g.fillText("Los Angeles, CA 90012", 400, 580);
+      const n = qr.getModuleCount(), cell = 220 / (n + 8);
+      g.fillStyle = "#fff"; g.fillRect(140, 600, 220, 220);
+      g.fillStyle = "#000";
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) g.fillRect(140 + (c + 4) * cell, 600 + (r + 4) * cell, cell + 0.5, cell + 0.5);
+    };
+    paint();
+    setInterval(paint, 100);
+    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(10);
+    phone.state.kind = "contents";
+    phone.render();
+    await phone.openScanner();
+    await until(() => phone.scan.found.length);
+    await sleep(500);
+  } else if (mode === "ask") {
+    win.navigator.mediaDevices.getUserMedia = () => Promise.reject(new Error("no camera"));
+    await phone.openScanner();
+    phone.handleScan("420900129400111899223344556677");
+  } else if (mode === "online") {
+    phone.state.pick = new Set(["SAMPLE-0007"]);
+    phone.state.kind = "contents";
+    await phone.addFiles([await picture("Cards", "#e8e1d4", "#7a5a2a")]);
+    phone.state.kind = "packed";
+    await phone.addFiles([await picture("Packed", "#dfe9e6", "#136f63")]);
+    phone.state.pick = new Set(["SAMPLE-0007", "SAMPLE-0008", "SAMPLE-0009"]);
+    phone.render();
+  } else {
+    win.fetch = () => Promise.reject(new TypeError("offline"));
+    await phone.refresh();
+    phone.state.pick = new Set(["SAMPLE-0008", "SAMPLE-0009", "SAMPLE-0010"]);
+    phone.state.kind = "postoffice";
+    await phone.addFiles([await picture("Receipt", "#f3f1eb", "#3a6fe0")]);
+  }
+}
+window.previewReady = true;  // make_screens.py waits for this before the screenshot
+</script>
+</body>
+</html>

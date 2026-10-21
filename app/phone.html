@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ship Desk Photos</title>
+<meta name="description" content="Take photos of your orders' contents, the packed mail and the post office drop-off; they're saved on your PC.">
+<meta name="theme-color" content="#136f63" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14181a" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ship Photos">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/phone.css">
+<script type="module" src="js/phone.js"></script>
+</head>
+<body data-shipdesk-phone>
+<header class="top">
+  <div class="brand">
+    <img src="icon.svg" alt="" width="32" height="32">
+    <p class="name">Ship Desk <span>Photos</span></p>
+  </div>
+  <p id="status" class="status" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="txt">Checking…</span></p>
+</header>
+
+<main>
+  <section id="pair" class="card" hidden aria-labelledby="pair-h">
+    <h1 id="pair-h">Connect this phone</h1>
+    <p>On the PC, open Ship Desk and click <strong>Phone photos</strong> at the top. Point this phone's camera at the code there and tap the link.</p>
+    <p class="muted">Or type the pairing code shown under it:</p>
+    <form id="pair-form" class="pair-form">
+      <label for="pair-code" class="sr">Pairing code</label>
+      <input id="pair-code" name="code" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH-JKLM" maxlength="20">
+      <button type="submit" class="btn primary">Connect</button>
+    </form>
+  </section>
+
+  <div id="work" hidden>
+    <section class="card" aria-labelledby="kind-h">
+      <h2 id="kind-h"><span class="num" aria-hidden="true">1</span> What's in the photo?</h2>
+      <div id="kinds" class="kinds" role="group" aria-labelledby="kind-h"></div>
+    </section>
+
+    <section class="card orders-card" aria-labelledby="orders-h">
+      <h2 id="orders-h"><span class="num" aria-hidden="true">2</span> Which orders?</h2>
+      <button type="button" id="btn-scan" class="btn primary scan-btn">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h2v2h-2v-2Zm2 2h2v2h-2v-2Zm2-2h3v2h-3v-2Zm-4 4h2v3h-2v-3Zm4 0h3v3h-3v-3Z"/></svg>
+        Scan labels</button>
+      <p class="muted small">Scan the QR code Ship Desk printed, or the tracking barcode on a mailer label. Or tap every order in the photo below; a photo of a whole stack can go to several orders.</p>
+      <div class="order-tools">
+        <div id="filters" class="filters" role="group" aria-label="Show"></div>
+        <label class="search"><span class="sr">Search orders</span><input id="search" type="search" placeholder="Search order # or buyer" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <ul id="orders" class="orders" aria-labelledby="orders-h"></ul>
+      <p id="orders-empty" class="empty" hidden></p>
+    </section>
+
+    <section id="recent-card" class="card" aria-labelledby="recent-h" hidden>
+      <h2 id="recent-h">Your photos</h2>
+      <p id="queue-note" class="muted small"></p>
+      <ul id="recent" class="recent"></ul>
+    </section>
+  </div>
+</main>
+
+<div id="bar" class="bar" hidden>
+  <div class="bar-in">
+    <p id="picked" class="picked">Tap the orders in the photo</p>
+    <button type="button" id="btn-clear" class="link" hidden>Clear</button>
+    <div class="bar-btns">
+      <button type="button" id="btn-cam" class="btn primary" disabled>
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9Zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>
+        Take photo</button>
+      <button type="button" id="btn-lib" class="btn secondary" disabled>Choose photos</button>
+    </div>
+  </div>
+  <input id="in-cam" type="file" accept="image/*" capture="environment" hidden>
+  <input id="in-lib" type="file" accept="image/*" multiple hidden>
+</div>
+
+<div id="scanner" class="scanner" hidden role="dialog" aria-modal="true" aria-labelledby="scan-h">
+  <div class="scan-view">
+    <video id="scan-video" playsinline muted></video>
+    <div class="scan-frame" aria-hidden="true"></div>
+    <h2 id="scan-h" class="scan-title">Scan labels</h2>
+  </div>
+  <div class="scan-panel">
+    <p id="scan-msg" class="scan-msg" role="status" aria-live="polite"></p>
+    <div id="scan-ask" class="scan-ask" hidden>
+      <p id="scan-ask-text" class="scan-ask-text"></p>
+      <label class="search"><span class="sr">Search orders</span><input id="scan-ask-search" type="search" placeholder="Search order # or buyer" autocomplete="off" spellcheck="false"></label>
+      <ul id="scan-ask-list" class="orders scan-ask-list"></ul>
+      <p id="scan-ask-none" class="empty" hidden>No orders without tracking. Search to see all orders.</p>
+      <button type="button" id="scan-ask-skip" class="link">Not one of these: skip it</button>
+    </div>
+    <ul id="scan-found" class="scan-found" aria-label="Scanned orders"></ul>
+    <button type="button" id="scan-still" class="link" hidden>Take a picture of the code</button>
+    <div class="scan-btns">
+      <button type="button" id="scan-done" class="btn secondary">Cancel</button>
+      <button type="button" id="scan-photo" class="btn primary" disabled>Take photo</button>
+    </div>
+  </div>
+  <input id="in-scan" type="file" accept="image/*" capture="environment" hidden>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

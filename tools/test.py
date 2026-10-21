@@ -28,6 +28,7 @@ EDGE_PATHS = [
 result = {}
 done = threading.Event()
 opened = []  # folders the app asked to open (never really opened during tests)
+tailnet = {"serving": False}  # stands in for Tailscale: tests never change the real one
 
 
 class Handler(serve.Handler):
@@ -36,6 +37,13 @@ class Handler(serve.Handler):
 
     def open_folder(self, folder):
         opened.append(folder)
+
+    def tailscale_status(self):
+        return {"installed": True, "running": True, "dns": "test-pc.example.ts.net", "serving": tailnet["serving"]}
+
+    def tailscale_switch(self, on):
+        tailnet["serving"] = on
+        return True, ""
 
     def do_GET(self):
         # Test-only: read back a file the app saved (?rel=Saved\Labels\x.pdf), or list what was opened.

@@ -32,6 +32,7 @@
       <a href="#" id="view-ship" class="view-btn" aria-current="page">Ship orders</a>
       <a href="#history" id="view-history" class="view-btn">History <span id="history-count" class="count" hidden></span></a>
     </nav>
+    <button type="button" id="btn-phone" class="phone-btn"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 1h8a3 3 0 0 1 3 3v16a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V4a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8Zm2 15h4v2h-4v-2Z"/></svg> Phone photos</button>
     <p class="private"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z"/></svg> Your orders stay on this PC</p>
   </div>
 </header>
@@ -214,6 +215,8 @@
           <input name="note" maxlength="60" aria-describedby="note-count" placeholder="e.g. Thank you for your order!">
         </label>
         <p id="note-count" class="muted small c6 count">0 / 60</p>
+        <label class="check c6"><input type="checkbox" name="orderQr" aria-describedby="order-qr-help"> Order QR code on labels, envelopes and packing slips</label>
+        <p id="order-qr-help" class="muted small c6">Scan it with Ship Desk Photos on your phone to pick the order for photos. It only holds the order number (or the buyer's name and ZIP for pasted addresses).</p>
         <label class="f c6"><span>QR code link <em>optional, e.g. your TCGplayer store page</em></span> <input name="qrUrl" type="url" inputmode="url" placeholder="https://"></label>
         <label class="f c6"><span>Message on packing slips <em>optional</em></span> <textarea name="slipMessage" rows="2" maxlength="300"></textarea></label>
       </form>
@@ -273,7 +276,7 @@
 <main id="history-view" class="wrap" hidden>
   <section class="card" aria-labelledby="history-h">
     <h2 id="history-h">History</h2>
-    <p class="muted small history-intro">Every order you made labels for or marked shipped, newest first. Kept in this browser on this PC: buyer name, city and ZIP only, no street addresses.</p>
+    <p class="muted small history-intro">Every order you made labels for or marked shipped, newest first. Kept in this browser on this PC: buyer name, city and ZIP only, no street addresses. Photos you take with <button type="button" class="link" data-open-phone>your phone</button> show in the Photos column.</p>
     <p id="history-empty" class="empty-note">Nothing here yet. Orders show up here after you download labels (step 3) or mark them shipped (step 4).</p>
     <div id="history-area" hidden>
       <div class="history-bar">
@@ -293,6 +296,7 @@
               <th scope="col" class="num">Value</th>
               <th scope="col">Plan</th>
               <th scope="col">Shipped</th>
+              <th scope="col">Photos</th>
               <th scope="col"><span class="sr">Remove</span></th>
             </tr>
           </thead>
@@ -314,6 +318,17 @@
 </footer>
 
 <div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true"><div><strong>Drop to load</strong><span>CSV for orders, PDF for packing slips</span></div></div>
+<dialog id="phone-dialog" class="dlg" aria-labelledby="phone-h">
+  <div class="dlg-head"><h2 id="phone-h">Phone photos</h2><button type="button" class="dlg-x" data-close aria-label="Close">&times;</button></div>
+  <p class="muted dlg-intro">Use your phone to photograph each order: what's inside, the packed mail, and the post office drop-off. The photos are saved on this PC in <code>Saved\Photos</code>, one folder per order, and show in History.</p>
+  <div id="phone-body"></div>
+</dialog>
+
+<dialog id="photos-dialog" class="dlg wide" aria-labelledby="photos-h">
+  <div class="dlg-head"><h2 id="photos-h">Photos</h2><button type="button" class="dlg-x" data-close aria-label="Close">&times;</button></div>
+  <div id="photos-body"></div>
+</dialog>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
