@@ -35,6 +35,18 @@ explain in plain words and finish jobs end to end.
   (`links.json`, empty tracking) that `takePhoneLinks` applies only to orders not shipped yet. PC turn buttons:
   canvas rotate + `POST /api/photo-rotate`. The camera stream is reused and kept 5 min after Done (`KEEP_CAMERA_MS`):
   iPhone home-screen apps re-ask on every `getUserMedia`.
+- On/off switch in the PC header (app.js `checkPower` / `turnOff`, `#power`): `GET /api/ping`, `POST /api/shutdown`
+  (PC page only; `stop_server` -> the .bat ends, window closes). Turn on = link `shipdesk://start`, registered by
+  serve.py `register_launcher()` in HKCU\Software\Classes\shipdesk on each start (port 5091 only); it runs
+  `pythonw serve.py --no-browser` (no window; the .bat only without pythonw) and never passes the link's text on.
+- Background: `Start Ship Desk.bat` starts `pythonw serve.py` and closes (falls back to a visible window without
+  pythonw); with no console serve.py logs to `Saved/ship-desk.log` and shows start problems in a message box.
+  Port claimed exclusively (`Server.server_bind`, SO_EXCLUSIVEADDRUSE): a second start sees `already_running()`
+  and only opens the page. `Stop Ship Desk.bat` posts `/api/shutdown` with curl.
+- Start with Windows: HKCU\...\CurrentVersion\Run value "Ship Desk" = `launcher_command()` (serve.py
+  `set_autostart` / `autostart_enabled`, `POST /api/autostart?on=1|0`, `#power-auto` in the header; refreshed on each
+  start). Switched on for the user on 2026-10-21. tools/test.py stands in for it (never touches the registry).
+  tools/test.py fakes `stop_server` (records "STOP" in `/__opened`).
 - Saved file names come from app.js `fileName()` ("Labels <date> <HH-MM> - N orders - buyer, buyer ...pdf"); serve.py
   `NAME_OK` must keep allowing what it produces (any-language letters, `,'&+()`).
 - `app/sw.js` offline cache (bump `VERSION` whenever app files change), `app/manifest.webmanifest`, `app/icon.svg`.
@@ -50,7 +62,8 @@ explain in plain words and finish jobs end to end.
 - `specs/` the build briefs of 2026-10-20.
 
 ## Commands
-- Run: `Start Ship Desk.bat` or `python serve.py` -> http://127.0.0.1:5091/ (`--port`, `--no-browser`).
+- Run: `Start Ship Desk.bat` (background) / `Stop Ship Desk.bat`, or `python serve.py` (in a window) ->
+  http://127.0.0.1:5091/ (`--port`, `--no-browser`).
 - Tests: `python tools/test.py` (all) or `python tools/test.py data render ui e2e`; runs in headless Edge.
 - Screenshots: `python serve.py --no-browser --port 5098` in the background, then `python docs/make_screens.py`
   (`python docs/make_screens.py phone` = only the phone shots, on a private server with fake Tailscale).
@@ -63,6 +76,8 @@ explain in plain words and finish jobs end to end.
 ## Gotchas
 - No Node on this PC: JS tests only run through `tools/test.py` (headless Edge).
 - TCGplayer's help pages are behind a Cloudflare check; the `Shipped` keyword in the import file and the slip item reader are unconfirmed until a real batch.
+- Windows reads a running .bat from disk line by line: editing `Start Ship Desk.bat` while an old window still runs
+  it made that window start a second copy when Ship Desk stopped (2026-10-21). Close old windows first.
 - Browsers keep the old app until the service worker's `VERSION` changes: reload once or twice after an update.
 - Home network is double NAT: the phone can't reach 192.168.1.x, so phone access is Tailscale only (iPhone "iphone182").
 - `--virtual-time-budget` screenshots don't wait for IndexedDB: the phone shots use real-time DevTools capture (`live_shot`).

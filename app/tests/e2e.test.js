@@ -344,7 +344,8 @@ export const tests = {
     // the manifest's icons and the sample.
     const need = new Set(["index.html", "vendor/pdf.worker.min.js", "samples/tcgplayer-sample.csv"]);
     const html = await (await fetch("../index.html")).text();
-    for (const m of html.matchAll(/(?:src|href)="([^"#:?]+)/g)) need.add(m[1].replace(/^\.\//, ""));
+    // (Links with a scheme, such as shipdesk://start, aren't files of the app.)
+    for (const m of html.matchAll(/(?:src|href)="(?![a-z][\w+.-]*:)([^"#?]+)/g)) need.add(m[1].replace(/^\.\//, ""));
     const queue = [...need].filter((p) => p.endsWith(".js") && p.startsWith("js/"));
     while (queue.length) {
       const p = queue.shift();

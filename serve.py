@@ -19,7 +19,10 @@ devices). Anything that arrives through that proxy (Tailscale adds X-Forwarded-F
 headers and keeps the ts.net Host) is "from the phone": it gets only the phone page and the phone API, and
 the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page shows as a QR code.
 
-    PC page:  GET  /api/phone-link            QR link, code, Tailscale state
+    PC page:  GET  /api/ping                  "Ship Desk is on" (+ the shipdesk://start link once registered)
+              POST /api/shutdown              the page's Turn off (shipdesk://start turns it on again)
+              POST /api/autostart?on=1|0      start with Windows (this user's startup list) or not
+              GET  /api/phone-link            QR link, code, Tailscale state
               POST /api/phone-access?on=1|0   switch the Tailscale address on/off
               POST /api/phone-key             make a new pairing code (old phones must scan again)
               POST /api/phone-orders          the order list the phone picks from (name, city, ZIP; no street)
@@ -50,7 +53,9 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
@@ -299,7 +304,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not self.from_ship_desk():
             self.refuse()
             return
-        if path == "/api/phone-link":
+        if path == "/api/ping":
+            self.reply(200, {"ok": True, "launcher": LAUNCHER_URL if launcher_registered() else "",
+                             "autostart": self.autostart_enabled()})
+        elif path == "/api/phone-link":
             self.reply(200, {"ok": True, **self.phone_link()})
         elif path == "/api/photos":
             self.reply(200, {"ok": True, "orders": self.photo_summary()})
@@ -327,11 +335,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.save_link()
             return
         if url.path not in ("/api/save", "/api/open-folder", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
-                            "/api/links-done", "/api/photos-rekey", "/api/photo-rotate"):
+                            "/api/links-done", "/api/photos-rekey", "/api/photo-rotate", "/api/shutdown",
+                            "/api/autostart"):
             self.send_error(404)
             return
         if not self.from_ship_desk():
             self.refuse()
+            return
+        if url.path == "/api/shutdown":
+            # The page's "Turn off": answer first, then stop (the black window closes by itself).
+            self.reply(200, {"ok": True})
+            threading.Timer(0.3, self.stop_server).start()
+            return
+        if url.path == "/api/autostart":
+            ok = self.set_autostart(arg("on") == "1")
+            self.reply(200 if ok else 500, {"ok": ok, "autostart": self.autostart_enabled(),
+                                            "error": "" if ok else "Windows didn't accept the change."})
             return
         if url.path == "/api/phone-orders":
             self.save_orders()
@@ -384,6 +403,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         rel = os.path.relpath(path, os.path.dirname(self.save_root))
         self.reply(200, {"ok": True, "name": os.path.basename(path), "folder": FOLDERS[kind], "path": rel, "full": path})
+
+    def stop_server(self):
+        self.server.shutdown()
+
+    # (methods, so the tests can stand in for the Windows startup list)
+    def autostart_enabled(self):
+        return autostart_enabled()
+
+    def set_autostart(self, on):
+        return set_autostart(on)
 
     def open_folder(self, folder):
         if hasattr(os, "startfile"):
@@ -768,10 +797,137 @@ def read_text(path):
 class Server(http.server.ThreadingHTTPServer):
     request_queue_size = 64
     daemon_threads = True
+    # On Windows, "reuse address" lets a second Ship Desk listen on the same port next to the first one (both
+    # answer, Turn off stops only one). Claim the port for this one alone instead.
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def make_server(port, handler=Handler):
     return Server(("127.0.0.1", port), functools.partial(handler, directory=ROOT))
+
+
+# "Turn on" from the page: Windows starts Ship Desk for a shipdesk://start link (like mailto: opens mail). Registered
+# for this Windows user only (HKCU, no admin). The command is fixed: the link's own text is never passed on.
+LAUNCHER_URL = "shipdesk://start"
+LAUNCHER_KEY = r"Software\Classes\shipdesk"
+
+
+def pythonw():
+    """The windowless Python (pythonw.exe) next to the one running this, or on PATH; None when there isn't one."""
+    beside = os.path.join(os.path.dirname(sys.executable or ""), "pythonw.exe")
+    return beside if os.path.isfile(beside) else shutil.which("pythonw")
+
+
+def launcher_command():
+    """What shipdesk://start runs: Ship Desk in the background (no window), or the .bat when there's no pythonw."""
+    pyw = pythonw()
+    if pyw:
+        return f'"{pyw}" "{os.path.join(HERE, "serve.py")}" --no-browser'
+    bat = os.path.join(HERE, "Start Ship Desk.bat")
+    cmd = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe")
+    return f'"{cmd}" /c start "Ship Desk" /D "{HERE}" "{bat}" --no-browser'
+
+
+def launcher_registered():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, LAUNCHER_KEY + r"\shell\open\command") as k:
+            return winreg.QueryValueEx(k, "")[0] == launcher_command()
+    except (ImportError, OSError):
+        return False
+
+
+AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+AUTOSTART_NAME = "Ship Desk"
+
+
+def autostart_enabled():
+    """Does Ship Desk start (in the background) when this Windows user logs in?"""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_KEY) as k:
+            return bool(winreg.QueryValueEx(k, AUTOSTART_NAME)[0])
+    except (ImportError, OSError):
+        return False
+
+
+def set_autostart(on):
+    """Add or remove Ship Desk in this user's Windows startup list (Task Manager > Startup apps). Returns ok."""
+    try:
+        import winreg
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, AUTOSTART_KEY) as k:
+            if on:
+                winreg.SetValueEx(k, AUTOSTART_NAME, 0, winreg.REG_SZ, launcher_command())
+            else:
+                try:
+                    winreg.DeleteValue(k, AUTOSTART_NAME)
+                except FileNotFoundError:
+                    pass
+        return True
+    except (ImportError, OSError):
+        return False
+
+
+def register_launcher():
+    """Make shipdesk://start start Ship Desk (only when missing or pointing elsewhere). False when it can't."""
+    if launcher_registered():
+        return True
+    try:
+        import winreg
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, LAUNCHER_KEY) as k:
+            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "URL:Ship Desk")
+            winreg.SetValueEx(k, "URL Protocol", 0, winreg.REG_SZ, "")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, LAUNCHER_KEY + r"\shell\open\command") as k:
+            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, launcher_command())
+        return True
+    except (ImportError, OSError):
+        return False
+
+
+# ---------- running in the background (pythonw: no window) ----------
+
+LOG_FILE = os.path.join(SAVE_ROOT, "ship-desk.log")
+MAX_LOG_BYTES = 1024 * 1024
+
+
+def start_log():
+    """With no window, what Ship Desk prints (and any error) goes to Saved/ship-desk.log."""
+    os.makedirs(SAVE_ROOT, exist_ok=True)
+    try:
+        if os.path.getsize(LOG_FILE) > MAX_LOG_BYTES:
+            os.replace(LOG_FILE, LOG_FILE + ".old")
+    except OSError:
+        pass
+    f = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = f
+    print(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} Ship Desk started in the background (pid {os.getpid()})")
+
+
+def tell(message, hidden):
+    """Show a problem: in the window, or (in the background) as a Windows message box, and in the log."""
+    print(message)
+    if hidden:
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, message, "Ship Desk", 0x30)
+        except (ImportError, AttributeError, OSError):
+            pass
+
+
+def already_running(port):
+    """Is Ship Desk itself answering on this port?"""
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/ping", headers={"X-Ship-Desk": "1"})
+        with urllib.request.urlopen(req, timeout=3) as r:
+            return bool(json.loads(r.read().decode("utf-8")).get("ok"))
+    except (OSError, ValueError):
+        return False
 
 
 def main():
@@ -779,17 +935,39 @@ def main():
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
-    srv = make_server(a.port)
+    hidden = sys.stdout is None  # started with pythonw: no window
+    if hidden:
+        start_log()
     url = f"http://127.0.0.1:{a.port}/"
-    print(f"Ship Desk is running at {url}  (close this window to stop it)")
+    try:
+        srv = make_server(a.port)
+    except OSError:
+        if already_running(a.port):
+            # Started twice: the first one keeps running; just show the page.
+            print("Ship Desk is already running.")
+            if not a.no_browser:
+                webbrowser.open(url)
+            return
+        tell(f"Ship Desk couldn't start: another program is using port {a.port}.", hidden)
+        sys.exit(1)
+    if hidden:
+        print(f"Ship Desk is running in the background at {url}  (turn it off with the switch at the top of the page)")
+    else:
+        print(f"Ship Desk is running at {url}  (close this window to stop it)")
     print(f"Files it makes are saved in {SAVE_ROOT}")
     print("Phone photos: in Ship Desk click \"Phone photos\" at the top.")
+    if a.port == DEFAULT_PORT and register_launcher():
+        print("Turn off / Turn on: the switch at the top of the Ship Desk page.")
+    if a.port == DEFAULT_PORT and autostart_enabled():
+        set_autostart(True)  # keeps the startup entry pointing at this copy of Ship Desk
+        print("Starts with Windows (untick \"Start with Windows\" at the top of the page to stop that).")
     if not a.no_browser:
         threading.Timer(0.5, webbrowser.open, [url]).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Ship Desk stopped.")
 
 
 if __name__ == "__main__":

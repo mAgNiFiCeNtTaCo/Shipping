@@ -18,11 +18,22 @@ if not defined PY (
   exit /b 1
 )
 
+rem Run in the background (no window) with the windowless Python. Turn it off with the switch at the top of
+rem the Ship Desk page, or "Stop Ship Desk". Problems go to Saved\ship-desk.log (and a message box).
+set "PYW="
+where pythonw >nul 2>nul && set "PYW=pythonw"
+if not defined PYW where pyw >nul 2>nul && set "PYW=pyw -3"
+if defined PYW (
+  start "" %PYW% serve.py %*
+  exit /b 0
+)
+
+rem No windowless Python here: run in this window as before.
 echo.
 echo   Starting Ship Desk. Your browser opens in a moment.
 echo   Keep this window open while you use Ship Desk. Close it when you're done.
 echo.
-%PY% serve.py
+%PY% serve.py %*
 if errorlevel 1 (
   echo.
   echo   Ship Desk stopped with a problem.

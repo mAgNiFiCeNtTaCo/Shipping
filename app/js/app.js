@@ -880,6 +880,97 @@ export const PHOTO_KINDS = [
 
 const shipdeskFetch = (path, opts = {}) => fetch(path, { ...opts, headers: { ...(opts.headers || {}), "X-Ship-Desk": "1" } });
 
+// ---------- turning Ship Desk off and on ----------
+// Off: the page asks serve.py (running in the background) to stop. On: the shipdesk://start link, which serve.py
+// registers with Windows, starts it again. The page itself still opens when Ship Desk is off (sw.js).
+
+const POWER_TEXT = { checking: "Checking…", on: "Ship Desk on", stopping: "Turning off…", off: "Ship Desk is off", starting: "Starting…" };
+const POWER_CHECK_MS = 10000;   // how often the header checks while nothing is happening
+const POWER_WAIT_MS = 40000;    // how long turning on/off may take before the header gives up
+export const power = { state: "checking", since: 0, timer: 0, autostart: null }; // autostart: null = not known
+
+async function ping() {
+  try {
+    const r = await shipdeskFetch("api/ping", { cache: "no-store" });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null; // not running
+  }
+}
+
+function renderPower() {
+  const box = $("#power");
+  if (!box) return;
+  box.dataset.state = power.state;
+  $("#power-text").textContent = POWER_TEXT[power.state];
+  $("#btn-power-off").hidden = power.state !== "on";
+  $("#btn-power-on").hidden = power.state !== "off";
+  $("#power-auto-wrap").hidden = power.state !== "on" || power.autostart == null;
+  if (document.activeElement !== $("#power-auto")) $("#power-auto").checked = !!power.autostart;
+}
+
+/** "Start with Windows": add Ship Desk to this Windows user's startup list, or take it off. */
+export async function setAutostart(on) {
+  try {
+    const r = await shipdeskFetch(`api/autostart?on=${on ? 1 : 0}`, { method: "POST" });
+    const data = await r.json();
+    power.autostart = !!data.autostart;
+    toast(data.ok ? (power.autostart ? "Ship Desk now starts with Windows (in the background)." : "Ship Desk won't start with Windows any more.")
+      : "Windows didn't accept that change.");
+  } catch {
+    toast("Ship Desk isn't running, so that can't be changed now.");
+  }
+  renderPower();
+  return power.autostart;
+}
+
+/** Ask whether Ship Desk is running and show it; while turning on/off, keep asking until it has. */
+export async function checkPower() {
+  clearTimeout(power.timer);
+  const info = await ping();
+  const up = !!info;
+  if (info) power.autostart = typeof info.autostart === "boolean" ? info.autostart : null;
+  const waited = Date.now() - power.since;
+  if (power.state === "stopping") {
+    if (!up) power.state = "off";
+    else if (waited > POWER_WAIT_MS) { power.state = "on"; toast("Ship Desk didn't turn off. Double-click \"Stop Ship Desk\" in the Shipping folder."); }
+  } else if (power.state === "starting") {
+    if (up) { power.state = "on"; toast("Ship Desk is on."); refreshPhotos(); takePhoneLinks(); }
+    else if (waited > POWER_WAIT_MS) { power.state = "off"; toast("Ship Desk didn't start. Double-click \"Start Ship Desk\" in the Shipping folder."); }
+  } else {
+    power.state = up ? "on" : "off";
+  }
+  renderPower();
+  const busy = power.state === "stopping" || power.state === "starting";
+  power.timer = setTimeout(checkPower, busy ? 700 : POWER_CHECK_MS);
+  return power.state;
+}
+
+/** The header's Turn off. */
+export async function turnOff() {
+  if (!window.confirm("Turn off Ship Desk?\n\nWhile it's off, files save to your Downloads folder, and photos from your phone wait on the phone until it's on again.")) return false;
+  power.state = "stopping";
+  power.since = Date.now();
+  renderPower();
+  try { await shipdeskFetch("api/shutdown", { method: "POST" }); } catch { /* already off */ }
+  checkPower();
+  return true;
+}
+
+function bindPower() {
+  $("#btn-power-off").addEventListener("click", () => turnOff());
+  $("#power-auto").addEventListener("change", (e) => setAutostart(e.target.checked));
+  // The link itself asks Windows to start Ship Desk (the browser asks first); the page then waits for it.
+  $("#btn-power-on").addEventListener("click", () => {
+    power.state = "starting";
+    power.since = Date.now();
+    renderPower();
+    setTimeout(checkPower, 1500);
+  });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkPower(); });
+  checkPower();
+}
+
 /** The orders the phone can pick from: the History list plus the batch loaded now (name, city, ZIP; no street). */
 export function phoneOrders() {
   const out = new Map();
@@ -1005,7 +1096,7 @@ async function loadPhoneLink(method = "GET", path = "api/phone-link") {
     state.phone = data;
     return data;
   } catch {
-    state.phone = { ok: false, error: "Ship Desk's window isn't running. Start it with \"Start Ship Desk.bat\"." };
+    state.phone = { ok: false, error: "Ship Desk isn't running. Turn it on with the switch at the top (or \"Start Ship Desk.bat\")." };
     return state.phone;
   }
 }
@@ -1503,6 +1594,7 @@ export function init() {
   bindShip();
   bindHistory();
   bindPhone();
+  bindPower();
   bindViews();
   renderPlanForm();
   renderDesign();
@@ -1520,6 +1612,7 @@ export const api = {
   clearShipped, renderAll, handleFiles, loadSlipFile, today,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
+  power, checkPower, turnOff, setAutostart,
 };
 
 if (document.querySelector("[data-shipdesk]")) init();

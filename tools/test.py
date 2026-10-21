@@ -38,6 +38,18 @@ class Handler(serve.Handler):
     def open_folder(self, folder):
         opened.append(folder)
 
+    def stop_server(self):
+        # The page's "Turn off" must not end the test run: only note it (GET /__opened lists it too).
+        opened.append("STOP")
+
+    # Stands in for the Windows startup list: tests never change the real one.
+    def autostart_enabled(self):
+        return tailnet.get("autostart", False)
+
+    def set_autostart(self, on):
+        tailnet["autostart"] = on
+        return True
+
     def tailscale_status(self):
         return {"installed": True, "running": True, "dns": "test-pc.example.ts.net", "serving": tailnet["serving"]}
 

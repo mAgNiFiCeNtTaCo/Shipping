@@ -114,6 +114,67 @@ const tests = {
     eq((await fetch("/api/phone-link")).status, 403, "PC page needs the X-Ship-Desk header too");
   },
 
+  "PC: the header switch turns Ship Desk off (after asking) and on again": async () => {
+    eq((await fetch("/api/shutdown", { method: "POST" })).status, 403, "other websites can't turn it off");
+    eq((await fetch("/api/shutdown", { method: "POST", headers: { ...PC, ...VIA_TAILSCALE } })).status, 403, "nor the phone");
+    eq((await fetch("/api/ping")).status, 403, "the on/off check is for Ship Desk's page");
+    ok((await (await fetch("/api/ping", { headers: PC })).json()).ok, "it answers Ship Desk's page");
+    const { win, doc, app } = await openApp();
+    await waitFor(() => doc.querySelector("#power").dataset.state === "on", "the header to say on");
+    ok(doc.querySelector("#power-text").textContent.includes("Ship Desk on"), "says so");
+    ok(!doc.querySelector("#btn-power-off").hidden && doc.querySelector("#btn-power-on").hidden, "Turn off shown");
+    let asked = "";
+    win.confirm = (t) => { asked = t; return false; };
+    doc.querySelector("#btn-power-off").click();
+    ok(asked.includes("Turn off Ship Desk") && asked.includes("wait on the phone"), "asks first, says what happens");
+    eq(app.power.state, "on", "answered no: stays on");
+    // The test server only notes the stop; from then on the page's checks get no answer, like a real stop.
+    const realFetch = win.fetch.bind(win);
+    let off = false;
+    win.fetch = (u, o) => (off && /api\/ping/.test(String(u)) ? Promise.reject(new TypeError("Failed to fetch"))
+      : realFetch(u, o).then((r) => { if (/api\/shutdown/.test(String(u))) off = true; return r; }));
+    win.confirm = () => true;
+    doc.querySelector("#btn-power-off").click();
+    eq(app.power.state, "stopping");
+    await waitFor(async () => (await (await fetch("/__opened")).json()).opened.includes("STOP"), "the server to be asked to stop");
+    await waitFor(() => app.power.state === "off", "the header to say off");
+    ok(doc.querySelector("#power-text").textContent.includes("off"), "says off");
+    const on = doc.querySelector("#btn-power-on");
+    ok(!on.hidden && on.getAttribute("href") === "shipdesk://start", "Turn on is the shipdesk://start link");
+    // Turn on: Windows starts Ship Desk from the link; here it simply answers again.
+    on.addEventListener("click", (e) => e.preventDefault());
+    // (openApp turns a link's .click() off to stop downloads, so send the click itself.)
+    on.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
+    eq(app.power.state, "starting");
+    off = false;
+    await waitFor(() => app.power.state === "on", "back on", 15000);
+    ok(!doc.querySelector("#btn-power-off").hidden && on.hidden, "Turn off again");
+    dropFrames();
+  },
+
+  "PC: \"Start with Windows\" adds Ship Desk to the startup list and takes it off again": async () => {
+    eq((await fetch("/api/autostart?on=1", { method: "POST" })).status, 403, "other websites can't change it");
+    eq((await fetch("/api/autostart?on=1", { method: "POST", headers: { ...PC, ...VIA_TAILSCALE } })).status, 403, "nor the phone");
+    const { win, doc, app } = await openApp();
+    await waitFor(() => !doc.querySelector("#power-auto-wrap").hidden, "the Start with Windows box");
+    const box = doc.querySelector("#power-auto");
+    ok(!box.checked, "off to begin with (test stand-in for the startup list)");
+    box.checked = true;
+    box.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await waitFor(async () => (await (await fetch("/api/ping", { headers: PC })).json()).autostart === true, "it to be on the startup list");
+    eq(app.power.autostart, true);
+    // A fresh page shows it ticked.
+    dropFrames();
+    const again = await openApp();
+    await waitFor(() => !again.doc.querySelector("#power-auto-wrap").hidden, "the box again");
+    ok(again.doc.querySelector("#power-auto").checked, "ticked after a reload");
+    const b2 = again.doc.querySelector("#power-auto");
+    b2.checked = false;
+    b2.dispatchEvent(new again.win.Event("change", { bubbles: true }));
+    await waitFor(async () => (await (await fetch("/api/ping", { headers: PC })).json()).autostart === false, "it to be off the list");
+    dropFrames();
+  },
+
   "PC: the Phone photos window switches phone access on and shows the QR code and pairing code": async () => {
     clearAll();
     const { win, doc } = await openApp();

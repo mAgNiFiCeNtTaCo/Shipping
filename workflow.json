@@ -237,6 +237,38 @@
     "zxing-js 1D reading uses a whole-row threshold: a dark surface beside a white label makes it fail; zxing-wasm (zxing-cpp) read 3x more phone-like barcode pictures.",
     "Measure barcode readers on generated camera-like pictures (blur, tilt, grain, background) before tuning."
    ]
+  },
+  {
+   "title": "On/off switch, background, start with Windows",
+   "date": "2026-10-21",
+   "summary": "The orchestrator session added an on/off switch to the page (shutdown + shipdesk://start), made Ship Desk run windowless in the background, fixed two copies sharing the port, and added Start with Windows (152 tests).",
+   "stages": [
+    {
+     "name": "Follow-up requests",
+     "kind": "solo",
+     "sessions": [
+      {
+       "id": "bce15ced",
+       "role": "Orchestrator (solo)",
+       "start": "2026-10-21T01:00",
+       "end": "2026-10-21T17:10",
+       "did": "header on/off switch, /api/ping + /api/shutdown, shipdesk:// launcher; pythonw background start, log, Stop bat; SO_EXCLUSIVEADDRUSE; Start with Windows (HKCU Run); 2 new tests; live checks",
+       "outcome": "done",
+       "files": 12
+      }
+     ]
+    }
+   ],
+   "events": [
+    {
+     "time": "2026-10-21T01:32",
+     "text": "Live test found two Ship Desks on one port (old window re-ran the edited .bat); fixed with an exclusive port"
+    }
+   ],
+   "lessons": [
+    "On Windows, Python http.server sets SO_REUSEADDR, so a second server can bind the same port: use SO_EXCLUSIVEADDRUSE.",
+    "cmd reads a running .bat from disk as it goes: editing it while an old window runs it can run the new lines."
+   ]
   }
  ]
 }

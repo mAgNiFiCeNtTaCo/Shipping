@@ -7,8 +7,9 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-10-21)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; not yet tried
   on a real TCGplayer import.
-- Start: double-click `Start Ship Desk.bat` (runs `python serve.py`) -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **150 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 19).
+- Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
+  the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
+- Tests: `python tools/test.py` = **152 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 21).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -20,6 +21,30 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-21: on/off switch, runs in the background, starts with Windows
+- **On/off switch** (user: a button on the web app to turn Ship Desk on and off; asked which "this" meant, user chose
+  Ship Desk itself): header `#power` shows on / off / turning off / starting, checks `GET /api/ping` every 10 s.
+  Turn off asks first, then `POST /api/shutdown` (Ship Desk's own page only) stops the server. Turn on is the link
+  `shipdesk://start`: serve.py registers it for this Windows user (HKCU\Software\Classes\shipdesk) on each start;
+  the command is fixed (never takes the link's text) and starts Ship Desk with `--no-browser`. The page itself opens
+  from sw.js's offline copy while Ship Desk is off.
+- **In the background** (user): `Start Ship Desk.bat` starts `pythonw serve.py` and closes; with no console serve.py
+  logs to `Saved/ship-desk.log` and shows start problems in a message box. New `Stop Ship Desk.bat` (curl to
+  `/api/shutdown`). A second start sees Ship Desk already running and only opens the page.
+- **Bug found in the live test, fixed:** two Ship Desks could listen on 5091 at once. Python's server asks for
+  SO_REUSEADDR, which on Windows lets a second process bind the same port, so "already running" was never noticed
+  and Turn off stopped only one. Now `Server.server_bind` uses SO_EXCLUSIVEADDRUSE (a second bind fails with 10048).
+  The second copy came from an old visible window: cmd reads a running .bat from disk line by line, so after Ship
+  Desk stopped it went on into the newly edited .bat and started a background copy.
+- **Start with Windows** (user): HKCU Run value "Ship Desk" = the windowless command (`set_autostart`), shown in
+  Task Manager > Startup apps; "Start with Windows" box in the header (`POST /api/autostart`). Switched on for the
+  user; the exact command was run while Ship Desk was up and correctly said "already running".
+- Live checks on the user's PC: start (window closes), second start, Stop Ship Desk, Turn on via shipdesk://start,
+  Turn off the page's way, on again; phone address still answers. Restarts were done at the user's OK.
+- Tests 150 -> 152 (switch: refused for other sites and the phone, asks first, off, Turn on link, back on; Start with
+  Windows on/off survives a reload). tools/test.py stands in for stopping and the startup list. The e2e offline test
+  now skips `scheme:` links. Caches `shipdesk-v14`.
+
 ### 2026-10-21: tracking barcodes read much better (zxing-wasm)
 - User: QR codes scan great, but a mailer's tracking barcode took forever and needed the camera moved around.
 - Cause found with a 96-picture benchmark (1440x1920 phone-like pictures of a USPS label: bar width 1.4-3 px,

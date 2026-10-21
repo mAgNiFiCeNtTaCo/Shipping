@@ -8,8 +8,10 @@ It runs on this PC in your web browser. Your buyers' names and addresses never l
 
 ## Start it
 
-Double-click **`Start Ship Desk.bat`**. A black window opens and your browser opens Ship Desk
-(http://127.0.0.1:5091/). Keep the black window open while you work; close it when you're done.
+Double-click **`Start Ship Desk.bat`**. Ship Desk starts in the background (no window stays open) and your
+browser opens it (http://127.0.0.1:5091/). Turn it off with the switch at the top of the page, or double-click
+**`Stop Ship Desk.bat`**. Starting it when it's already running just opens the page. Messages and problems
+go to `Saved\ship-desk.log`; a problem that stops it from starting also pops up.
 
 No internet needed. (It needs Python; if it's missing, the window tells you how to install it.)
 
@@ -83,6 +85,22 @@ toploader, how many cards go in one toploader, whether your envelopes are rigid 
 - Ship Desk remembers what you marked shipped, so if you drop the same file again those orders aren't ticked
   for printing. **Clear shipped history** forgets it.
 
+## Turning Ship Desk off and on
+
+The top of the page shows **Ship Desk on** with a **Turn off** button. Turn off asks first, then stops Ship Desk and
+it stops running in the background. The page stays open (it works from its offline copy) and shows **Ship Desk is off** with
+**Turn on**: click it and Ship Desk starts again. The first time, the browser asks whether this site may open
+"Ship Desk": tick "Always allow" and click Open. If Ship Desk stops some other way (Stop Ship Desk.bat, a
+restart of the PC), the page notices within a few seconds.
+
+- **Start with Windows** (the tick box next to the switch): Ship Desk starts in the background when you log in to
+  Windows, without opening the browser. It's in Windows' own startup list, so **Task Manager → Startup apps**
+  shows it as "Ship Desk" (and can switch it off too).
+- While it's off, files save to your Downloads folder and the phone's photos wait on the phone.
+- **Turn on** works because Ship Desk registers a `shipdesk://start` link with Windows (for your Windows user
+  only) each time it starts. It only ever starts Ship Desk in the background (`pythonw serve.py`). To remove it: `reg delete
+  HKCU\Software\Classes\shipdesk /f`.
+
 ## Where your files go (the Saved folder)
 
 Everything Ship Desk makes is saved straight into the **`Saved`** folder inside the Ship Desk folder
@@ -105,7 +123,7 @@ Everything Ship Desk makes is saved straight into the **`Saved`** folder inside 
   button there is also **Open the Saved folder**.
 - Prefer your Downloads folder? Under the Download PDF button, **Where files go** -> **My Downloads folder**. Ship
   Desk remembers the choice.
-- The black Ship Desk window does the saving. If it was closed, files fall back to your Downloads folder and the
+- Ship Desk running in the background does the saving. If it's off, files fall back to your Downloads folder and the
   message says so.
 - These files contain your buyers' names and addresses: they stay on this PC (the folder is never put in git or on GitHub).
 

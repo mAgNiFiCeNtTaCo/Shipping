@@ -33,6 +33,15 @@
       <a href="#history" id="view-history" class="view-btn">History <span id="history-count" class="count" hidden></span></a>
     </nav>
     <button type="button" id="btn-phone" class="phone-btn"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 1h8a3 3 0 0 1 3 3v16a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V4a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8Zm2 15h4v2h-4v-2Z"/></svg> Phone photos</button>
+    <div id="power" class="power" data-state="checking">
+      <span class="power-dot" aria-hidden="true"></span>
+      <span id="power-text" class="power-text" role="status" aria-live="polite">Checking…</span>
+      <button type="button" id="btn-power-off" class="power-btn" hidden>Turn off</button>
+      <a id="btn-power-on" class="power-btn on" href="shipdesk://start" hidden
+        title="If nothing happens, double-click &quot;Start Ship Desk&quot; in the Shipping folder">Turn on</a>
+      <label id="power-auto-wrap" class="power-auto" title="Start Ship Desk in the background when you log in to Windows" hidden>
+        <input type="checkbox" id="power-auto"> Start with Windows</label>
+    </div>
     <p class="private"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z"/></svg> Your orders stay on this PC</p>
   </div>
 </header>

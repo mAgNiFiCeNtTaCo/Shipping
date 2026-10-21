@@ -380,6 +380,24 @@ table.orders { width: 100%; border-collapse: collapse; font-size: .93rem; }
 
 .phone-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--brand-line); background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: .93rem; cursor: pointer; }
 .phone-btn:hover { border-color: var(--brand); }
+
+/* Ship Desk on/off */
+.power { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 4px 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: .9rem; }
+.power-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.power[data-state="on"] .power-dot { background: #2f9a4c; }
+.power[data-state="off"] .power-dot { background: #d13c2c; }
+.power[data-state="stopping"] .power-dot, .power[data-state="starting"] .power-dot, .power[data-state="checking"] .power-dot { background: #d79a00; animation: power-pulse 1s ease-in-out infinite; }
+@keyframes power-pulse { 50% { opacity: .3; } }
+.power-text { font-weight: 650; white-space: nowrap; }
+.power[data-state="off"] .power-text { color: var(--err-text); }
+.power-btn { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); font: inherit; font-weight: 650; font-size: .85rem; text-decoration: none; cursor: pointer; }
+.power-btn:hover { border-color: var(--text); }
+.power-btn.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.power-btn[hidden] { display: none; }
+.power-auto { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 4px; font-size: .85rem; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.power-auto[hidden] { display: none; }
+.power-auto input { width: 16px; height: 16px; }
+@media (prefers-reduced-motion: reduce) { .power-dot { animation: none !important; } }
 .history-intro .link { padding: 0; font-size: inherit; }
 
 .dlg { width: min(640px, calc(100% - 32px)); max-height: calc(100% - 48px); padding: 0 22px 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgb(0 0 0 / .3); }
