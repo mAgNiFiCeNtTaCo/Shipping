@@ -295,15 +295,20 @@ const C128 = ("212222 222122 222221 121223 121322 131222 122213 122312 132212 22
   + "112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 "
   + "421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112").split(" ");
 
-function code128Canvas(groups, { module = 3, height = 140, turn = false } = {}) {
-  // groups: digit strings; an FNC1 goes in front of each one (GS1 style).
+// The bar and space widths (in thin bars) of a Code 128 set C barcode. groups: digit strings; an FNC1 goes
+// in front of each one (GS1 style).
+function code128Widths(groups) {
   const values = [105];
   for (const g of groups) {
     values.push(102);
     for (let i = 0; i < g.length; i += 2) values.push(Number(g.slice(i, i + 2)));
   }
   values.push(values.reduce((s, v, i) => s + v * (i || 1), 0) % 103, 106);
-  const widths = values.map((v) => C128[v]).join("").split("").map(Number);
+  return values.map((v) => C128[v]).join("").split("").map(Number);
+}
+
+function code128Canvas(groups, { module = 3, height = 140, turn = false } = {}) {
+  const widths = code128Widths(groups);
   const quiet = 12;
   const total = widths.reduce((a, b) => a + b, 0) + quiet * 2;
   const c = document.createElement("canvas");
@@ -317,6 +322,40 @@ function code128Canvas(groups, { module = 3, height = 140, turn = false } = {}) 
     if (i % 2 === 0) { if (turn) g.fillRect(20, x, height, w * module); else g.fillRect(x, 20, w * module, height); }
     x += w * module;
   });
+  return c;
+}
+
+// A shipping label on a table as the phone camera sees it: the table around it, print above the tracking
+// barcode, turned `angle` degrees (and a quarter more when sideways), a little blurry, camera noise.
+// module: camera pixels per thin bar (about 2-4 when the label fills the screen).
+function cameraPicture({ w = 1080, h = 1920, module = 2.6, angle = 0, blur = 0.8, sideways = false, tracking = "9400111899223344556677", c = document.createElement("canvas") } = {}) {
+  const widths = code128Widths(["42090012", tracking]);
+  const bw = widths.reduce((a, b) => a + b, 0) * module, lw = bw * 1.25, lh = lw * 1.5;
+  const label = document.createElement("canvas");
+  label.width = Math.ceil(lw); label.height = Math.ceil(lh);
+  const l = label.getContext("2d");
+  l.fillStyle = "#f4f2ec"; l.fillRect(0, 0, lw, lh);
+  l.fillStyle = "#1e1e22";
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let y = lh * 0.05; y < lh * 0.45; y += lh * 0.035) { // the address: rows of letters
+    for (let x = lw * 0.05; x < lw * 0.8; x += lw * 0.02) if (rnd() > 0.35) l.fillRect(x, y, lw * 0.012, lh * 0.018);
+  }
+  l.fillRect(lw * 0.04, lh * 0.48, lw * 0.92, Math.max(2, lh * 0.006));
+  let x = (lw - bw) / 2;
+  widths.forEach((wd, i) => { if (i % 2 === 0) l.fillRect(x, lh * 0.55, wd * module, lh * 0.12); x += wd * module; });
+  c.width = w; c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.fillStyle = "#6f604c"; g.fillRect(0, 0, w, h);
+  g.save();
+  g.translate(w / 2, h / 2);
+  g.rotate(((angle + (sideways ? 90 : 0)) * Math.PI) / 180);
+  if (blur) g.filter = `blur(${blur}px)`;
+  g.drawImage(label, -lw / 2, -lh / 2);
+  g.restore();
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (rnd() - 0.5) * 20; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+  g.putImageData(img, 0, 0);
   return c;
 }
 
@@ -371,6 +410,59 @@ Object.assign(tests, {
       const text = await decodeCanvas(code128Canvas(["42090012", "9400111899223344556677"], { turn }));
       eq(parseScan(text).tracking, "9400111899223344556677", (turn ? "sideways: " : "upright: ") + JSON.stringify(text));
     }
+  },
+
+  "scan: zxing's Code 128 reader finds a barcode with dark print in front of it on the same line": async () => {
+    const { decodeCanvas } = await import("../js/phone.js");
+    await decodeCanvas(code128Canvas(["42090012", "9400111899223344556677"])); // loads the reader (and its fix)
+    const Z = window.ZXing;
+    const c = document.createElement("canvas");
+    const code = code128Canvas(["42090012", "9400111899223344556677"]);
+    c.width = code.width + 200; c.height = code.height;
+    const g = c.getContext("2d");
+    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = "#000"; g.fillRect(10, 0, 60, c.height); // the table edge / a label border
+    g.drawImage(code, 160, 0);
+    const hints = new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.CODE_128]]]);
+    const reader = new Z.MultiFormatReader();
+    reader.setHints(hints);
+    const r = reader.decodeWithState(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(c))));
+    eq(r.getText(), "420900129400111899223344556677");
+  },
+
+  "scan: a tracking barcode reads from camera-like pictures (table around it, blurry, small, tilted, sideways)": async () => {
+    const { decodeCanvas, parseScan } = await import("../js/phone.js");
+    const live = (tilt) => ({ tilts: [0, tilt], span: 0.75 }); // what the camera screen asks for, one look each way
+    for (const p of [{}, { module: 2, blur: 0.6 }, { module: 2.6, angle: 7 }, { module: 3, angle: -14 }, { module: 2.6, angle: 22 },
+      { module: 3, angle: 4, sideways: true }, { w: 1920, h: 1080, module: 2.6, angle: -7 }, { w: 1920, h: 1080, module: 3, angle: 3, sideways: true }]) {
+      const pic = cameraPicture(p);
+      const t0 = performance.now();
+      const text = (await decodeCanvas(pic, "yes", live(0.27))) || (await decodeCanvas(pic, "no", live(-0.27)));
+      const ms = performance.now() - t0;
+      eq(parseScan(text) && parseScan(text).tracking, "9400111899223344556677", JSON.stringify(p) + " read " + JSON.stringify(text));
+      ok(ms < 1500, JSON.stringify(p) + " took " + Math.round(ms) + " ms");
+      eq(parseScan(await decodeCanvas(pic)).tracking, "9400111899223344556677", JSON.stringify(p) + " as a still picture");
+    }
+  },
+
+  "scan: the live camera reads a mailer's tracking barcode on a table and asks which order it is": async () => {
+    const { win, doc, phone } = await phoneWithOrders();
+    const cam = doc.createElement("canvas");
+    const paint = () => cameraPicture({ module: 2.6, angle: -9, tracking: "9400111899223344550002", c: cam });
+    paint();
+    const painter = setInterval(paint, 250);
+    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(10);
+    try {
+      const t0 = Date.now();
+      doc.querySelector("#btn-scan").click();
+      await waitFor(() => phone.scan.ask && phone.scan.ask.tracking === "9400111899223344550002", "the camera to read the tracking barcode", 8000);
+      ok(Date.now() - t0 < 5000, "read in " + (Date.now() - t0) + " ms");
+      ok(!doc.querySelector("#scan-ask").hidden, "asks which order");
+    } finally {
+      clearInterval(painter);
+      phone.closeScanner(false);
+    }
+    dropFrames();
   },
 
   "scan: the live camera finds the order QR code on a label and picks the order": async () => {

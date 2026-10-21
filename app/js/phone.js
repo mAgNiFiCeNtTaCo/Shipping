@@ -327,7 +327,13 @@ async function forget(id) {
 export const QR_PREFIX = "SHIPDESK:";   // render.js ORDER_QR_PREFIX
 const ZXING = new URL("../vendor/zxing-library-0.21.3.min.js", import.meta.url).href;
 const SCAN_MS = 90;                     // pause between two looks at the camera picture
-const SCAN_SIDE = 1280;                 // longest side of the picture the reader looks at
+const SCAN_SIDE = 1280;                 // longest side of the picture zxing's own search looks at
+const LINE_SIDE = 1920;                 // longest side of the picture tracking barcodes are read from (decodeLines)
+const LINE_GAP = 16;                    // pixels between two lines decodeLines reads
+const LIVE_SPAN = 0.75;                 // the camera: lines only over the middle of the picture (where the frame is)
+const TILT = 0.27;                      // slope of the tilted lines (15 degrees)
+const SHARPEN = 0.7;                    // how hard decodeLines sharpens each line
+const FLAT = 40;                        // lightest minus darkest nearby below this: plain paper, not a barcode
 const SAME_CODE_MS = 2500;              // the same code seen again within this long is the same scan
 const KEEP_CAMERA_MS = 5 * 60 * 1000;   // after Done the camera stays ready this long: opening again doesn't ask again
 const compact = (s) => String(s || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
@@ -368,31 +374,152 @@ function loadZxing() {
   zxingLoad = zxingLoad || new Promise((resolve, reject) => {
     const sc = document.createElement("script");
     sc.src = ZXING;
-    sc.onload = () => (window.ZXing ? resolve(window.ZXing) : reject(new Error("no reader")));
+    sc.onload = () => (window.ZXing ? resolve(fixCode128(window.ZXing)) : reject(new Error("no reader")));
     sc.onerror = () => { zxingLoad = null; reject(new Error("The barcode reader didn't load.")); };
     document.head.append(sc);
   });
   return zxingLoad;
 }
 
+// zxing 0.21.3's Code 128 reader throws away two of its six bar counters the first time a guess is wrong
+// (Int32Array.slice makes the list shorter), so it only finds a barcode whose start is the first dark thing on
+// the line: a table edge, a label border or text in front of it hid the tracking barcode. This is its own
+// start-pattern search with the counters kept whole.
+function fixCode128(Z) {
+  const R = Z.Code128Reader;
+  if (!R || R.startFixed) return Z;
+  R.findStartPattern = function (row) {
+    const width = row.getSize(), offset = row.getNextSet(0);
+    const counters = new Int32Array(6);
+    let pos = 0, start = offset, white = false;
+    for (let i = offset; i < width; i++) {
+      if (row.get(i) !== white) { counters[pos]++; continue; }
+      if (pos === 5) {
+        let best = R.MAX_AVG_VARIANCE, code = -1;
+        for (let c = R.CODE_START_A; c <= R.CODE_START_C; c++) {
+          const v = Z.OneDReader.patternMatchVariance(counters, R.CODE_PATTERNS[c], R.MAX_INDIVIDUAL_VARIANCE);
+          if (v < best) { best = v; code = c; }
+        }
+        // a start code needs white in front of it (the quiet zone)
+        if (code >= 0 && row.isRange(Math.max(0, start - ((i - start) >> 1)), start, false)) return Int32Array.from([start, i, code]);
+        start += counters[0] + counters[1];
+        counters.copyWithin(0, 2);
+        counters[4] = 0;
+        counters[5] = 0;
+        pos--;
+      } else pos++;
+      counters[pos] = 1;
+      white = !white;
+    }
+    throw new Z.NotFoundException();
+  };
+  R.startFixed = true;
+  return Z;
+}
+
 let reader = null;
 /**
- * The text of a QR code or Code 128 barcode in this canvas, or "" when there is none. turn: "no" looks only at
- * the picture as it is, "yes" only at it turned a quarter (a barcode held sideways), "both" at both.
+ * The text of a QR code or Code 128 barcode in this canvas, or "" when there is none. Tracking barcodes are
+ * looked for first, upright and sideways (decodeLines, with `lines` as its options); then QR codes with
+ * zxing's own search, where turn says how: "no" looks only at the picture as it is, "yes" only at it turned
+ * a quarter (held sideways), "both" at both.
  */
-export async function decodeCanvas(canvas, turn = "both") {
+export async function decodeCanvas(canvas, turn = "both", lines = {}) {
+  const line = await decodeLines(canvas, lines);
+  if (line && useful(line)) return line;
+  const small = Math.max(canvas.width, canvas.height) > SCAN_SIDE ? toCanvas(canvas, canvas.width, canvas.height) : canvas;
   if (turn !== "yes") {
-    const text = await decodeUseful(canvas);
-    if (text || turn === "no") return text;
+    const text = await decodeUseful(small);
+    if (text || turn === "no") return text || line;
   }
   const t = document.createElement("canvas");
-  t.width = canvas.height;
-  t.height = canvas.width;
+  t.width = small.height;
+  t.height = small.width;
   const g = t.getContext("2d", { willReadFrequently: true });
   g.translate(t.width, 0);
   g.rotate(Math.PI / 2);
-  g.drawImage(canvas, 0, 0);
-  return decodeUseful(t);
+  g.drawImage(small, 0, 0);
+  return (await decodeUseful(t)) || line;
+}
+
+/**
+ * A Code 128 barcode (the tracking number on a shipping label) read along straight lines across the picture,
+ * both ways. zxing's own search cuts each line into black and white at one level for the whole line, so a
+ * thin, slightly blurry bar next to a dark table comes out white, and it reads a shrunken picture. Here each
+ * line is taken from the full-size picture at half-pixel steps and sharpened, every point is compared with
+ * the darkest and lightest points around it, and zxing's Code 128 decoder reads the line, both directions.
+ * tilts: the slopes of the lines (0 = straight across); span: the part of the picture the lines cover,
+ * around the middle (1 = all of it).
+ */
+export async function decodeLines(canvas, { tilts = [0, TILT, -TILT], span = 1 } = {}) {
+  const Z = await loadZxing();
+  const w = canvas.width, h = canvas.height;
+  if (w < 40 || h < 40) return "";
+  const px = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const gray = new Uint8Array(w * h);
+  for (let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (px[j] * 77 + px[j + 1] * 150 + px[j + 2] * 29) >> 8;
+  const pixel = (across, at, i) => (across ? gray[at * w + i] : gray[i * w + at]);
+  const code128 = new Z.Code128Reader(), hints = new Map();
+  const read = (bits) => {
+    try { return code128.decodeRow(0, bits, hints).getText(); } catch { return ""; }
+  };
+  let first = "";
+  // Straight lines first, then tilted ones: a level line stays on a tracking barcode (about 4 times wider
+  // than tall) only while the label is turned less than about 12 degrees.
+  for (const tilt of tilts) for (const across of [true, false]) {
+    const len = across ? w : h, count = across ? h : w;
+    const n = len * 2 - 1;
+    const raw = new Float32Array(n), line = new Float32Array(n), lo = new Float32Array(n), hi = new Float32Array(n), q = new Int32Array(n);
+    // how far around each point to look: past the widest bar (4 thin ones) of a barcode that fills the picture
+    const reach = Math.max(8, Math.round(n / 30));
+    // from the middle out: the middle is where the frame on the screen is
+    const lines = Math.floor((count * span) / LINE_GAP) + 1;
+    for (let k = 0; k < lines; k++) {
+      const at = Math.round(count / 2 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * LINE_GAP);
+      if (at < 0 || at >= count) continue;
+      for (let i = 0; i < len; i++) {
+        let v;
+        if (!tilt) v = pixel(across, at, i);
+        else {
+          const y = at + (i - len / 2) * tilt, y0 = Math.floor(y), f = y - y0;
+          v = y0 < 0 || y0 + 1 >= count ? 255 : pixel(across, y0, i) * (1 - f) + pixel(across, y0 + 1, i) * f;
+        }
+        raw[2 * i] = v;
+        if (i) raw[2 * i - 1] = (raw[2 * i - 2] + v) / 2;
+      }
+      // sharpen (each point against the points 1 pixel either side): thin blurry bars get their contrast back
+      for (let i = 0; i < n; i++) line[i] = raw[i] + SHARPEN * (2 * raw[i] - raw[Math.max(0, i - 2)] - raw[Math.min(n - 1, i + 2)]);
+      around(line, n, reach, lo, hi, q);
+      const fwd = new Z.BitArray(n), back = new Z.BitArray(n);
+      let dark = 0;
+      for (let i = 0; i < n; i++) {
+        // black = darker than halfway between the darkest and lightest points nearby; plain paper (only
+        // camera noise around it) stays white: that's the quiet zone the reader needs
+        if (hi[i] - lo[i] > FLAT && 2 * line[i] < hi[i] + lo[i]) { fwd.set(i); back.set(n - 1 - i); dark++; }
+      }
+      if (dark < 30) continue;
+      const text = read(fwd) || read(back);
+      if (!text) continue;
+      if (useful(text)) return text;
+      first = first || text;
+    }
+  }
+  return first;
+}
+
+// The darkest (lo) and lightest (hi) value within `reach` of each point of the line, in one pass each way.
+function around(line, n, reach, lo, hi, q) {
+  for (const [out, darker] of [[lo, true], [hi, false]]) {
+    let head = 0, tail = 0;
+    for (let i = 0, j = 0; i < n; i++) {
+      for (; j < n && j <= i + reach; j++) {
+        while (tail > head && (darker ? line[q[tail - 1]] >= line[j] : line[q[tail - 1]] <= line[j])) tail--;
+        q[tail++] = j;
+      }
+      while (q[head] < i - reach) head++;
+      out[i] = line[q[head]];
+    }
+  }
 }
 
 // A code Ship Desk can use: its own order QR, a tracking number, or an order # it knows.
@@ -434,7 +561,8 @@ async function decodeOnce(canvas) {
   const Z = await loadZxing();
   if (!reader) {
     const hints = new Map();
-    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.QR_CODE, Z.BarcodeFormat.CODE_128]);
+    // QR codes only: tracking barcodes (Code 128) are read by decodeLines
+    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.QR_CODE]);
     hints.set(Z.DecodeHintType.TRY_HARDER, true);
     reader = new Z.MultiFormatReader();
     reader.setHints(hints);
@@ -578,6 +706,10 @@ async function startCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no camera");
     stream = await navigator.mediaDevices.getUserMedia({ audio: false,
       video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1920 } } });
+    // keep focusing as the phone moves closer to a label, where the browser lets us ask
+    const track = stream.getVideoTracks()[0];
+    const can = track && track.getCapabilities ? track.getCapabilities() : {};
+    if (can.focusMode && can.focusMode.includes("continuous")) track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
   }
   if (!scan.open) { scan.stream = stream; stopCamera(); return; }
   scan.stream = stream;
@@ -591,9 +723,10 @@ async function startCamera() {
   const look = async () => {
     if (!scan.open || scan.stream !== stream) return;
     if (video.readyState >= 2 && video.videoWidth && !scan.ask) {
-      // Every other look turns the picture, so a tracking barcode held sideways reads too.
+      // Every other look turns the picture for QR codes and tilts the barcode lines the other way.
       turn = !turn;
-      const text = await decodeCanvas(toCanvas(video, video.videoWidth, video.videoHeight, SCAN_SIDE, c), turn ? "yes" : "no");
+      const lines = { tilts: [0, turn ? TILT : -TILT], span: LIVE_SPAN };
+      const text = await decodeCanvas(toCanvas(video, video.videoWidth, video.videoHeight, LINE_SIDE, c), turn ? "yes" : "no", lines);
       if (text && scan.open) handleScan(text);
     }
     scan.timer = setTimeout(look, SCAN_MS);
@@ -749,7 +882,7 @@ export async function scanFile(file) {
     const img = new Image();
     img.src = url;
     await img.decode();
-    const text = await decodeCanvas(toCanvas(img, img.naturalWidth, img.naturalHeight, 2000));
+    const text = await decodeCanvas(toCanvas(img, img.naturalWidth, img.naturalHeight, LINE_SIDE));
     if (!text) { scanSay("No code found in that picture. Get closer, hold it flat and try again."); return null; }
     scan.last = "";
     return handleScan(text);
