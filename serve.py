@@ -26,16 +26,23 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
               GET  /api/photos                photos per order;  GET /api/photo?id=&order=  one photo
               GET  /api/links                 tracking numbers the phone scanned that the PC hasn't taken yet
               POST /api/links-done            {"ids": [...]}: the PC put them in History
+              POST /api/photo-rotate?id=&order=   body = the photo turned (a JPEG): replaces the saved file
+              POST /api/photos-rekey          {"from", "to", "name"}: a mailer entry got its TCGplayer order #;
+                                              its photos move to the order (later uploads under the old key too)
     Phone:    GET  /api/phone/orders          the order list + photo counts
               POST /api/phone/photo?order=&name=&kind=&id=&taken=   body = the picture
               POST /api/phone/link            {id, order, name, tracking, carrier, taken}: a mailer label's
-                                              tracking number scanned and given to an order
+                                              tracking number scanned and given to an order (or to a
+                                              new entry "mailer:<tracking>" with the buyer's name)
+A post office photo also leaves a "shipped" note for the PC page (in links.json, without a tracking number):
+the order is marked shipped if it isn't already.
 Photos are saved in Saved/Photos/<order # and buyer>/<Contents|Packed|Post office> <date time> <id>.jpg,
 listed in Saved/Photos/photos.json. A photo sent twice (lost reply, retried) is saved once. Scanned tracking
 numbers wait in Saved/Phone/links.json until the PC page takes them (same: one id, kept once).
 """
 import argparse
 import functools
+import hashlib
 import hmac
 import http.server
 import json
@@ -103,12 +110,21 @@ def unique_path(folder, name):
     return path
 
 
+# On Windows a file can't be replaced while another request is reading it (and a read can meet the replace):
+# both wait a moment and try again instead of failing.
+RETRIES = 40
+
+
 def read_json(path, default):
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return default
+    for _ in range(RETRIES):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except PermissionError:
+            time.sleep(0.025)
+        except (OSError, ValueError):
+            return default
+    return default
 
 
 def write_json(path, data):
@@ -116,7 +132,14 @@ def write_json(path, data):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    for i in range(RETRIES):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if i == RETRIES - 1:
+                raise
+            time.sleep(0.025)
 
 
 def clean_code(code):
@@ -137,8 +160,11 @@ def image_ext(data):
 
 
 def order_folder(key, name):
-    """Folder name for an order's photos: "<order #> <buyer>", or "<buyer> <ZIP>" for pasted addresses."""
-    if key.startswith("paste:"):
+    """Folder name for an order's photos: "<order #> <buyer>", "<buyer> <ZIP>" for pasted addresses, or
+    "<buyer> <tracking #>" for a mailer that has no order # yet."""
+    if key.startswith("mailer:"):
+        base = f"{name or 'Mailer'} {key[7:]}"
+    elif key.startswith("paste:"):
         who, _, zip_code = key[6:].partition("|")
         base = f"{name or who} {zip_code}"
     else:
@@ -299,7 +325,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.save_link()
             return
         if url.path not in ("/api/save", "/api/open-folder", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
-                            "/api/links-done"):
+                            "/api/links-done", "/api/photos-rekey", "/api/photo-rotate"):
             self.send_error(404)
             return
         if not self.from_ship_desk():
@@ -310,6 +336,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if url.path == "/api/links-done":
             self.links_done()
+            return
+        if url.path == "/api/photos-rekey":
+            self.rekey_photos()
+            return
+        if url.path == "/api/photo-rotate":
+            self.replace_photo(arg("id"), arg("order"))
             return
         if url.path == "/api/phone-key":
             self.phone_code(create=True, new=True)
@@ -448,11 +480,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         with lock:
             # Tracking numbers the phone scanned that the PC hasn't taken yet stay on their orders.
-            waiting = {ln["order"]: ln for ln in self.links() if not ln.get("applied")}
-            for row in clean:
-                ln = waiting.get(row["key"])
-                if ln and not row["tracking"]:
-                    row["tracking"] = ln["tracking"]
+            waiting = {}
+            for ln in self.links():
+                if not ln.get("applied"):
+                    waiting.setdefault(ln["order"], []).append(ln)
+            listed = {row["key"]: row for row in clean}
+            for key, lns in waiting.items():
+                row = listed.get(key)
+                if not row:
+                    row = self.link_row(lns[0])
+                    clean.append(row)
+                for ln in lns:
+                    if ln["tracking"] and not row["tracking"]:
+                        row["tracking"] = ln["tracking"]
                     row["shipped"] = row["shipped"] or ln["taken"][:10]
             write_json(os.path.join(self.phone_dir(), "orders.json"), {"updated": time.strftime("%Y-%m-%d %H:%M"), "orders": clean})
         self.reply(200, {"ok": True, "count": len(clean)})
@@ -491,8 +531,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         counts = {k: {kk: v[kk] for kk in (*PHOTO_KINDS, "total")} for k, v in self.photo_summary().items()}
         return {"orders": orders, "photos": counts, "updated": data.get("updated", "") if isinstance(data, dict) else ""}
 
+    def rekeys_path(self):
+        return os.path.join(self.phone_dir(), "rekeys.json")
+
+    def current_key(self, key):
+        """A mailer entry that got its order # since the phone took this photo goes to the order."""
+        moved = read_json(self.rekeys_path(), {})
+        for _ in range(5):
+            if not isinstance(moved, dict) or key not in moved:
+                break
+            key = str(moved[key])
+        return key
+
     def save_photo(self, arg):
-        key, name, kind, pid, taken = arg("order").strip(), arg("name").strip()[:100], arg("kind"), arg("id"), arg("taken")
+        key, name, kind, pid, taken = self.current_key(arg("order").strip()), arg("name").strip()[:100], arg("kind"), arg("id"), arg("taken")
         if not key or len(key) > 200 or kind not in PHOTO_KINDS or not PHOTO_ID_OK.match(pid):
             self.reply(400, {"ok": False, "error": "Bad photo details."})
             return
@@ -529,6 +581,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             photos.append({"id": pid, "order": key, "name": name, "kind": kind, "taken": taken,
                            "received": time.strftime("%Y-%m-%dT%H:%M:%S"), "file": rel})
             write_json(index_path, {"photos": photos})
+            if kind == "postoffice":
+                # Handed in at the post office: the PC page marks the order shipped (if it isn't already).
+                note = "ship-" + pid + "-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
+                self.record_link(note, key, "", "", taken, name)
         self.reply(200, {"ok": True, "file": rel})
 
     # ---------- tracking numbers scanned on the phone ----------
@@ -551,7 +607,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def save_link(self):
         d = self.read_json_body(MAX_LINK_BYTES) or {}
-        lid, key = str(d.get("id", "")), str(d.get("order", "")).strip()
+        lid, key = str(d.get("id", "")), self.current_key(str(d.get("order", "")).strip())
         tracking = re.sub(r"[^0-9A-Za-z]", "", str(d.get("tracking", ""))).upper()
         carrier = str(d.get("carrier", ""))
         taken = str(d.get("taken", ""))
@@ -561,28 +617,87 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not TAKEN_OK.match(taken):
             taken = time.strftime("%Y-%m-%dT%H:%M:%S")
         with lock:
-            links = self.links()
-            if any(ln.get("id") == lid for ln in links):
-                self.reply(200, {"ok": True, "again": True})
-                return
-            orders_path = os.path.join(self.phone_dir(), "orders.json")
-            data = read_json(orders_path, {})
-            orders = data.get("orders") if isinstance(data, dict) and isinstance(data.get("orders"), list) else []
-            info = next((o for o in orders if isinstance(o, dict) and o.get("key") == key), None)
-            # What the PC needs to put the order in History even when that batch isn't loaded any more.
-            facts = {k: str((info or {}).get(k) or "") for k in ("source", "name", "city", "state", "zip")}
-            facts["orderId"] = str((info or {}).get("id") or "")
-            if not info:
-                facts.update(orderId="" if key.startswith("paste:") else key, source="paste" if key.startswith("paste:") else "csv",
-                             name=str(d.get("name", ""))[:100])
-            links.append({"id": lid, "order": key, "tracking": tracking, "carrier": carrier, "taken": taken,
-                          "received": time.strftime("%Y-%m-%dT%H:%M:%S"), "applied": "", **facts})
-            write_json(self.links_path(), {"links": links[-2000:]})
-            if info:
+            fresh = self.record_link(lid, key, tracking, carrier, taken, str(d.get("name", ""))[:100])
+        self.reply(200, {"ok": True} if fresh else {"ok": True, "again": True})
+
+    def record_link(self, lid, key, tracking, carrier, taken, name):
+        """Keep a note for the PC page: a tracking number for the order, or (tracking "") "it was shipped".
+        Call with the lock held. False when this id is already kept."""
+        links = self.links()
+        if any(ln.get("id") == lid for ln in links):
+            return False
+        orders_path = os.path.join(self.phone_dir(), "orders.json")
+        data = read_json(orders_path, {})
+        orders = data.get("orders") if isinstance(data, dict) and isinstance(data.get("orders"), list) else []
+        info = next((o for o in orders if isinstance(o, dict) and o.get("key") == key), None)
+        # What the PC needs to put the order in History even when that batch isn't loaded any more.
+        facts = {k: str((info or {}).get(k) or "") for k in ("source", "name", "city", "state", "zip")}
+        facts["orderId"] = str((info or {}).get("id") or "")
+        if not info:
+            kind = "paste" if key.startswith("paste:") else "mailer" if key.startswith("mailer:") else "csv"
+            facts.update(orderId=key if kind == "csv" else "", source=kind, name=name)
+        links.append({"id": lid, "order": key, "tracking": tracking, "carrier": carrier, "taken": taken,
+                      "received": time.strftime("%Y-%m-%dT%H:%M:%S"), "applied": "", **facts})
+        write_json(self.links_path(), {"links": links[-2000:]})
+        if info:
+            if tracking:
                 info["tracking"] = tracking
-                info["shipped"] = info.get("shipped") or taken[:10]
-                write_json(orders_path, data)
-        self.reply(200, {"ok": True})
+            info["shipped"] = info.get("shipped") or taken[:10]
+        else:
+            # A new entry made on the phone: list it, so the phone keeps it until the PC has taken it.
+            orders.append(self.link_row({**facts, "order": key, "tracking": tracking, "taken": taken}))
+            data = {"updated": data.get("updated", "") if isinstance(data, dict) else "", "orders": orders}
+        write_json(orders_path, data)
+        return True
+
+    @staticmethod
+    def link_row(ln):
+        """An order-list row for a phone link the PC hasn't taken yet."""
+        row = {k: "" for k in ORDER_FIELDS}
+        row.update(key=ln["order"], id=ln.get("orderId", ""), source=ln.get("source", ""), name=ln.get("name", ""),
+                   city=ln.get("city", ""), state=ln.get("state", ""), zip=ln.get("zip", ""),
+                   tracking=ln["tracking"], shipped=ln["taken"][:10], inBatch=False)
+        return row
+
+    def rekey_photos(self):
+        d = self.read_json_body(4096) or {}
+        old, new, name = str(d.get("from", "")).strip(), str(d.get("to", "")).strip(), str(d.get("name", "")).strip()[:100]
+        if not old or not new or old == new or len(old) > 200 or len(new) > 200:
+            self.reply(400, {"ok": False, "error": "Bad order numbers."})
+            return
+        moved = 0
+        with lock:
+            photos = self.photo_index()
+            mine = [p for p in photos if p.get("order") == old]
+            target = self.order_photo_folder(new) or os.path.join(self.photo_dir(), order_folder(new, name))
+            for p in mine:
+                src = self.photo_path(p)
+                if src:
+                    os.makedirs(target, exist_ok=True)
+                    dest = unique_path(target, os.path.basename(src))
+                    try:
+                        os.replace(src, dest)
+                    except OSError:
+                        continue
+                    p["file"] = os.path.relpath(dest, self.photo_dir()).replace("\\", "/")
+                    moved += 1
+                    try:
+                        os.rmdir(os.path.dirname(src))  # only when it's empty now
+                    except OSError:
+                        pass
+                p["order"] = new
+            if mine:
+                write_json(os.path.join(self.photo_dir(), "photos.json"), {"photos": photos})
+            rekeys = read_json(self.rekeys_path(), {})
+            rekeys = rekeys if isinstance(rekeys, dict) else {}
+            rekeys[old] = new
+            write_json(self.rekeys_path(), rekeys)
+            links = self.links()
+            for ln in links:
+                if ln.get("order") == old:
+                    ln["order"] = new
+            write_json(self.links_path(), {"links": links})
+        self.reply(200, {"ok": True, "moved": moved})
 
     def links_done(self):
         d = self.read_json_body(64 * 1024) or {}
@@ -596,6 +711,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if ln.get("id") in ids and not ln.get("applied"):
                     ln["applied"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             write_json(self.links_path(), {"links": links})
+        self.reply(200, {"ok": True})
+
+    def replace_photo(self, pid, key):
+        """The PC page turned a photo: save the turned JPEG over the old file (same name)."""
+        data = self.body(MAX_PHOTO_BYTES)
+        if not data or image_ext(data) != ".jpg":
+            self.reply(400, {"ok": False, "error": "Not a JPEG."})
+            return
+        with lock:
+            p = next((p for p in self.photo_index() if p.get("id") == pid and p.get("order") == key), None)
+            path = p and self.photo_path(p)
+            if not path or not path.lower().endswith(".jpg"):
+                self.reply(404, {"ok": False, "error": "No such photo."})
+                return
+            tmp = path + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(data)
+            for i in range(RETRIES):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:
+                    if i == RETRIES - 1:
+                        raise
+                    time.sleep(0.025)
         self.reply(200, {"ok": True})
 
     def send_photo(self, pid, key):

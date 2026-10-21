@@ -84,22 +84,39 @@
   <div class="scan-view">
     <video id="scan-video" playsinline muted></video>
     <div class="scan-frame" aria-hidden="true"></div>
-    <h2 id="scan-h" class="scan-title">Scan labels</h2>
+    <div class="cam-top">
+      <h2 id="scan-h" class="scan-title">Scan &amp; take photos</h2>
+      <div id="cam-kinds" class="cam-kinds" role="group" aria-label="What's in the photo?"></div>
+    </div>
+    <button type="button" id="cam-turn" class="cam-turn" aria-live="polite"></button>
+    <div class="cam-flash" aria-hidden="true"></div>
   </div>
   <div class="scan-panel">
     <p id="scan-msg" class="scan-msg" role="status" aria-live="polite"></p>
     <div id="scan-ask" class="scan-ask" hidden>
       <p id="scan-ask-text" class="scan-ask-text"></p>
+      <form id="scan-new" class="scan-new">
+        <h3>Make a new entry</h3>
+        <label class="field"><span>Buyer's name</span>
+          <input id="scan-new-name" name="name" type="text" autocomplete="off" autocapitalize="words" spellcheck="false" maxlength="100" placeholder="Name on the label"></label>
+        <p class="muted small">Tip: tap the box, then <strong>Scan Text</strong> on the keyboard to read the name off the label.</p>
+        <label class="field"><span>TCGplayer order # <em>optional, or add it later in History on the PC</em></span>
+          <input id="scan-new-order" name="order" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="60" placeholder="e.g. 1A2B3C4D-5E6F7A-8B9C0"></label>
+        <button type="submit" class="btn primary">Add entry with this tracking #</button>
+      </form>
+      <h3 class="scan-or">Or pick the order it belongs to</h3>
       <label class="search"><span class="sr">Search orders</span><input id="scan-ask-search" type="search" placeholder="Search order # or buyer" autocomplete="off" spellcheck="false"></label>
       <ul id="scan-ask-list" class="orders scan-ask-list"></ul>
       <p id="scan-ask-none" class="empty" hidden>No orders without tracking. Search to see all orders.</p>
-      <button type="button" id="scan-ask-skip" class="link">Not one of these: skip it</button>
+      <button type="button" id="scan-ask-skip" class="link">Skip this one</button>
     </div>
-    <ul id="scan-found" class="scan-found" aria-label="Scanned orders"></ul>
+    <ul id="scan-found" class="scan-found" aria-label="Orders in the photo"></ul>
+    <ul id="cam-shots" class="cam-shots" aria-label="Photos taken"></ul>
     <button type="button" id="scan-still" class="link" hidden>Take a picture of the code</button>
     <div class="scan-btns">
       <button type="button" id="scan-done" class="btn secondary">Cancel</button>
-      <button type="button" id="scan-photo" class="btn primary" disabled>Take photo</button>
+      <button type="button" id="cam-shutter" class="shutter" aria-label="Take photo" disabled><span></span></button>
+      <button type="button" id="scan-photo" class="btn secondary" disabled>iPhone camera</button>
     </div>
   </div>
   <input id="in-scan" type="file" accept="image/*" capture="environment" hidden>

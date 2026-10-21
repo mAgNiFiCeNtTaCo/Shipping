@@ -136,17 +136,30 @@ like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
 3. Point the iPhone's **Camera** at the QR code and tap the link. In Safari tap **Share → Add to Home Screen**:
    next time it's one tap.
 
-**Taking photos:** on the phone pick what's in the photo (Contents / Packed / Post office), pick the orders, then
-**Take photo** (or **Choose photos** for ones you already took). Two ways to pick the orders:
-- **Scan labels**: point the camera at the order QR code Ship Desk printed (label, envelope or packing slip), or at
-  the **tracking barcode** on a bubble mailer's label (Pirate Ship, USPS, UPS). Scan one after another for a
-  stack, then **Take photo**. The order list is picked for you.
-- Or tap the orders in the list (one photo of a stack can go to several orders). It shows orders not shipped yet
-  first; **All** shows the rest.
+**Taking photos:** **Scan labels** (or **Take photo** after ticking orders) opens Ship Desk's camera screen:
+- It reads codes while you aim: the order QR code Ship Desk printed (label, envelope or packing slip) or the
+  **tracking barcode** on a bubble mailer's label (Pirate Ship, USPS, UPS). Each one scanned joins the orders on
+  screen; scan a whole stack one after another.
+- Pick **Contents / Packed / Post office** at the top and press the round **shutter** as often as you like: every
+  photo goes to all the orders on screen, and you stay on the camera. Switch the type and keep shooting. **Done**
+  goes back. (**iPhone camera** takes one photo with the iPhone's own camera app instead.)
+- **Turned the right way:** the phone's tilt sensor tells which way you hold it, so photos taken sideways are saved
+  turned upright. Shooting straight down at the desk keeps the way you last held it. The button on the picture
+  ("Photo upright (auto)") shows what the next photo gets; tap it to turn by hand. The first time, the iPhone asks to
+  allow "motion": tap Allow.
+- Or tick the orders in the list and use **Choose photos** for pictures you already took. The list shows orders
+  not shipped yet first; **All** shows the rest.
+
+**Post office photos mark orders shipped:** when a post office photo reaches the PC, Ship Desk marks its orders
+shipped (History and the TCGplayer import file), unless they already were: an order that already has its tracking
+number or shipped date keeps them.
 
 **Bubble mailers:** the first time you scan a mailer's tracking barcode that Ship Desk doesn't know yet, the phone
-asks **which order is in this mailer** and you tap it. The tracking number then goes to the PC (it waits on the
-phone if the PC can't be reached, like photos) and Ship Desk puts it on that order: it shows in **History** as
+asks about it. Either **make a new entry**: type the buyer's name from the label (or tap the box and use the
+keyboard's **Scan Text**), and the TCGplayer order # if you have it; or pick the order it belongs to. A new entry
+without an order # shows in History as "Mailer scanned on the phone" with an **Add order #** box: type the
+TCGplayer order # there later and it becomes that order (its photos move to the order's folder). The tracking number then goes to the PC (it waits on the
+phone if the PC can't be reached, like photos) and Ship Desk puts it on the entry: it shows in **History** as
 shipped with its tracking number, and goes in the **TCGplayer import file**, so there's nothing to paste. Next
 time that barcode is scanned it picks the order straight away. Tracking numbers you pasted in Ship Desk work the
 same way.
@@ -157,8 +170,8 @@ signal (from the home-screen icon), and the photos go to the PC by themselves th
 and you open the page.
 
 **On the PC:** History has a **Photos** column ("4 photos: 2 contents, 2 packed"); click it to see them, or
-**Open this order's photo folder**. Orders of the loaded file that get photos, and orders given a tracking number
-on the phone, are added to History.
+**Open this order's photo folder**. Under each photo, **↺ / ↻** turn it a quarter left or right (the saved file is
+turned). Orders of the loaded file that get photos, and orders given a tracking number on the phone, are added to History.
 
 - Photos are shrunk to at most 2560 pixels on the long side and re-saved as JPEG, which also strips the
   phone's location data.
@@ -166,7 +179,8 @@ on the phone, are added to History.
   the new code. Their waiting photos are kept. **Switch off phone access** closes the address again.
 - The camera needs the page to be allowed to use it; if it won't start, **Take a picture of the code** reads the
   code from a photo instead.
-- The phone only marks an order shipped when you give it a mailer's tracking number. Plain photos don't.
+- The phone marks an order shipped only with a post office photo or a mailer's tracking number. Contents and
+  packed photos don't.
 
 ## Where your data is kept
 

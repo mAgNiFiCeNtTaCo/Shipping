@@ -4,18 +4,49 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-10-20)
-- Working. First real labels printed on 2026-10-20 (thermal); not yet tried on a real TCGplayer import.
+## Where it stands (2026-10-21)
+- Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; not yet tried
+  on a real TCGplayer import.
 - Start: double-click `Start Ship Desk.bat` (runs `python serve.py`) -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **144 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 13).
+- Tests: `python tools/test.py` = **148 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 17).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored).
 - Phone page (`/phone.html`, iPhone through Tailscale serve, pairing code): photos per order (contents / packed /
-  post office) into `Saved\Photos`, offline queue; **Scan labels** reads the order QR codes and mailer tracking
-  barcodes. Phone access is switched on from the PC's "Phone photos" window (not yet switched on for real).
+  post office) into `Saved\Photos`, offline queue. Its camera screen scans order QR codes and mailer tracking
+  barcodes and takes any number of photos in a row, turned upright by the tilt sensor. Post office photos mark
+  orders shipped; unknown mailers become History entries (name + tracking, order # added later). Phone access is
+  on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-21: mailer entries, camera screen, post office = shipped, photo turning
+- **Mailer not in the list** (user: a scanned USPS label wanted an existing entry; make the entry from name +
+  tracking, order # later): the phone's question screen now starts with **Make a new entry** (buyer's name, typed
+  or read with the iPhone keyboard's Scan Text; optional TCGplayer order #). Without an order # it is keyed
+  `mailer:<tracking>` (history source "mailer"), listed in History as "Mailer scanned on the phone" with an
+  **Add order #** box; typing it (`setOrderNumber`) re-keys the record to the order, puts it in step 4's shipped
+  list and moves its photos (`POST /api/photos-rekey`; `Saved/Phone/rekeys.json` sends later uploads to the order).
+  The server lists phone-made entries in the order list until the PC takes them, so the phone keeps them.
+- **Several photos in a row** (user): the scanner became the camera screen: Contents / Packed / Post office switch
+  on the picture, round shutter (`shoot`) for any number of photos for all orders on screen, thumbnails strip,
+  Done. "Take photo" opens it with the ticked orders; "iPhone camera" still takes one native photo.
+- **Sideways photos** (user: rotate photos taken landscape): all 20 photos the user sent were saved tall, i.e. the
+  phone held sideways over the desk wasn't noticed. The camera screen reads `devicemotion` gravity (iPhone sign is
+  the opposite of Android's), keeps the last turn while the phone lies flat, skips turning when the page itself
+  is landscape, and has a tap-to-turn override. The PC photos window got turn left/right buttons that rewrite the
+  saved JPEG (`POST /api/photo-rotate`), for photos already saved.
+- **Post office photo = shipped** (user): each new post office photo leaves a "shipped" note in `links.json`
+  (empty tracking); `takePhoneLinks` marks the order shipped only if it isn't already (tracking and date kept).
+- Bug found by the tests: on Windows `os.replace` of photos.json failed while another request was reading it,
+  so a photo move could look lost. `read_json` / `write_json` now retry for up to a second.
+- Own mistake, recovered: a patch script opened `app/js/phone.js` for writing and then failed on an emoji escape,
+  leaving the file empty. Rebuilt from the last commit and re-applied the session's changes in order; the full
+  suite proved nothing was lost. Patch scripts now encode before opening the file and keep each file's CRLF/LF.
+- Tests 144 -> 148 (mailer entry + order # later, camera shots with turn direction checked by a red corner mark,
+  post office shipped vs already shipped, PC turn buttons), stable over 3 runs. Ship Desk restarted twice at the
+  user's OK; caches `shipdesk-v10` / `shipdesk-phone-v4`.
+- Open: tilt-sensor direction not yet confirmed on the real iPhone (flip `onMotion` if photos turn the wrong way).
+
 ### 2026-10-20: phone photos, label scanning, sideways label fix
 - **Phone photos** (user: pick the order, attach contents / packed / post office photos from the phone, save them
   here, queue them when the server is down): new `app/phone.html` + `js/phone.js` + `css/phone.css` + `phone-sw.js`.

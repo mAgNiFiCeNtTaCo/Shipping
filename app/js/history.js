@@ -2,7 +2,7 @@
 // Kept by app.js in localStorage (KEYS.history) as { [key]: record }. Only what's needed to recognise an
 // order is kept (buyer name, city, state, ZIP; no street address).
 //
-// record = { key, id, source: "csv" | "paste", name, city, state, zip, value, items, tag, orderDate,
+// record = { key, id, source: "csv" | "paste" | "mailer", name, city, state, zip, value, items, tag, orderDate,
 //            printedAt, lastPrintedAt, printCount, format,          // labels ("" / 0 when never printed here)
 //            shipped, tracking, carrier, shippedAt }                  // shipping
 
@@ -36,8 +36,12 @@ export function stamp(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** TCGplayer order numbers are unique; pasted orders (P-001...) restart every paste, so use name + ZIP. */
+/**
+ * TCGplayer order numbers are unique; pasted orders (P-001...) restart every paste, so use name + ZIP; a mailer
+ * scanned on the phone before its order # is known uses its tracking number.
+ */
 export function historyKey(order, source) {
+  if (source === "mailer") return "mailer:" + String(order.tracking || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
   if (source === "paste") return `paste:${String(order.name || "").trim().toLowerCase()}|${String(order.zip || "").trim()}`;
   return String(order.id || "");
 }
@@ -45,8 +49,8 @@ export function historyKey(order, source) {
 function base(order, source) {
   return {
     key: historyKey(order, source),
-    id: source === "paste" ? "" : String(order.id || ""),
-    source: source === "paste" ? "paste" : "csv",
+    id: source === "paste" || source === "mailer" ? "" : String(order.id || ""),
+    source: source === "paste" || source === "mailer" ? source : "csv",
     name: order.name || "",
     city: order.city || "",
     state: order.state || "",
@@ -63,7 +67,7 @@ function base(order, source) {
 // Refresh the descriptive fields from the order (a re-upload may correct a name), keep the history fields.
 function upsert(hist, order, source) {
   const key = historyKey(order, source);
-  if (!key || key === "paste:|") return null;
+  if (!key || key === "paste:|" || key === "mailer:") return null;
   const fresh = base(order, source);
   const cur = hist[key];
   hist[key] = cur ? { ...cur, name: fresh.name || cur.name, city: fresh.city || cur.city, state: fresh.state || cur.state,
@@ -163,8 +167,8 @@ export const HISTORY_CSV_HEADER = ["Order #", "Buyer", "City", "State", "ZIP", "
 /** The records as a CSV (for a spreadsheet). */
 export function historyCsv(records, tagLabels = {}) {
   return toCsv([HISTORY_CSV_HEADER, ...records.map((r) => [
-    r.id || "(pasted)", r.name, r.city, r.state, r.zip, (Number(r.value) || 0).toFixed(2), String(r.items || ""),
+    r.id || (r.source === "mailer" ? "(not added yet)" : "(pasted)"), r.name, r.city, r.state, r.zip, (Number(r.value) || 0).toFixed(2), String(r.items || ""),
     tagLabels[r.tag] || r.tag || "", r.printedAt, r.lastPrintedAt, String(r.printCount || 0), formatName(r.format),
-    r.shipped ? "Yes" : "No", r.shippedAt, r.tracking, r.carrier, r.source === "paste" ? "Pasted addresses" : "TCGplayer file",
+    r.shipped ? "Yes" : "No", r.shippedAt, r.tracking, r.carrier, r.source === "paste" ? "Pasted addresses" : r.source === "mailer" ? "Mailer scanned on the phone" : "TCGplayer file",
   ])]);
 }

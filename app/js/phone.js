@@ -164,7 +164,22 @@ export async function refresh() {
     if (r.status === 403) state.link = "code";
     else if (r.ok) {
       const data = await r.json();
-      state.orders = Array.isArray(data.orders) ? data.orders : [];
+      const fresh = Array.isArray(data.orders) ? data.orders : [];
+      // Entries made on this phone (a new mailer, a QR code the list didn't have) stay until the PC lists them.
+      const known = new Set(fresh.map((o) => o.key));
+      const byTracking = new Map(fresh.filter((o) => o.tracking).map((o) => [compact(o.tracking), o]));
+      const keep = [];
+      for (const o of state.orders) {
+        if (known.has(o.key)) continue;
+        const now = o.tracking && byTracking.get(compact(o.tracking));
+        if (now) { // the PC gave this mailer its order #: pick that order instead
+          if (state.pick.delete(o.key)) state.pick.add(now.key);
+          continue;
+        }
+        if ((o.local || o.scanned) && (state.pick.has(o.key) || state.queue.some((q) => q.order === o.key))) keep.push(o);
+      }
+      state.orders = [...fresh, ...keep];
+      lsSet(LS.pick, [...state.pick]);
       state.photos = data.photos || {};
       state.updated = data.updated || "";
       lsSet(LS.orders, { orders: state.orders, photos: state.photos, updated: state.updated });
@@ -264,10 +279,12 @@ async function prepare(file) {
   }
 }
 
-const orderLabel = (o) => (o ? (o.id || `${o.name} (${o.zip})`) : "");
+const orderLabel = (o) => (!o ? "" : o.id ? o.id
+  : o.source === "mailer" ? `${o.name || "Mailer"} (…${String(o.tracking || "").slice(-4)})` : `${o.name} (${o.zip})`);
+const idText = (o) => o.id || (o.source === "mailer" ? "No order # yet" : "Pasted address");
 
-/** Put photos in the queue for every picked order, then try to send them. */
-export async function addFiles(files) {
+/** Put photos in the queue for every picked order, then try to send them (wait = until sent or failed). */
+export async function addFiles(files, { wait = true } = {}) {
   const orders = state.orders.filter((o) => state.pick.has(o.key));
   if (!orders.length) { toast("Tap the orders in the photo first."); return 0; }
   let added = 0;
@@ -285,10 +302,15 @@ export async function addFiles(files) {
   }
   state.recent = state.recent.slice(0, MAX_RECENT);
   lsSet(LS.recent, state.recent.map((r, i) => (i < 20 ? r : { ...r, thumb: "" })));
+  if (added && state.kind === "postoffice") {
+    // Handed in: the PC marks these orders shipped when the photo arrives. Show it here already.
+    for (const o of orders) if (!o.shipped) o.shipped = localStamp().slice(0, 10);
+    lsSet(LS.orders, { orders: state.orders, photos: state.photos, updated: state.updated });
+  }
   await loadQueue();
   render();
   if (added) toast(`${plural(added, "photo")} added for ${plural(orders.length, "order")}.`);
-  await pump();
+  if (wait) await pump(); else pump();
   return added;
 }
 
@@ -508,6 +530,22 @@ export function handleScan(text) {
   return s;
 }
 
+/**
+ * A mailer whose order isn't in the list: make a new entry from its tracking number and the buyer's name (the
+ * TCGplayer order # can be added now or later in History on the PC). Returns the new entry's key.
+ */
+export async function newMailerEntry(tracking, carrier = "", name = "", orderId = "") {
+  const id = String(orderId || "").trim().toUpperCase();
+  const existing = id && state.orders.find((o) => o.id && compact(o.id) === compact(id));
+  if (existing) { await linkTracking(existing.key, tracking, carrier); return existing.key; }
+  const o = id
+    ? { key: id, id, source: "csv", name: String(name || "").trim(), city: "", state: "", zip: "", local: true }
+    : { key: "mailer:" + compact(tracking), id: "", source: "mailer", name: String(name || "").trim(), city: "", state: "", zip: "", local: true };
+  if (!state.orders.some((x) => x.key === o.key)) state.orders.push(o);
+  await linkTracking(o.key, tracking, carrier);
+  return o.key;
+}
+
 /** Give a scanned tracking number to an order: kept on the phone until the PC has it, like a photo. */
 export async function linkTracking(key, tracking, carrier = "") {
   const o = state.orders.find((x) => x.key === key);
@@ -531,7 +569,7 @@ async function startCamera() {
   const video = $("#scan-video");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no camera");
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
-    video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1920 } } });
   if (!scan.open) { stream.getTracks().forEach((t) => t.stop()); return; }
   scan.stream = stream;
   video.srcObject = stream;
@@ -562,10 +600,95 @@ function stopCamera() {
   if (v) v.srcObject = null;
 }
 
-/** Open the scanner: the camera looks for codes until Done. */
-export async function openScanner() {
+// ---------- the camera: several photos in a row, turned the way the phone is held ----------
+
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const TURNS = { 0: "upright", 90: "turned right", 180: "upside down", 270: "turned left" };
+export const turn = { auto: 0, manual: null, listening: false };
+
+// The phone's tilt sensor says how it is held. Lying flat (shooting straight down at the desk) says nothing,
+// so the last way it was held is kept, like the iPhone camera does.
+export function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a || a.x == null || a.y == null) return;
+  const gx = IOS ? a.x : -a.x, gy = IOS ? a.y : -a.y; // iPhones report gravity, Android the opposite
+  if (Math.hypot(gx, gy) < 3.5) return;
+  const theta = (Math.atan2(gx, -gy) * 180) / Math.PI;
+  const q = Math.round(theta / 90);
+  if (Math.abs(theta - q * 90) > 30) return;
+  const rot = (((q * 90) % 360) + 360) % 360;
+  if (rot !== turn.auto) { turn.auto = rot; renderTurn(); }
+}
+
+function startMotion() {
+  if (turn.listening || !window.DeviceMotionEvent) return;
+  const listen = () => { if (!turn.listening) { window.addEventListener("devicemotion", onMotion); turn.listening = true; } };
+  try {
+    // iPhones ask once; this has to run straight from the tap.
+    if (typeof DeviceMotionEvent.requestPermission === "function") DeviceMotionEvent.requestPermission().then((r) => { if (r === "granted") listen(); }).catch(() => {});
+    else listen();
+  } catch { /* no tilt sensor: photos stay as the camera sees them */ }
+}
+
+/** How many degrees (clockwise) the next camera photo is turned. */
+export function photoTurn() {
+  if (turn.manual != null) return turn.manual;
+  if (window.innerWidth > window.innerHeight) return 0; // the page turned with the phone: the picture already did
+  return turn.auto;
+}
+
+function renderTurn() {
+  const b = $("#cam-turn");
+  if (!b) return;
+  const t = photoTurn();
+  b.textContent = `↻ Photo ${TURNS[t]}${turn.manual == null ? " (auto)" : ""}`;
+}
+
+// The camera picture as a still, at most MAX_SIDE, turned `deg` degrees clockwise.
+function grab(video, deg) {
+  const s = Math.min(1, MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.round(video.videoWidth * s), h = Math.round(video.videoHeight * s);
+  const c = document.createElement("canvas");
+  c.width = deg % 180 ? h : w;
+  c.height = deg % 180 ? w : h;
+  const g = c.getContext("2d");
+  g.translate(c.width / 2, c.height / 2);
+  g.rotate((deg * Math.PI) / 180);
+  g.drawImage(video, -w / 2, -h / 2, w, h);
+  return c;
+}
+
+/** The shutter: one photo for every order on the camera screen, then straight back to the camera. */
+export async function shoot() {
+  const video = $("#scan-video");
+  if (!scan.found.length) { scanSay("Scan a label first, or pick the orders on the main screen."); return 0; }
+  if (!scan.stream || !video.videoWidth) { scanSay("The camera isn't ready yet."); return 0; }
+  const deg = photoTurn();
+  const blob = await new Promise((r) => grab(video, deg).toBlob(r, "image/jpeg", 0.92));
+  const v = $("#scanner .scan-view");
+  v.classList.add("flash");
+  setTimeout(() => v.classList.remove("flash"), 120);
+  if (!blob) return 0;
+  state.pick = new Set(scan.found);
+  lsSet(LS.pick, [...state.pick]);
+  const added = await addFiles([new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" })], { wait: false });
+  if (added) {
+    const r = state.recent[0];
+    scan.shots.unshift({ id: r.id, kind: r.kind, thumb: r.thumb });
+    const k = KINDS.find((x) => x.id === state.kind);
+    const n = scan.shots.filter((s) => s.kind === state.kind).length;
+    scanSay(`${k.label} photo ${n} saved for ${r.labels}${state.kind === "postoffice" ? " (marked shipped)" : ""}. Take another, or switch the type above.`);
+    renderScan();
+  }
+  return added;
+}
+
+/** Open the camera screen: it reads codes (which pick orders) and takes photos until Done. */
+export async function openScanner(startWith = []) {
+  startMotion();
   scan.open = true;
-  scan.found = [];
+  scan.found = [...startWith];
+  scan.shots = [];
   scan.ask = null;
   scan.last = "";
   $("#scanner").hidden = false;
@@ -573,13 +696,19 @@ export async function openScanner() {
   $("#scan-still").hidden = true;
   scanSay("Starting the camera…");
   renderScan();
+  renderTurn();
   try {
     await startCamera();
-    if (scan.open) scanSay("Point at the QR code on the label, envelope or slip, or at the tracking barcode.");
+    if (scan.open) {
+      scanSay(scan.found.length ? "Take the photos (as many as you like), or scan more labels."
+        : "Point at the QR code on the label, envelope or slip, or at the tracking barcode. Then take the photos.");
+      renderScan();
+    }
   } catch {
     if (!scan.open) return;
     $("#scan-still").hidden = false;
-    scanSay("The camera didn't start. Tap “Take a picture of the code” instead, or allow the camera for this page.");
+    scanSay("The camera didn't start. Tap “Take a picture of the code” or “iPhone camera” instead, or allow the camera for this page.");
+    renderScan();
   }
 }
 
@@ -636,17 +765,28 @@ function renderScan() {
   const n = scan.found.length;
   $("#scan-done").textContent = n ? `Done (${n})` : "Cancel";
   $("#scan-photo").disabled = !n;
+  $("#cam-shutter").disabled = !n || !scan.stream;
+  for (const b of document.querySelectorAll("#cam-kinds button")) b.setAttribute("aria-pressed", String(b.dataset.kind === state.kind));
+  const short = { contents: "C", packed: "P", postoffice: "PO" };
+  $("#cam-shots").replaceChildren(...(scan.shots || []).slice(0, 30).map((s) => el("li", {},
+    s.thumb ? el("img", { src: s.thumb, alt: `${(KINDS.find((k) => k.id === s.kind) || {}).label} photo` }) : el("span", { class: "nothumb", text: "📷" }),
+    el("span", { class: "k", "aria-hidden": "true", text: short[s.kind] || "" }))));
   const ask = $("#scan-ask");
   ask.hidden = !scan.ask;
   $("#scanner .scan-view").hidden = !!scan.ask;
   $("#scanner").classList.toggle("asking", !!scan.ask);
   if (!scan.ask) return;
-  $("#scan-ask-text").textContent = `Tracking ${scan.ask.tracking} isn't on an order yet. Which order is in this mailer?`;
+  $("#scan-ask-text").textContent = `Tracking ${scan.ask.tracking} isn't on an order yet.`;
+  if (scan.askFor !== scan.ask.tracking) {
+    scan.askFor = scan.ask.tracking;
+    $("#scan-new-name").value = "";
+    $("#scan-new-order").value = "";
+  }
   const list = askChoices();
   $("#scan-ask-list").replaceChildren(...list.map((o) => el("li", {},
     el("button", { type: "button", class: "order ask-pick", "data-link": o.key },
       el("span", { class: "o-main" },
-        el("span", { class: "o-id", text: o.id || "Pasted address" }),
+        el("span", { class: "o-id", text: idText(o) }),
         el("span", { class: "o-who", text: [o.name, [o.city, o.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") }))))));
   $("#scan-ask-none").hidden = list.length > 0;
 }
@@ -681,7 +821,7 @@ function orderRow(o) {
     el("label", { class: "order" + (on ? " on" : "") },
       el("input", { type: "checkbox", class: "pick", value: o.key, checked: on }),
       el("span", { class: "o-main" },
-        el("span", { class: "o-id", text: o.id || "Pasted address" }),
+        el("span", { class: "o-id", text: idText(o) }),
         el("span", { class: "o-who", text: [o.name, where].filter(Boolean).join(" · ") }),
         el("span", { class: "tags" }, tags))));
 }
@@ -709,7 +849,7 @@ export function render() {
   $("#work").hidden = !paired && !state.orders.length;
   $("#bar").hidden = $("#work").hidden;
 
-  for (const b of document.querySelectorAll("#kinds button")) b.setAttribute("aria-pressed", String(b.dataset.kind === state.kind));
+  for (const b of document.querySelectorAll("#kinds button, #cam-kinds button")) b.setAttribute("aria-pressed", String(b.dataset.kind === state.kind));
   for (const b of document.querySelectorAll("#filters button")) b.setAttribute("aria-pressed", String(b.dataset.filter === state.filter));
 
   const rows = visibleOrders();
@@ -758,10 +898,26 @@ function renderRecent() {
 function build() {
   $("#kinds").replaceChildren(...KINDS.map((k) => el("button", { type: "button", class: "kind", "data-kind": k.id, "aria-pressed": "false" },
     el("strong", { text: k.label }), el("span", { text: k.hint }))));
+  $("#cam-kinds").replaceChildren(...KINDS.map((k) => el("button", { type: "button", "data-kind": k.id, "aria-pressed": "false", text: k.label })));
   $("#filters").replaceChildren(...FILTERS.map((f) => el("button", { type: "button", class: "filter", "data-filter": f.id, "aria-pressed": "false", text: f.label })));
 }
 
 function bind() {
+  $("#cam-kinds").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-kind]");
+    if (!b) return;
+    state.kind = b.dataset.kind;
+    lsSet(LS.kind, state.kind);
+    render();
+    renderScan();
+  });
+  $("#cam-shutter").addEventListener("click", () => shoot());
+  $("#cam-turn").addEventListener("click", () => {
+    // Each tap turns the next photos a quarter more; back at what the sensor says, it's automatic again.
+    const next = (photoTurn() + 90) % 360;
+    turn.manual = next === turn.auto && window.innerWidth <= window.innerHeight ? null : next;
+    renderTurn();
+  });
   $("#kinds").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-kind]");
     if (!b) return;
@@ -785,7 +941,11 @@ function bind() {
     render();
   });
   $("#btn-clear").addEventListener("click", () => { state.pick.clear(); lsSet(LS.pick, []); render(); });
-  $("#btn-cam").addEventListener("click", () => $("#in-cam").click());
+  $("#btn-cam").addEventListener("click", () => {
+    // The camera screen takes several photos in a row; without a camera there, the iPhone camera takes one.
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) openScanner([...state.pick]);
+    else $("#in-cam").click();
+  });
   $("#btn-lib").addEventListener("click", () => $("#in-lib").click());
   for (const id of ["#in-cam", "#in-lib"]) {
     $(id).addEventListener("change", async (e) => {
@@ -814,6 +974,13 @@ function bind() {
     if (b && scan.ask) linkTracking(b.dataset.link, scan.ask.tracking, scan.ask.carrier);
   });
   $("#scan-ask-search").addEventListener("input", (e) => { scan.askSearch = e.target.value; renderScan(); });
+  $("#scan-new").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!scan.ask) return;
+    const name = $("#scan-new-name").value.trim();
+    if (!name) { toast("Type the buyer's name from the label first."); $("#scan-new-name").focus(); return; }
+    await newMailerEntry(scan.ask.tracking, scan.ask.carrier, name, $("#scan-new-order").value);
+  });
   $("#scan-ask-skip").addEventListener("click", () => { scan.ask = null; scanSay("Skipped. Scan the next code."); renderScan(); });
   $("#recent").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-forget]");
@@ -861,7 +1028,8 @@ export async function init() {
   return api;
 }
 
-export const api = { state, scan, init, refresh, pump, addFiles, queueAll, setCode, render, parseScan, handleScan, linkTracking,
+export const api = { state, scan, turn, init, refresh, pump, addFiles, queueAll, setCode, render, parseScan, handleScan, linkTracking, newMailerEntry,
+  shoot, photoTurn, onMotion,
   openScanner, closeScanner, scanFile, decodeCanvas };
 
 if (document.querySelector("[data-shipdesk-phone]")) init();

@@ -151,6 +151,39 @@
     "Headless --virtual-time-budget screenshots don't wait for IndexedDB; use real-time DevTools capture.",
     "A canvas captureStream() makes a fake camera for testing getUserMedia scanners in headless Edge."
    ]
+  },
+  {
+   "title": "Mailer entries, camera screen, post office = shipped, photo turning",
+   "date": "2026-10-21",
+   "summary": "The orchestrator session turned unknown mailer scans into History entries, made the scanner a multi-photo camera that turns sideways shots upright, marked orders shipped from post office photos, and added photo turn buttons on the PC (148 tests).",
+   "stages": [
+    {
+     "name": "Follow-up requests",
+     "kind": "solo",
+     "sessions": [
+      {
+       "id": "bce15ced",
+       "role": "Orchestrator (solo)",
+       "start": "2026-10-20T22:40",
+       "end": "2026-10-21T00:25",
+       "did": "mailer:<tracking> entries + Add order # in History with photo re-key; camera screen with shutter, type switch and tilt-based turning; post office photo -> shipped note; PC photo turn buttons; Windows file-replace retry; 4 new tests",
+       "outcome": "done",
+       "files": 14
+      }
+     ]
+    }
+   ],
+   "events": [
+    {
+     "time": "2026-10-20T23:50",
+     "text": "A failed patch script emptied app/js/phone.js; rebuilt from git and re-applied"
+    }
+   ],
+   "lessons": [
+    "Write a file only after its new content is fully encoded: open(..., 'w') empties it before a failing write.",
+    "On Windows, os.replace onto a JSON file that another thread is reading raises PermissionError: retry briefly.",
+    "Photos shot straight down at a desk lose their orientation; a web camera can use devicemotion gravity and keep the last turn while flat."
+   ]
   }
  ]
 }

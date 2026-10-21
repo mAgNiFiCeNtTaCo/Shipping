@@ -23,7 +23,14 @@ explain in plain words and finish jobs end to end.
   Order QR = `SHIPDESK:<history key>` (render.js `orderQrText`, design option `orderQr`, not on Avery). A mailer's
   unknown tracking number is linked to an order on the phone, queued like a photo (`link: true`), sent to
   `POST /api/phone/link` -> `Saved/Phone/links.json`; the PC page takes them (`takePhoneLinks`, `GET /api/links`,
-  `POST /api/links-done`) into History + `state.shipped`.
+  `POST /api/links-done`) into History + `state.shipped`. A mailer with no order in the list becomes a new entry
+  keyed `mailer:<tracking>` (history source "mailer"); typing its order # in History (`setOrderNumber`) re-keys it and
+  `POST /api/photos-rekey` moves its photos (`Saved/Phone/rekeys.json` sends late uploads to the order).
+- Camera screen = the scanner (`#scanner`): shutter (`shoot`) takes any number of photos for `scan.found` without
+  leaving; turn from `devicemotion` gravity (`onMotion`, iOS sign differs from Android; flat keeps the last turn;
+  no turn when the page itself is landscape); `#cam-turn` overrides. A post office photo leaves a "shipped" note
+  (`links.json`, empty tracking) that `takePhoneLinks` applies only to orders not shipped yet. PC turn buttons:
+  canvas rotate + `POST /api/photo-rotate`.
 - `app/sw.js` offline cache (bump `VERSION` whenever app files change), `app/manifest.webmanifest`, `app/icon.svg`.
 - `app/vendor/` jsPDF 2.5.2, pdf.js 3.11.174, qrcode-generator 1.4.4, @zxing/library 0.21.3 (no CDN: the app works offline).
 - `app/samples/tcgplayer-sample.csv` invented sample orders. `app/tests/` browser test suites.
@@ -55,5 +62,7 @@ explain in plain words and finish jobs end to end.
 - `--virtual-time-budget` screenshots don't wait for IndexedDB: the phone shots use real-time DevTools capture (`live_shot`).
 - Tests never touch real Tailscale (`tools/test.py` fakes `tailscale_status` / `tailscale_switch`).
 - The `thermal6x4` label is an upright 4x6 page with the layout turned (render.js `sideways`): thermal printers cut a wide page off.
+- Patch scripts: encode before opening for "wb" (a failed write must not empty the file), keep each file's
+  line endings (CRLF files exist), and never re-run a script whose `new` text contains its `old` text.
 - zxing finds one code per look and doesn't turn 1D barcodes by itself: phone.js covers a useless code and looks
   again (`decodeUseful`), and turns the picture every other frame. Scanner tests use a canvas `captureStream()` as the camera.

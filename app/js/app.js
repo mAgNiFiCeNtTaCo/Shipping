@@ -666,7 +666,12 @@ function historyRow(r) {
     el("td", { class: "c-printed" },
       r.printCount ? el("span", { text: String(r.lastPrintedAt).slice(0, 10) }) : el("span", { class: "muted", text: "Not made here" }),
       r.printCount ? el("span", { class: "sub muted", text: formatName(r.format) + (r.printCount > 1 ? ` · ${r.printCount} times` : "") }) : null),
-    el("td", { class: "c-id" }, el("span", { class: "oid", text: r.id || "Pasted" }), r.orderDate ? el("span", { class: "sub muted", text: r.orderDate }) : null),
+    r.source === "mailer" && !r.id
+      ? el("td", { class: "c-id" },
+        el("label", { class: "sr", for: "hoid-" + tid, text: `TCGplayer order number for ${label}` }),
+        el("input", { id: "hoid-" + tid, class: "trk-input h-oid", type: "text", placeholder: "Add order #", autocomplete: "off", spellcheck: "false" }),
+        el("span", { class: "sub muted", text: "Mailer scanned on the phone" }))
+      : el("td", { class: "c-id" }, el("span", { class: "oid", text: r.id || "Pasted" }), r.orderDate ? el("span", { class: "sub muted", text: r.orderDate }) : null),
     el("td", { class: "c-buyer", text: r.name }),
     el("td", { class: "c-dest", text: `${r.city}${r.city && r.state ? ", " : ""}${r.state} ${r.zip}`.trim() }),
     el("td", { class: "num c-value", text: money(r.value) }),
@@ -727,6 +732,35 @@ function updateHistoryShipped(key, entry) {
   renderAll();
 }
 
+/**
+ * A mailer entry (scanned on the phone, no order # yet) gets its TCGplayer order #: it becomes that order's
+ * record (merged with one already in History), counts as shipped with its tracking in step 4, and its photos
+ * move to the order's folder.
+ */
+export async function setOrderNumber(oldKey, value) {
+  const id = String(value || "").trim();
+  const r = state.history[oldKey];
+  if (!r || !id || id === oldKey) return null;
+  const cur = state.history[id];
+  const rec = { ...r, ...(cur || {}), key: id, id, source: "csv", name: (cur && cur.name) || r.name };
+  if (!rec.tracking) Object.assign(rec, { tracking: r.tracking, carrier: r.carrier });
+  rec.shipped = true;
+  rec.shippedAt = (cur && cur.shippedAt) || r.shippedAt;
+  delete state.history[oldKey];
+  state.history[id] = rec;
+  state.shipped[id] = { tracking: rec.tracking, carrier: rec.carrier, shipped: true, at: today() };
+  saveHistory();
+  saveShipped();
+  try {
+    await shipdeskFetch("api/photos-rekey", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: oldKey, to: id, name: rec.name }) });
+  } catch { /* Ship Desk's window is closed: the photos stay under the mailer for now */ }
+  await refreshPhotos();
+  renderAll();
+  toast(`${r.name || "The mailer"} is now order ${id}.`);
+  return rec;
+}
+
 export function historyFile() {
   return historyCsv(historyList(state.history, { filter: state.historyFilter, search: state.historySearch }), TAG_LABELS);
 }
@@ -749,6 +783,8 @@ function bindHistory() {
     if (e.target.classList.contains("h-shipped")) {
       const r = state.history[key];
       updateHistoryShipped(key, e.target.checked ? { shipped: true, tracking: r && r.tracking, carrier: r && r.carrier } : null);
+    } else if (e.target.classList.contains("h-oid")) {
+      setOrderNumber(key, e.target.value);
     } else if (e.target.classList.contains("h-trk")) {
       const t = e.target.value.trim();
       const r = state.history[key];
@@ -880,8 +916,10 @@ export async function refreshPhotos() {
 }
 
 /**
- * Tracking numbers scanned on the phone (a mailer's label given to an order): put them on the order in History
- * and, for TCGplayer orders, in the shipped list step 4 uses for the import file. Returns how many were taken.
+ * Notes from the phone: a tracking number scanned off a mailer and given to an order, or (no tracking number)
+ * "shipped", left by a post office photo. They go on the order in History and, for TCGplayer orders, in the
+ * shipped list step 4 uses for the import file. A "shipped" note leaves an order that is already shipped as it
+ * is. Returns how many notes were taken.
  */
 export async function takePhoneLinks() {
   let links = [];
@@ -890,14 +928,26 @@ export async function takePhoneLinks() {
     if (r.ok) links = (await r.json()).links || [];
   } catch { return 0; }
   if (!links.length) return 0;
+  let tracked = 0, shipped = 0;
   for (const ln of links) {
-    const entry = { tracking: ln.tracking, carrier: ln.carrier || detectCarrier(ln.tracking) || "USPS", shipped: true };
     const o = state.orders.find((x) => historyKey(x, state.source) === ln.order);
-    const source = o ? state.source : ln.source === "paste" ? "paste" : "csv";
-    const order = o || { id: ln.orderId || "", name: ln.name, city: ln.city, state: ln.state, zip: ln.zip };
-    if (state.history[ln.order] && !o) applyShipped(state.history[ln.order], entry);
-    else recordShipped(state.history, order, entry, { source });
-    if (source === "csv" && order.id) state.shipped[order.id] = { ...entry, at: today() };
+    const source = o ? state.source : ["paste", "mailer"].includes(ln.source) ? ln.source : "csv";
+    const order = o || { id: ln.orderId || "", name: ln.name, city: ln.city, state: ln.state, zip: ln.zip, tracking: ln.tracking };
+    const r = state.history[ln.order];
+    const now = (source === "csv" && order.id && state.shipped[order.id]) || {};
+    let entry;
+    if (ln.tracking) {
+      entry = { tracking: ln.tracking, carrier: ln.carrier || detectCarrier(ln.tracking) || "USPS", shipped: true };
+      tracked++;
+    } else {
+      if ((r && r.shipped) || (o && isShippedNow(o)) || now.shipped) continue;
+      const tracking = now.tracking || (r && r.tracking) || "";
+      entry = { tracking, carrier: tracking ? now.carrier || (r && r.carrier) || "" : "", shipped: true };
+      shipped++;
+    }
+    if (r && !o) applyShipped(r, entry, String(ln.taken || "").replace("T", " ").slice(0, 16) || undefined);
+    else recordShipped(state.history, order, entry, { source, when: String(ln.taken || "").replace("T", " ").slice(0, 16) || undefined });
+    if (source === "csv" && order.id) state.shipped[order.id] = { ...now, ...entry, at: today() };
   }
   saveHistory();
   saveShipped();
@@ -905,7 +955,8 @@ export async function takePhoneLinks() {
     await shipdeskFetch("api/links-done", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: links.map((l) => l.id) }) });
   } catch { /* taken again next time: applying twice gives the same result */ }
   renderAll();
-  toast(`${plural(links.length, "tracking number")} from your phone added to History.`);
+  const said = [tracked ? `${plural(tracked, "tracking number")} added` : "", shipped ? `${plural(shipped, "order")} marked shipped (post office photo)` : ""].filter(Boolean);
+  if (said.length) toast(`From your phone: ${said.join(", ")}.`);
   return links.length;
 }
 
@@ -1018,6 +1069,26 @@ function closePhotos() {
   photoUrls = [];
 }
 
+/** Turn a saved photo a quarter turn (deg = 90 right, -90 left) and save it over the old file. */
+export async function rotatePhoto(p, key, img, deg) {
+  if (!img.naturalWidth) return false;
+  const c = document.createElement("canvas");
+  c.width = img.naturalHeight;
+  c.height = img.naturalWidth;
+  const g = c.getContext("2d");
+  g.translate(c.width / 2, c.height / 2);
+  g.rotate((deg * Math.PI) / 180);
+  g.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.92));
+  if (!blob) return false;
+  try {
+    const r = await shipdeskFetch(`api/photo-rotate?id=${encodeURIComponent(p.id)}&order=${encodeURIComponent(key)}`,
+      { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob });
+    if (!r.ok) { toast("Couldn't turn that photo."); return false; }
+  } catch { toast("Ship Desk's window isn't running, so the photo can't be turned."); return false; }
+  return true;
+}
+
 /** The photos window for one order (History → Photos). */
 export async function openPhotos(key) {
   const r = state.history[key] || {};
@@ -1030,16 +1101,27 @@ export async function openPhotos(key) {
     if (!list.length) return null;
     return el("section", { class: "photo-group" }, el("h3", { text: `${k.label} (${list.length})` }),
       el("div", { class: "photo-grid" }, list.map((p) => {
-        const img = el("img", { alt: `${k.label} photo, ${String(p.taken).replace("T", " ")}`, loading: "lazy" });
-        const a = el("a", { class: "photo", target: "_blank", rel: "noopener" }, img, el("span", { class: "small muted", text: String(p.taken).replace("T", " ").slice(0, 16) }));
-        shipdeskFetch(`api/photo?id=${encodeURIComponent(p.id)}&order=${encodeURIComponent(key)}`).then((res) => (res.ok ? res.blob() : null)).then((blob) => {
-          if (!blob) return;
-          const url = URL.createObjectURL(blob);
-          photoUrls.push(url);
-          img.src = url;
-          a.href = url;
-        }).catch(() => {});
-        return a;
+        const when = String(p.taken).replace("T", " ").slice(0, 16);
+        const img = el("img", { alt: `${k.label} photo, ${when}`, loading: "lazy" });
+        const a = el("a", { class: "photo-link", target: "_blank", rel: "noopener" }, img);
+        const load = () => shipdeskFetch(`api/photo?id=${encodeURIComponent(p.id)}&order=${encodeURIComponent(key)}&t=${Date.now()}`)
+          .then((res) => (res.ok ? res.blob() : null)).then((blob) => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            photoUrls.push(url);
+            img.src = url;
+            a.href = url;
+          }).catch(() => {});
+        load();
+        const turnable = /\.jpe?g$/i.test(String(p.file || ""));
+        const turn = (deg) => el("button", { type: "button", class: "link turn", "aria-label": `Turn this photo ${deg < 0 ? "left" : "right"}`,
+          title: `Turn ${deg < 0 ? "left" : "right"}`, text: deg < 0 ? "\u21ba" : "\u21bb",
+          onclick: async (e) => {
+            e.currentTarget.disabled = true;
+            try { if (await rotatePhoto(p, key, img, deg)) load(); } finally { e.currentTarget.disabled = false; }
+          } });
+        return el("figure", { class: "photo" }, a,
+          el("figcaption", { class: "small muted" }, el("span", { text: when }), turnable ? el("span", { class: "turns" }, turn(-90), turn(90)) : null));
       })));
   }).filter(Boolean);
   $("#photos-body").replaceChildren(...(groups.length ? groups : [el("p", { class: "muted", text: "No photos for this order yet." })]),
@@ -1417,7 +1499,7 @@ export const api = {
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
   clearShipped, renderAll, handleFiles, loadSlipFile, today,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
-  phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, openPhone, openPhotos,
+  phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
 };
 
 if (document.querySelector("[data-shipdesk]")) init();

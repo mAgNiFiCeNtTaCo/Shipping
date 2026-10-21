@@ -323,13 +323,13 @@ function code128Canvas(groups, { module = 3, height = 140, turn = false } = {}) 
 async function phoneWithOrders() {
   clearAll();
   await clearQueue();
-  const { app } = await openApp();
+  const { app, doc: pcDoc } = await openApp();
   app.loadCsvText(await sampleText(), "sample.csv");
   ok(await app.syncPhoneOrders(true), "order list sent");
   const { code } = await link();
   const p = await openPhone(code.replace(/-/g, ""));
   await waitFor(() => p.phone.state.link === "ok" && p.phone.state.orders.length === 10, "the phone to get 10 orders");
-  return { app, ...p };
+  return { app, pcDoc, ...p };
 }
 
 Object.assign(tests, {
@@ -445,6 +445,176 @@ Object.assign(tests, {
     eq((await (await fetch("/api/links", { headers: PC })).json()).links.length, 0, "taken once");
     eq(await app.takePhoneLinks(), 0, "nothing left to take");
     ok(app.phoneOrders().find((o) => o.key === "SAMPLE-0006").tracking === "9400111899223344550001", "the phone's list carries it");
+    dropFrames();
+  },
+
+  "scan: a mailer whose order isn't listed becomes a new entry (name + tracking); its order # added on the PC later": async () => {
+    const { app, pcDoc, win, doc, phone } = await phoneWithOrders();
+    win.navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no camera", "NotFoundError"));
+    await phone.openScanner();
+    phone.handleScan("420490009400111899223344550077");
+    ok(!doc.querySelector("#scan-new").closest("#scan-ask").hidden, "offers a new entry");
+    doc.querySelector("#scan-new").dispatchEvent(new win.Event("submit", { cancelable: true }));
+    ok(!(await phone.queueAll()).length, "no name: nothing made yet");
+    doc.querySelector("#scan-new-name").value = "Zackery Twork";
+    doc.querySelector("#scan-new").dispatchEvent(new win.Event("submit", { cancelable: true }));
+    const key = "mailer:9400111899223344550077";
+    await waitFor(() => phone.scan.found.includes(key), "the new entry to be picked");
+    phone.closeScanner(true);
+    eq([...phone.state.pick], [key]);
+    ok(doc.querySelector("#picked").textContent.includes("Zackery Twork"), doc.querySelector("#picked").textContent);
+    doc.querySelector('#kinds button[data-kind="packed"]').click();
+    await phone.addFiles([await photoFile("mailer.png", 800, 600)]);
+    await waitFor(async () => (await phone.queueAll()).length === 0, "the tracking # and photo to reach the PC");
+    let pc = await photosOnPc();
+    ok(/^Zackery Twork 9400111899223344550077\/Packed /.test(pc[key].photos[0].file), "photo folder: " + pc[key].photos[0].file);
+    await phone.refresh();
+    ok(phone.state.orders.some((o) => o.key === key && o.tracking === "9400111899223344550077"), "the PC's list keeps the entry");
+    ok(doc.querySelector("#orders").textContent.includes("No order # yet"), "shown without an order #");
+    eq(await app.takePhoneLinks(), 1);
+    const r = app.state.history[key];
+    ok(r && r.name === "Zackery Twork" && r.tracking === "9400111899223344550077" && r.shipped && r.source === "mailer" && !r.id, JSON.stringify(r));
+    // On the PC, type the TCGplayer order # into the entry in History.
+    app.showView("history");
+    const box = await waitFor(() => pcDoc.querySelector(`#history-table tr[data-key="${key}"] .h-oid`), "the order # box");
+    ok(box.closest("td").textContent.includes("Mailer scanned on the phone"), "says where it came from");
+    box.value = "TCG-ABC-123";
+    box.dispatchEvent(new pcDoc.defaultView.Event("change", { bubbles: true }));
+    await waitFor(() => app.state.history["TCG-ABC-123"] && !app.state.history[key], "the entry to become the order");
+    const now = app.state.history["TCG-ABC-123"];
+    ok(now.id === "TCG-ABC-123" && now.source === "csv" && now.name === "Zackery Twork" && now.tracking === "9400111899223344550077", JSON.stringify(now));
+    eq(app.state.shipped["TCG-ABC-123"].tracking, "9400111899223344550077", "step 4 knows it");
+    pc = await waitFor(async () => { const all = await photosOnPc(); return all["TCG-ABC-123"] && all; }, "the photo to move to the order");
+    ok(!pc[key], "no photos left under the mailer");
+    ok(/^TCG-ABC-123 Zackery Twork\/Packed /.test(pc["TCG-ABC-123"].photos[0].file), "photo moved: " + pc["TCG-ABC-123"].photos[0].file);
+    // A photo the phone took before it heard about the order # still goes to the order.
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+    const late = await (await fetch("/api/phone/photo?" + new URLSearchParams({ order: key, name: "Zackery Twork", kind: "contents", id: "late12345", taken: "2026-10-20T18:00:00" }),
+      { method: "POST", headers: { "X-Ship-Desk-Key": (await link()).code }, body: jpeg })).json();
+    ok(late.ok && late.file.startsWith("TCG-ABC-123 Zackery Twork/"), "late photo: " + late.file);
+    await app.syncPhoneOrders(true);
+    await phone.refresh();
+    ok(!phone.state.orders.some((o) => o.key === key), "the phone drops the mailer entry");
+    eq([...phone.state.pick], ["TCG-ABC-123"], "and picks the order instead");
+    // With the order # typed on the phone, the entry is the order straight away.
+    eq(await phone.newMailerEntry("9400111899223344550088", "USPS", "Pat Doe", "tcg-xyz-9"), "TCG-XYZ-9");
+    await waitFor(async () => (await phone.queueAll()).length === 0, "sent");
+    eq(await app.takePhoneLinks(), 1);
+    const pat = app.state.history["TCG-XYZ-9"];
+    ok(pat && pat.id === "TCG-XYZ-9" && pat.name === "Pat Doe" && pat.tracking === "9400111899223344550088" && pat.shipped, JSON.stringify(pat));
+    eq(app.state.shipped["TCG-XYZ-9"].tracking, "9400111899223344550088");
+    dropFrames();
+  },
+
+  "camera: several photos in a row without leaving it, switching the type, turned the way the phone is held": async () => {
+    const { win, doc, phone } = await phoneWithOrders();
+    // A fake camera, wider than tall, with a red mark in its top-left corner to see which way photos turn.
+    const cam = doc.createElement("canvas");
+    cam.width = 1280; cam.height = 960;
+    const paint = () => { const g = cam.getContext("2d"); g.fillStyle = "#d8d2c4"; g.fillRect(0, 0, 1280, 960); g.fillStyle = "#e01010"; g.fillRect(0, 0, 200, 200); };
+    paint();
+    const painter = setInterval(paint, 100);
+    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(10);
+    try {
+      pick(doc, win, ["SAMPLE-0010"]);
+      doc.querySelector('#kinds button[data-kind="contents"]').click();
+      doc.querySelector("#btn-cam").click();
+      ok(!doc.querySelector("#scanner").hidden, "the camera screen opens");
+      await waitFor(() => !doc.querySelector("#cam-shutter").disabled, "the shutter to be ready");
+      eq(phone.scan.found, ["SAMPLE-0010"], "the picked order comes along");
+      // Held sideways (top of the phone to the left): photos are turned a quarter to the left.
+      win.dispatchEvent(new win.DeviceMotionEvent("devicemotion", { accelerationIncludingGravity: { x: 9.8, y: 0, z: 0.5 } }));
+      eq(phone.photoTurn(), 270, "turned left");
+      ok(doc.querySelector("#cam-turn").textContent.includes("turned left (auto)"), doc.querySelector("#cam-turn").textContent);
+      // Flat on the desk says nothing: the last way it was held stays.
+      win.dispatchEvent(new win.DeviceMotionEvent("devicemotion", { accelerationIncludingGravity: { x: 0.3, y: 0.2, z: 9.8 } }));
+      eq(phone.photoTurn(), 270, "kept while flat");
+      doc.querySelector("#cam-shutter").click();
+      await waitFor(() => phone.scan.shots.length === 1, "photo 1");
+      doc.querySelector("#cam-shutter").click();
+      await waitFor(() => phone.scan.shots.length === 2, "photo 2");
+      doc.querySelector('#cam-kinds button[data-kind="packed"]').click();
+      eq(phone.state.kind, "packed", "type switched on the camera screen");
+      // A tap on the turn button: upright, by hand.
+      doc.querySelector("#cam-turn").click();
+      eq(phone.photoTurn(), 0, "turned by hand");
+      ok(doc.querySelector("#cam-turn").textContent.includes("upright") && !doc.querySelector("#cam-turn").textContent.includes("auto"), "says so");
+      doc.querySelector("#cam-shutter").click();
+      await waitFor(() => phone.scan.shots.length === 3, "photo 3");
+      ok(!doc.querySelector("#scanner").hidden, "still on the camera after 3 photos");
+      eq(doc.querySelectorAll("#cam-shots li").length, 3, "3 photos shown");
+      ok(doc.querySelector("#scan-msg").textContent.includes("Packed photo 1"), doc.querySelector("#scan-msg").textContent);
+      await waitFor(async () => (await phone.queueAll()).length === 0, "the photos to reach the PC");
+      doc.querySelector("#scan-done").click();
+      ok(doc.querySelector("#scanner").hidden && !phone.scan.stream, "closed, camera off");
+      const pc = (await photosOnPc())["SAMPLE-0010"];
+      eq([pc.contents, pc.packed], [2, 1], "2 contents + 1 packed saved");
+      const look = async (p) => {
+        const blob = await (await fetch(`/api/photo?id=${p.id}&order=SAMPLE-0010`, { headers: PC })).blob();
+        const bmp = await createImageBitmap(blob);
+        const c = document.createElement("canvas");
+        c.width = bmp.width; c.height = bmp.height;
+        const g = c.getContext("2d");
+        g.drawImage(bmp, 0, 0);
+        const red = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[0] > 180 && d[1] < 90; };
+        return { w: bmp.width, h: bmp.height, red };
+      };
+      const turned = await look(pc.photos.find((p) => p.kind === "contents"));
+      eq([turned.w, turned.h], [960, 1280], "the sideways photo is saved tall");
+      ok(turned.red(20, turned.h - 20) && !turned.red(20, 20), "turned left: the top-left mark is now bottom-left");
+      const upright = await look(pc.photos.find((p) => p.kind === "packed"));
+      eq([upright.w, upright.h], [1280, 960], "the upright photo stays wide");
+      ok(upright.red(20, 20), "mark still top-left");
+    } finally {
+      clearInterval(painter);
+      phone.closeScanner(false);
+      phone.turn.manual = null;
+    }
+    dropFrames();
+  },
+
+  "post office photo: the order is marked shipped on the PC, unless it already was": async () => {
+    const { app, win, doc, phone } = await phoneWithOrders();
+    app.matchPasted("SAMPLE-0005 9400111899223344559999");
+    const before = { ...app.state.history["SAMPLE-0005"] };
+    ok(before.shipped && before.tracking === "9400111899223344559999", "SAMPLE-0005 already shipped with tracking");
+    ok(!app.state.history["SAMPLE-0008"] || !app.state.history["SAMPLE-0008"].shipped, "SAMPLE-0008 not shipped yet");
+    await app.syncPhoneOrders(true);
+    await phone.refresh();
+    phone.state.pick = new Set(["SAMPLE-0005", "SAMPLE-0008"]); // (SAMPLE-0005 is shipped, so not in the "Not shipped" list)
+    phone.render();
+    doc.querySelector('#kinds button[data-kind="postoffice"]').click();
+    await phone.addFiles([await photoFile("counter.png", 600, 800)]);
+    ok(phone.state.orders.find((o) => o.key === "SAMPLE-0008").shipped, "shown as shipped on the phone straight away");
+    await waitFor(async () => (await phone.queueAll()).length === 0, "the photo to reach the PC");
+    eq(await app.takePhoneLinks(), 2, "a shipped note for each order");
+    const r = app.state.history["SAMPLE-0008"];
+    ok(r && r.shipped && !r.tracking, "SAMPLE-0008 marked shipped: " + JSON.stringify(r));
+    ok(app.state.shipped["SAMPLE-0008"] && app.state.shipped["SAMPLE-0008"].shipped, "step 4 knows it");
+    ok(/SAMPLE-0008[^\n]*Shipped/.test(app.importFile().csv), "in the import file as Shipped");
+    const after = app.state.history["SAMPLE-0005"];
+    eq([after.tracking, after.shippedAt, after.carrier], [before.tracking, before.shippedAt, before.carrier], "the already shipped order is left as it was");
+    eq(app.state.shipped["SAMPLE-0005"].tracking, "9400111899223344559999", "its tracking is kept");
+    eq(await app.takePhoneLinks(), 0, "taken once");
+    dropFrames();
+  },
+
+  "PC: the turn buttons in the photos window turn the saved photo": async () => {
+    const { doc, app } = await openApp("#history");
+    await app.refreshPhotos();
+    const key = "SAMPLE-0010";
+    const p = app.state.photos[key].photos.find((x) => x.kind === "packed");
+    const size = async () => { const b = await createImageBitmap(await (await fetch(`/api/photo?id=${p.id}&order=${key}`, { headers: PC })).blob()); return [b.width, b.height]; };
+    eq(await size(), [1280, 960], "wide before");
+    await app.openPhotos(key);
+    const dlg = doc.querySelector("#photos-dialog");
+    const fig = await waitFor(() => [...dlg.querySelectorAll(".photo")].find((f) => f.querySelector("img").naturalWidth === 1280), "the photo to load");
+    const right = fig.querySelector('button.turn[aria-label="Turn this photo right"]');
+    ok(right && fig.querySelector('button.turn[aria-label="Turn this photo left"]'), "turn left/right buttons");
+    right.click();
+    await waitFor(async () => (await size())[0] === 960, "the saved file to turn");
+    eq(await size(), [960, 1280], "tall now");
+    dlg.querySelector("[data-close]").click();
     dropFrames();
   },
 
