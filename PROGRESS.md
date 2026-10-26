@@ -56,7 +56,8 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 - Later the same day: 1.1.1 published by the user; the user's copy restarted on 1.1.1 (no banner; backup, phone,
   autostart kept). TCGplayer's help says only Order Number + Tracking Number are required (rows matched by order
   number). Dry run on a private server from the real History copy: the import file has the expected 9 rows, each
-  with order #, `Shipped` or tracking, carrier USPS. Waiting for the user's real upload result.
+  with order #, `Shipped` or tracking, carrier USPS. **Confirmed:** the user's upload imported all 9 rows, so rows
+  built from History (no street) work.
 
 ### 2026-10-26: the user's own copy on 1.1.0; desktop shortcut
 - Restarted the user's running Ship Desk at their request (`serve.py --stop`, then `launcher_command()`): 1.0.0 ->

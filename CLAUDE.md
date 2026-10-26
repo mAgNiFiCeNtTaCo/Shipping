@@ -165,7 +165,8 @@ printed `gh release create ...` line. Log the new version in PROGRESS.md and on 
 - TCGplayer's help pages are behind a Cloudflare check (403 to fetchers). Confirmed on a real upload 2026-10-25: an
   untracked row = Tracking `Shipped` + Carrier `USPS` (an empty carrier is refused: "Carrier is unrecognized").
   TCGplayer's help ("Importing Shipping Info for Customer Orders", found via search 2026-10-26) says rows are matched by
-  Order Number and only Order Number + Tracking Number are required, so rows built from History (no street) should pass.
+  Order Number and only Order Number + Tracking Number are required. Confirmed on a real upload 2026-10-26: 9 rows built
+  from History (no street; 7 `Shipped` + 2 tracked) all imported.
   Slip reader checked on a real slip 2026-10-26: items read "Game - Set - Name - #Number - Rarity - Condition" and wrap
   onto a second line (slips.js `describeItem`, `itemsFromRows` joins indented rows without a price).
 - Windows reads a running .bat from disk line by line: editing `Start Ship Desk.bat` while an old window still runs
