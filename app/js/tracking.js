@@ -129,7 +129,9 @@ export function importFileCsv(orders, shippedState, { skipSent = false } = {}) {
       row[carrierCol] = st.carrier || o.carrier || detectCarrier(tracking) || "USPS";
     } else {
       row[trackingCol] = "Shipped";
-      row[carrierCol] = "";
+      // TCGplayer refuses a row whose carrier is empty ("Carrier is unrecognized", seen on a real upload
+      // 2026-10-25); envelopes without tracking go with USPS stamps.
+      row[carrierCol] = "USPS";
       if (Math.round((Number(o.value) || 0) * 100) >= 4999) missingRequired.push(o.id);
     }
     rows.push(headers.map((h) => row[h] ?? ""));

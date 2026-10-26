@@ -295,6 +295,37 @@
    "lessons": [
     "A browser-only store needs a copy on disk, but a browser that lost its data must not overwrite the copy: link the browser first and offer a restore otherwise."
    ]
+  },
+  {
+   "title": "First real TCGplayer upload",
+   "date": "2026-10-25",
+   "summary": "The user uploaded a real import file; TCGplayer refused the empty carrier on an untracked row, the session set Carrier USPS and the re-upload imported cleanly (155 tests).",
+   "stages": [
+    {
+     "name": "Follow-up requests",
+     "kind": "solo",
+     "sessions": [
+      {
+       "id": "bce15ced",
+       "role": "Orchestrator (solo)",
+       "start": "2026-10-25T19:58",
+       "end": "2026-10-25T20:20",
+       "did": "read the error screenshot, Carrier USPS for Shipped rows, tests + docs; confirmed by the user re-upload",
+       "outcome": "done",
+       "files": 7
+      }
+     ]
+    }
+   ],
+   "events": [
+    {
+     "time": "2026-10-25T20:08",
+     "text": "Real TCGplayer upload: 1 row successfully imported, 0 errors"
+    }
+   ],
+   "lessons": [
+    "When a site's help pages can't be read, let the real upload's error screen decide the format."
+   ]
   }
  ]
 }

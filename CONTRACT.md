@@ -127,7 +127,8 @@ TCGplayer thresholds (order value = "Value Of Products"):
   **Orders -> Import Shipping Info** file: the original export columns, in the original header order
   (`order.row`), one row per order that has tracking or is marked shipped. `Tracking #` = the tracking number;
   for an order marked shipped without tracking, `Tracking #` = `Shipped`. `Carrier` = the carrier ("USPS"
-  default when tracking is set; blank otherwise). If the source file had no `Tracking #`/`Carrier` column,
+  by default; also "USPS" for `Shipped` rows, since TCGplayer refuses an empty carrier: "Carrier is unrecognized",
+  real upload 2026-10-25). If the source file had no `Tracking #`/`Carrier` column,
   append them. `missingRequired` = orders with value >= 49.99 marked shipped without tracking (TCGplayer
   rejects those).
 - `pirateShipCsv(orders, planned) -> csv`: tracked orders without tracking yet, headers

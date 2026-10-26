@@ -335,7 +335,7 @@ export const tests = {
     eq(rows[0], TCG_HEADER.split(","));
     const col = (name) => rows[0].indexOf(name);
     eq(rows.slice(1).map((r) => [r[0], r[col("Tracking #")], r[col("Carrier")]]), [
-      ["I-1", "9400100000000000000001", "USPS"], ["I-2", "Shipped", ""], ["I-3", "9400100000000000000003", "USPS"], ["I-5", "1Z999AA10123456784", "UPS"]]);
+      ["I-1", "9400100000000000000001", "USPS"], ["I-2", "Shipped", "USPS"], ["I-3", "9400100000000000000003", "USPS"], ["I-5", "1Z999AA10123456784", "UPS"]]);
     eq(rows[1][col("Value Of Products")], "5");
     eq(rows[1][col("LastName")], "One");
     ok(out.csv.includes("\r\n"), "CRLF");

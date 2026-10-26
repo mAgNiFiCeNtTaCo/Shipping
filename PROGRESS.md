@@ -22,6 +22,19 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-25: first real TCGplayer upload; untracked rows need carrier USPS
+- The user's first real import file (1 envelope order, Tracking `Shipped`, Carrier empty) came back from TCGplayer's
+  Import Tracking page as "0 rows imported ... Carrier is unrecognized". TCGplayer's help article is 403 to fetchers,
+  so the fix followed the error: untracked rows now get Carrier `USPS` (tracking.js `importFileCsv`). Re-uploaded
+  with "Put them in again": "1 row successfully imported, 0 errors". So the import file is confirmed for tracked
+  and untracked orders; only the slip item reader is still unchecked on real data.
+- Explained the routine to the user: phone post office photo / mailer scan marks orders shipped on the PC; with the
+  day's TCGplayer export loaded, one click makes one CSV with everything new; upload stays manual (user's choice).
+- The History copy (`Saved\History\ship-desk-history.json` + Backups) appeared after the user's page load: working.
+- Tests updated for the carrier (still 155, all pass). README, CLAUDE.md, CONTRACT.md updated. Cache `shipdesk-v16`.
+- Next (suggested): /security-audit of the week's new endpoints; keep the loaded batch across page reloads (so
+  the import file never needs the CSV dropped again); Pirate Ship export import; backups; photo storage.
+
 ### 2026-10-25: History copy on the PC, "sent to TCGplayer", proof packs
 - User asked for improvement ideas, then "start wherever you think is best". Suggested (in order): History copy,
   remember what went to TCGplayer, proof pack, Pirate Ship export import, phone "to do" view, photo storage growth

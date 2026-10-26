@@ -233,11 +233,10 @@ the phone picks from (order #, buyer name, city, state, ZIP; no street) in `Save
   orders that need tracking.
 - Stamp counts are estimates from USPS's letter prices (from 2026-10-04) and the weights in your settings.
   Weigh a heavy order to be sure.
-- Two things were built from public descriptions because TCGplayer's help pages couldn't be read directly.
-  **Check them on your first real batch:**
-  - the word **`Shipped`** that the import file puts in the tracking column for orders shipped without tracking
-    (if TCGplayer refuses it, tell Claude what the error says);
-  - reading the **card list from TCGplayer's packing-slip PDF**. If a slip shows "Card details are on your
+- The import file for orders shipped without tracking (`Shipped` in the tracking column, carrier `USPS`) was
+  confirmed on a real upload on 2026-10-25 ("1 row successfully imported"; an empty carrier had been refused).
+- Built from public descriptions because TCGplayer's help pages couldn't be read directly, so **check it on a
+  real batch:** reading the **card list from TCGplayer's packing-slip PDF**. If a slip shows "Card details are on your
     TCGplayer packing slip" instead of the cards, the reader didn't recognise the layout: use
     **Slips in label order** to print TCGplayer's own slips.
 

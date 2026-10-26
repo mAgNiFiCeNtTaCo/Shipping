@@ -308,7 +308,7 @@ export const tests = {
     ok(/Shipped/.test(doc.querySelector('#orders-table tr[data-id="SAMPLE-0001"] .c-status').textContent), "table shows Shipped");
     doc.querySelector("#btn-import").click();
     const rows = parseCsv(await savedText(saved.pop()));
-    eq(rows.slice(1).map((r) => [r[0], r[15], r[16]]), [["SAMPLE-0001", "Shipped", ""], ["SAMPLE-0002", "Shipped", ""], ["SAMPLE-0008", "Shipped", ""]]);
+    eq(rows.slice(1).map((r) => [r[0], r[15], r[16]]), [["SAMPLE-0001", "Shipped", "USPS"], ["SAMPLE-0002", "Shipped", "USPS"], ["SAMPLE-0008", "Shipped", "USPS"]]);
     ok(/refuse SAMPLE-0008/.test(doc.querySelector("#ship-msg").textContent), "warning repeated after saving");
     // A tracking number typed in the box replaces the keyword and clears the warning.
     const box = doc.querySelector('#ship-list .trk-input[data-id="SAMPLE-0008"]');
