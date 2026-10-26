@@ -9,7 +9,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on a real TCGplayer import.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **165 passed, 0 failed** (2026-10-25).
+- Tests: `python tools/test.py` = **166 passed, 0 failed** (2026-10-26).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -25,6 +25,21 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: phone "To do" list
+- The phone page opens on a new **To do** view (filter `todo`, the old "Not shipped" and "All" stay): orders not
+  shipped that are loaded on the PC, labelled in the last 14 days (`TODO_DAYS`) or have photos waiting on the phone,
+  grouped by the photo they need next: Contents photo next / Packed photo next / To the post office. Counts saved +
+  waiting photos; a packed photo skips the contents step; a post office photo takes the order off (the PC marks it
+  shipped as before). Old labels never marked shipped are not listed.
+- Each order has a camera button (picks it, sets the kind, opens the camera); "To the post office" has "One photo for
+  all N" for the pile. Picked orders that aren't on the list show under "Picked" at the top (two scan tests needed
+  that: a mailer just scanned is shipped, but must stay in sight). phone.js `nextPhoto` / `todoGroups` / `todoRows`.
+- Camera buttons narrowed (icon above the word) after checking phone screenshots (light + dark); `docs/screens`
+  phone shots retaken. Phone cache `shipdesk-phone-v9`; no restart needed (serve.py unchanged).
+- Test 165 -> 166: contents -> packed -> post office on pasted orders of its own (the sample orders already have
+  photos from earlier tests), one-tap camera, one photo for all, old labels left out, search, other views.
+- Next: real-iPhone checks of the To do list and camera; a real packing-slip PDF (user); photo storage.
+
 ### 2026-10-26: backup moved from OneDrive to Dropbox
 - Right after the OneDrive backup (late 2026-10-25) the user asked to move it to Dropbox. Dropbox runs on this PC
   (`C:\Users\RubenNoodle\Dropbox`, path read from `%LOCALAPPDATA%\Dropbox\info.json`).

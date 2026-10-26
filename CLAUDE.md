@@ -36,6 +36,11 @@ explain in plain words and finish jobs end to end.
   `POST /api/links-done`) into History + `state.shipped`. A mailer with no order in the list becomes a new entry
   keyed `mailer:<tracking>` (history source "mailer"); typing its order # in History (`setOrderNumber`) re-keys it and
   `POST /api/photos-rekey` moves its photos (`Saved/Phone/rekeys.json` sends late uploads to the order).
+- Phone "To do" view (default filter `todo`, phone.js `nextPhoto` / `todoGroups` / `todoRows`): not-shipped orders that are
+  in the PC batch, labelled in the last `TODO_DAYS` = 14, or have photos waiting; grouped by the next photo (packed
+  skips contents; a post office photo ends it), counting saved + waiting photos. Row camera button (`data-shoot`) /
+  "One photo for all" (`data-shoot-all`) pick, set the kind and click `#btn-cam`. Picked orders off the list show under
+  "Picked".
 - Camera screen = the scanner (`#scanner`): shutter (`shoot`) takes any number of photos for `scan.found` without
   leaving; turn from `devicemotion` gravity (`onMotion`, iOS sign differs from Android; flat keeps the last turn;
   no turn when the page itself is landscape); `#cam-turn` overrides. A post office photo leaves a "shipped" note

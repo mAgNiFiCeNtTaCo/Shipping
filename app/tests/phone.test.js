@@ -790,6 +790,75 @@ Object.assign(tests, {
     dropFrames();
   },
 
+  "to do: the phone lists the photo each order needs next, and one tap opens the camera for it": async () => {
+    // Orders of its own (the sample orders already have photos from the tests above).
+    clearAll();
+    await clearQueue();
+    const { app, doc: pcDoc } = await openApp();
+    app.loadPastedText("Tess Todo\n1 A St\nBoston, MA 02127\n\nUma Todo\n2 B St\nAustin, TX 78701\n\nVic Todo\n3 C St\nDenver, CO 80202\n");
+    pcDoc.querySelector("#btn-pdf").click(); // labels made now
+    ok(await app.syncPhoneOrders(true), "order list sent");
+    const { code } = await link();
+    const { win, doc, phone } = await openPhone(code.replace(/-/g, ""));
+    await waitFor(() => phone.state.link === "ok" && phone.state.orders.length === 3, "the phone to get 3 orders");
+    const A = "paste:tess todo|02127", B = "paste:uma todo|78701";
+    eq(doc.querySelector('#filters button[data-filter="todo"]').getAttribute("aria-pressed"), "true", "To do is the first view");
+    const group = (k) => phone.todoGroups()[k].map((o) => o.key).sort();
+    eq(group("contents").length, 3, "every labelled order needs its contents photo first");
+    ok(/Contents photo next\s*3/.test(doc.querySelector("#orders").textContent), "grouped with a count");
+    eq(doc.querySelectorAll("#orders li.todo button[data-shoot]").length, 3, "a camera button per order");
+    const cam = doc.createElement("canvas");
+    cam.width = 640; cam.height = 480;
+    cam.getContext("2d").fillRect(0, 0, 640, 480);
+    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(5);
+    const cameraOpens = async () => {
+      ok(!doc.querySelector("#scanner").hidden, "the camera opens");
+      await waitFor(() => !doc.querySelector("#cam-shutter").disabled, "the camera to start");
+      phone.closeScanner(false);
+    };
+    try {
+      doc.querySelector(`#orders button[data-shoot="${A}"]`).click();
+      eq([[...phone.state.pick], phone.state.kind], [[A], "contents"], "picks the order and the photo it needs");
+      await cameraOpens();
+      await phone.addFiles([await photoFile()]);
+      eq(phone.nextPhoto(phone.state.orders.find((o) => o.key === A)), "packed", "contents done: packed next");
+      // The second order skips its contents photo: packed is enough to move on.
+      phone.state.pick = new Set([A, B]);
+      doc.querySelector('#kinds button[data-kind="packed"]').click();
+      await phone.addFiles([await photoFile()]);
+      eq(group("postoffice"), [A, B], "packed: off to the post office next");
+      eq(group("contents").length, 1);
+      const all = doc.querySelector('#orders button[data-shoot-all="postoffice"]');
+      ok(all && /One photo for all 2/.test(all.textContent), "one photo for the whole pile");
+      all.click();
+      eq([[...phone.state.pick].sort(), phone.state.kind], [[A, B], "postoffice"]);
+      await cameraOpens();
+      await phone.addFiles([await photoFile()]);
+      eq(group("postoffice"), [], "handed in: off the list");
+      ok(!/To the post office/.test(doc.querySelector("#orders").textContent), "group gone");
+      ok(/Picked\s*2/.test(doc.querySelector("#orders").textContent), "still picked: shown at the top");
+    } finally {
+      phone.closeScanner(false);
+    }
+    // A label from months ago that never got shipped isn't nagged about; an order loaded on the PC now is listed.
+    const old = { key: "OLD-1", id: "OLD-1", name: "Old Order", labelled: "2026-01-02 10:00", inBatch: false, shipped: "" };
+    eq(phone.nextPhoto(old), "");
+    eq(phone.nextPhoto({ ...old, inBatch: true }), "contents");
+    // Search narrows the list; the other views still list everything.
+    const search = doc.querySelector("#search");
+    search.value = "Vic";
+    search.dispatchEvent(new win.Event("input", { bubbles: true }));
+    eq(doc.querySelectorAll("#orders li.todo").length, 1, "search");
+    search.value = "";
+    search.dispatchEvent(new win.Event("input", { bubbles: true }));
+    doc.querySelector('#filters button[data-filter="all"]').click();
+    eq(doc.querySelectorAll("#orders li.todo").length, 0, "All: plain list");
+    eq(doc.querySelectorAll("#orders input.pick").length, 3);
+    dropFrames();
+    clearAll();
+    await clearQueue();
+  },
+
   "PC: the turn buttons in the photos window turn the saved photo": async () => {
     const { doc, app } = await openApp("#history");
     await app.refreshPhotos();

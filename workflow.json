@@ -443,6 +443,31 @@
       "lessons": [
         "A test wait helper that treats any truthy value as done returns at once for an async check (a promise): poll with await."
       ]
+    },
+    {
+      "title": "Phone To do list",
+      "date": "2026-10-26",
+      "summary": "The same session added a To do view on the phone: orders grouped by the photo they need next, with a one-tap camera button and one photo for the post office pile; 166 tests.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-25T23:45",
+              "end": "2026-10-26T00:20",
+              "did": "phone.js To do view (nextPhoto, todoGroups, Picked group), camera buttons, styles, test, phone screenshots",
+              "outcome": "done",
+              "files": 16
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "A new default view must keep showing what the old one always showed (picked orders): two older tests caught it."
+      ]
     }
   ]
 }

@@ -209,8 +209,15 @@ like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
   turned upright. Shooting straight down at the desk keeps the way you last held it. The button on the picture
   ("Photo upright (auto)") shows what the next photo gets; tap it to turn by hand. The first time, the iPhone asks to
   allow "motion": tap Allow.
-- Or tick the orders in the list and use **Choose photos** for pictures you already took. The list shows orders
-  not shipped yet first; **All** shows the rest.
+- Or tick the orders in the list and use **Choose photos** for pictures you already took.
+
+**To do (the list the phone opens with):** the orders that still need something, grouped by the photo they need
+next: **Contents photo next**, **Packed photo next**, **To the post office**. It lists orders not shipped yet that
+had a label made in the last 14 days, are loaded on the PC, or have photos waiting on the phone. The camera button
+next to an order picks it and opens the camera for the right kind of photo; at the post office, **One photo for all**
+picks the whole pile. A packed photo is enough to move on (the contents photo isn't asked for again), and a post
+office photo takes the order off the list. Orders you picked that aren't on the list show under **Picked** at the
+top. **Not shipped** and **All** show the plain lists.
 
 **Post office photos mark orders shipped:** when a post office photo reaches the PC, Ship Desk marks its orders
 shipped (History and the TCGplayer import file), unless they already were: an order that already has its tracking

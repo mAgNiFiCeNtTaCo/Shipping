@@ -136,6 +136,13 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px 0; display: grid; ga
 .tag.shipped, .tag.photos { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
 .tag.waiting { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
 .empty { padding: 14px 4px 4px; color: var(--muted); }
+.todo-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.todo-head h3 { margin: 0; font-size: .95rem; }
+.todo-head .count { display: inline-block; min-width: 1.6em; padding: 0 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: .8rem; text-align: center; }
+.orders li.todo { display: flex; gap: 6px; align-items: stretch; }
+.orders li.todo .order { flex: 1; min-width: 0; }
+.btn.small { min-height: 0; padding: 6px 10px; font-size: .85rem; }
+.shoot { flex: none; flex-direction: column; gap: 2px; width: 76px; padding: 6px 4px; font-size: .78rem; line-height: 1.15; text-align: center; border-radius: 12px; }
 
 .scan-btn { width: 100%; margin-bottom: 8px; }
 

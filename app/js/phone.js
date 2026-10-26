@@ -11,7 +11,11 @@ export const KINDS = [
   { id: "packed", label: "Packed", hint: "Sealed and labelled, ready to go" },
   { id: "postoffice", label: "Post office", hint: "Handed in, or the receipt" },
 ];
-const FILTERS = [{ id: "open", label: "Not shipped" }, { id: "all", label: "All" }];
+const FILTERS = [{ id: "todo", label: "To do" }, { id: "open", label: "Not shipped" }, { id: "all", label: "All" }];
+// To do: orders not shipped yet that are on the PC now, got a label in the last TODO_DAYS, or have photos waiting
+// here, grouped by the photo they need next (contents -> packed -> post office; a skipped contents photo isn't asked
+// for again). An older label that never got shipped isn't nagged about.
+const TODO_DAYS = 14;
 const LS = {
   code: "shipdesk.phone.code", orders: "shipdesk.phone.orders", kind: "shipdesk.phone.kind",
   pick: "shipdesk.phone.pick", recent: "shipdesk.phone.recent", filter: "shipdesk.phone.filter",
@@ -111,7 +115,7 @@ export const state = {
   updated: "",
   kind: "contents",
   pick: new Set(),    // order keys
-  filter: "open",
+  filter: "todo",
   search: "",
   link: "checking",   // checking | ok | down | code
   queue: [],          // waiting photos, without their bytes
@@ -128,7 +132,8 @@ function loadState() {
   if (cached && Array.isArray(cached.orders)) Object.assign(state, { orders: cached.orders, photos: cached.photos || {}, updated: cached.updated || "" });
   const kind = lsGet(LS.kind, "contents");
   state.kind = KINDS.some((k) => k.id === kind) ? kind : "contents";
-  state.filter = lsGet(LS.filter, "open") === "all" ? "all" : "open";
+  const filter = lsGet(LS.filter, "todo");
+  state.filter = FILTERS.some((f) => f.id === filter) ? filter : "todo";
   state.pick = new Set(Array.isArray(lsGet(LS.pick, [])) ? lsGet(LS.pick, []) : []);
   const recent = lsGet(LS.recent, []);
   state.recent = Array.isArray(recent) ? recent : [];
@@ -916,10 +921,13 @@ function renderScan() {
 
 // ---------- the page ----------
 
-function visibleOrders() {
+const searched = (o) => {
   const q = state.search.trim().toLowerCase();
-  const list = state.orders.filter((o) => (state.filter === "all" || !o.shipped || state.pick.has(o.key))
-    && (!q || [o.id, o.name, o.city, o.zip, o.tracking].some((v) => String(v || "").toLowerCase().includes(q))));
+  return !q || [o.id, o.name, o.city, o.zip, o.tracking].some((v) => String(v || "").toLowerCase().includes(q));
+};
+
+function visibleOrders() {
+  const list = state.orders.filter((o) => (state.filter === "all" || !o.shipped || state.pick.has(o.key)) && searched(o));
   // Labelled most recently first, then the PC's current batch, then the rest.
   const rank = (o) => (o.labelled ? "2" + o.labelled : o.inBatch ? "1" : "0");
   return list.sort((a, b) => rank(b).localeCompare(rank(a)) || String(a.id || a.name).localeCompare(String(b.id || b.name)));
@@ -927,7 +935,61 @@ function visibleOrders() {
 
 const waitingFor = (key) => state.queue.filter((q) => q.order === key && !q.link).length;
 
-function orderRow(o) {
+/** Photos of each kind an order has: saved on the PC plus waiting on this phone. */
+function photoCounts(key) {
+  const saved = state.photos[key] || {};
+  const c = { contents: saved.contents || 0, packed: saved.packed || 0, postoffice: saved.postoffice || 0 };
+  for (const q of state.queue) if (q.order === key && !q.link && q.kind in c) c[q.kind]++;
+  return c;
+}
+
+/** The photo an order needs next ("contents" | "packed" | "postoffice"), or "" when it isn't on the to-do list. */
+export function nextPhoto(o, now = new Date()) {
+  if (!o || o.shipped) return "";
+  const c = photoCounts(o.key);
+  if (c.postoffice) return "";
+  const cutoff = localStamp(new Date(now.getTime() - TODO_DAYS * 864e5)).slice(0, 10);
+  if (!o.inBatch && !(o.labelled && String(o.labelled).slice(0, 10) >= cutoff) && !waitingFor(o.key)) return "";
+  return c.packed ? "postoffice" : c.contents ? "packed" : "contents";
+}
+
+/** The to-do list: { contents: [orders], packed: [...], postoffice: [...] }, newest label first. */
+export function todoGroups() {
+  const groups = Object.fromEntries(KINDS.map((k) => [k.id, []]));
+  for (const o of state.orders) {
+    const next = nextPhoto(o);
+    if (next && searched(o)) groups[next].push(o);
+  }
+  const rank = (o) => (o.labelled ? "2" + o.labelled : o.inBatch ? "1" : "0");
+  for (const list of Object.values(groups)) list.sort((a, b) => rank(b).localeCompare(rank(a)) || String(a.id || a.name).localeCompare(String(b.id || b.name)));
+  return groups;
+}
+
+const TODO_HEAD = { contents: "Contents photo next", packed: "Packed photo next", postoffice: "To the post office" };
+
+function todoRows() {
+  const groups = todoGroups();
+  const rows = [];
+  // Picked orders that aren't on the list (shipped, a mailer just scanned) stay in sight at the top.
+  const listed = new Set(Object.values(groups).flat().map((o) => o.key));
+  const picked = state.orders.filter((o) => state.pick.has(o.key) && !listed.has(o.key) && searched(o));
+  if (picked.length) {
+    rows.push(el("li", { class: "todo-head" }, el("h3", {}, "Picked ", el("span", { class: "count", text: String(picked.length) }))));
+    for (const o of picked) rows.push(orderRow(o));
+  }
+  for (const k of KINDS) {
+    const list = groups[k.id];
+    if (!list.length) continue;
+    rows.push(el("li", { class: "todo-head" },
+      el("h3", {}, TODO_HEAD[k.id], " ", el("span", { class: "count", text: String(list.length) })),
+      k.id === "postoffice" && list.length > 1
+        ? el("button", { type: "button", class: "btn primary small shoot-all", "data-shoot-all": k.id, text: `📷 One photo for all ${list.length}` }) : null));
+    for (const o of list) rows.push(orderRow(o, k.id));
+  }
+  return rows;
+}
+
+function orderRow(o, next = "") {
   const on = state.pick.has(o.key);
   const saved = (state.photos[o.key] || {}).total || 0;
   const waiting = waitingFor(o.key);
@@ -940,13 +1002,16 @@ function orderRow(o) {
     saved ? el("span", { class: "tag photos", text: `${saved} saved` }) : null,
     waiting ? el("span", { class: "tag waiting", text: `${waiting} waiting` }) : null,
   ];
-  return el("li", {},
+  const kind = next && KINDS.find((k) => k.id === next);
+  return el("li", { class: next ? "todo" : "" },
     el("label", { class: "order" + (on ? " on" : "") },
       el("input", { type: "checkbox", class: "pick", value: o.key, checked: on }),
       el("span", { class: "o-main" },
         el("span", { class: "o-id", text: idText(o) }),
         el("span", { class: "o-who", text: [o.name, where].filter(Boolean).join(" · ") }),
-        el("span", { class: "tags" }, tags))));
+        el("span", { class: "tags" }, tags))),
+    kind ? el("button", { type: "button", class: "btn secondary small shoot", "data-shoot": o.key, "data-next": next,
+      "aria-label": `${kind.label} photo for ${idText(o)}` }, el("span", { "aria-hidden": "true", text: "📷" }), el("span", { text: kind.label })) : null);
 }
 
 // Photos waiting (one photo for three orders is one photo, sent three times).
@@ -977,13 +1042,15 @@ export function render() {
   for (const b of document.querySelectorAll("#kinds button, #cam-kinds button")) b.setAttribute("aria-pressed", String(b.dataset.kind === state.kind));
   for (const b of document.querySelectorAll("#filters button")) b.setAttribute("aria-pressed", String(b.dataset.filter === state.filter));
 
-  const rows = visibleOrders();
-  $("#orders").replaceChildren(...rows.slice(0, MAX_SHOWN).map(orderRow));
+  const rows = state.filter === "todo" ? todoRows() : visibleOrders().map((o) => orderRow(o));
+  $("#orders").replaceChildren(...rows.slice(0, MAX_SHOWN));
   const empty = $("#orders-empty");
   empty.hidden = rows.length > 0;
   empty.textContent = !state.orders.length
     ? "No orders yet. On the PC, load your TCGplayer file in Ship Desk (or download labels) and they show up here."
-    : state.search ? "No orders match your search." : "Every order is shipped. Tap All to see them.";
+    : state.search ? "No orders match your search."
+      : state.filter === "todo" ? "Nothing to do: every order with a recent label is shipped or has its post office photo."
+        : "Every order is shipped. Tap All to see them.";
 
   const picked = state.orders.filter((o) => state.pick.has(o.key));
   const kind = KINDS.find((k) => k.id === state.kind);
@@ -1066,6 +1133,19 @@ function bind() {
     render();
   });
   $("#btn-clear").addEventListener("click", () => { state.pick.clear(); lsSet(LS.pick, []); render(); });
+  // To do: a camera button on an order (or "One photo for all" at the post office) picks it, sets the kind of photo
+  // it needs next and opens the camera.
+  $("#orders").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-shoot], button[data-shoot-all]");
+    if (!b) return;
+    const kind = b.dataset.next || b.dataset.shootAll;
+    state.pick = new Set(b.dataset.shoot ? [b.dataset.shoot] : todoGroups()[kind].map((o) => o.key));
+    state.kind = kind;
+    lsSet(LS.pick, [...state.pick]);
+    lsSet(LS.kind, state.kind);
+    render();
+    $("#btn-cam").click();
+  });
   $("#btn-cam").addEventListener("click", () => {
     // The camera screen takes several photos in a row; without a camera there, the iPhone camera takes one.
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) openScanner([...state.pick]);
@@ -1157,7 +1237,7 @@ export async function init() {
 }
 
 export const api = { state, scan, turn, stopCamera, init, refresh, pump, addFiles, queueAll, setCode, render, parseScan, handleScan, linkTracking, newMailerEntry,
-  shoot, photoTurn, onMotion,
+  shoot, photoTurn, onMotion, nextPhoto, todoGroups,
   openScanner, closeScanner, scanFile, decodeCanvas, decodeFrame, readers };
 
 if (document.querySelector("[data-shipdesk-phone]")) init();
