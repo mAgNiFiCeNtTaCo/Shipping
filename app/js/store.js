@@ -13,6 +13,7 @@ export const KEYS = {
   historyCopy: "shipdesk.historyCopy", // "on" once this browser's History is the one copied to Saved\History
   welcome: "shipdesk.welcome", // the first-run checklist: { hidden, format, sample, phone }
   updateSkip: "shipdesk.updateSkip", // a newer version the person said "Not now" to
+  rows: "shipdesk.rows", // TCGplayer rows of every file loaded, by order # (full addresses): app.js ROW_DAYS
   batch: "shipdesk.batch", // the loaded orders (file or pasted text) so a reload keeps them; app.js BATCH_DAYS
 };
 

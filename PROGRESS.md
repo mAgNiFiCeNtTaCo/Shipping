@@ -7,13 +7,14 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-10-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.0**, Windows installer for other people: `python tools/build_installer.py` ->
-  `dist\ShipDesk-Setup-1.1.0.exe` (13 MB, own Python, per-user, no admin). MIT licence. Published 2026-10-26:
-  https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0 = latest). A fresh install sets itself up
+- **Version 1.1.1** (built 2026-10-26, not published yet), Windows installer for other people:
+  `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
+  `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
+  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **172 passed, 0 failed** (2026-10-26).
+- Tests: `python tools/test.py` = **173 passed, 0 failed** (2026-10-26); `tools/test_installer.py` 14 checks.
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -29,6 +30,32 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: import file takes every shipped order; automatic builds on save; 1.1.1
+- **Bug (user report):** after scanning all packages at the post office, the TCGplayer import file had 1 order. Cause:
+  the import file only took the *loaded* file's orders, and the kept batch was the 1-order packing-slip test file;
+  the phone had marked 19 orders shipped in History (all notes applied), 17 never sent. TCGplayer's own Order List
+  (D:\Downloads, 00:08) showed which still needed it: 7 envelopes "Ready to Ship" (all post office scans of
+  2026-10-26); the older ones were already shipped there (Pirate Ship / earlier uploads).
+- **Fix:** import file = loaded orders + History's shipped, not-sent TCGplayer orders (`importCandidates`,
+  `historyOnlyOrders`): rows from `KEYS.rows` (every loaded file's rows kept 14 days, `keepRows`) or `rowFromHistory`
+  (order #, buyer, city/state/ZIP, tracking; no street, not yet confirmed by a TCGplayer upload). Orders shipped more
+  than 14 days ago or before History's earliest `sentAt` (2026-10-25 20:08 here) stay out. Step 4 lists them
+  (`#ship-extra`) and shows even with no file loaded. On the real History copy: exactly 9 (7 envelopes + 2 mailers).
+- **Phone fix:** a photo added while another was sending waited for the next 15 s timer (`pump` snapshot); now a
+  second round runs straight after (`state.pumpAgain`). Found through a flaky test.
+- **Standing wish:** every /save-progress builds a new installer when something changed and keeps builds at least a
+  month. `tools/build_installer.py --if-changed --test`: fingerprint of everything in the installer (serve.py's
+  version line left out) vs `dist/builds.json`, bumps the patch version, runs the browser tests and
+  `tools/test_installer.py` (new: silent install over the previous build, run on 5099, save, --stop, uninstall, the
+  user's copy and Windows entries untouched; 14 checks), keeps every build (`dist/old/` for rebuilt versions), prunes
+  only builds older than 31 days and never the newest 3, writes `dist/release-notes-<v>.md`. Recorded in CLAUDE.md
+  ("On /save-progress"), the save-progress skill (step 3b), the shared CLAUDE.md and memory.
+- First automatic build: **1.1.1** (`caf281a5...`). The first try stopped on a test that timed out opening the page
+  (8 s) during the long full run; it passed 3/3 alone, so the page-start waits are now 20 s; the second try: 173 tests,
+  install test 14/14 (over 1.1.0). Release notes rewritten in plain words (the generated list only sees commits).
+- Open: the user publishes 1.1.1 (`gh release create v1.1.1 ...`); confirm on TCGplayer that History-built rows (no
+  street) are accepted; the user's running copy still reports 1.1.0 until restarted.
+
 ### 2026-10-26: the user's own copy on 1.1.0; desktop shortcut
 - Restarted the user's running Ship Desk at their request (`serve.py --stop`, then `launcher_command()`): 1.0.0 ->
   1.1.0; start with Windows, Dropbox backup and phone access (ready, same pairing) carried over; the update check

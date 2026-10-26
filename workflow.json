@@ -601,6 +601,37 @@
           ]
         }
       ]
+    },
+    {
+      "title": "Import file takes every shipped order; automatic builds; 1.1.1",
+      "date": "2026-10-26",
+      "summary": "The same session fixed the import file leaving out scanned orders whose file wasn't loaded, fixed a phone upload delay, set up the automatic build-on-save with month-long build backups, and built 1.1.1; 173 tests + install test.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T15:40",
+              "end": "2026-10-26T16:10",
+              "did": "importCandidates/historyOnlyOrders/keepRows, pump second round, build_installer --if-changed --test, test_installer.py, standing rule, 1.1.1",
+              "outcome": "done",
+              "files": 16
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "time": "2026-10-26T15:58",
+          "text": "First automatic build stopped on a test timeout (page start > 8 s under load); waits raised to 20 s, second build passed"
+        }
+      ],
+      "lessons": [
+        "A Ship Desk import file must not depend on which file is loaded: orders are shipped days after their labels."
+      ]
     }
   ]
 }

@@ -74,6 +74,11 @@ explain in plain words and finish jobs end to end.
   30 days). A browser writes it only once linked (`KEYS.historyCopy` = "on"); unlinked + different -> `#history-copy`
   offer (`restoreHistoryCopy` merges, rebuilds `state.shipped`; `keepThisHistory`). `copyHistory` runs 0.8 s after
   every `saveHistory`.
+- Import file = loaded orders + History's shipped, not-sent TCGplayer orders (app.js `importCandidates` /
+  `historyOnlyOrders`, 2026-10-26: it used to take only the loaded file, so post office scans of earlier files were
+  left out). Their rows: `KEYS.rows` (every loaded file's rows by order #, `keepRows`, `ROW_DAYS` = 14) else
+  `rowFromHistory` (no street). Left out: shipped more than 14 days ago, or before History's earliest `sentAt` (handled
+  before the import file kept track). `#ship-extra` lists them; step 4 shows even with no file loaded.
 - Sent to TCGplayer: making the import file sets `state.shipped[id].sent = { at, what }` (what = tracking or
   "Shipped") and history `sentAt`; `importFileCsv(..., { skipSent })` leaves out same-`what` orders unless
   `state.importAgain` ("Put them in again"). Code that rewrites a shipped entry keeps `sent` (`withSent`).
@@ -118,11 +123,23 @@ explain in plain words and finish jobs end to end.
   serve.py here, made 2026-10-26); the installer makes its own copy in build/stage.
 - `specs/` the build briefs of 2026-10-20.
 
+## On /save-progress (the user's standing wish, 2026-10-26)
+Every save: `python tools/build_installer.py --if-changed --test` before the git snapshot. It builds a new installer
+only when something that goes into it changed since the last build (fingerprint in `dist/builds.json`), bumps the
+patch version in serve.py when needed (1.1.0 -> 1.1.1; commit that), runs the browser tests first and
+`tools/test_installer.py` on the result (silent install over the previous build, run on port 5099, stop, uninstall,
+the user's own copy and Windows entries untouched). Keep every build at least a month: they stay in `dist/` (older
+same-version files in `dist/old/`); the script removes only builds older than 31 days, never the newest 3. It writes
+`dist/release-notes-<version>.md` (its "What's new" comes from commit subjects, so rewrite it in plain words from the
+save's log entry: this save's own work isn't committed yet); publishing stays the user's (auto mode blocks `gh release create`): give them the
+printed `gh release create ...` line. Log the new version in PROGRESS.md and on the card.
+
 ## Commands
 - Run: `Start Ship Desk.bat` (background) / `Stop Ship Desk.bat`, or `python serve.py` (in a window) ->
   http://127.0.0.1:5091/ (`--port`, `--no-browser`, `--stop`).
-- Installer: `python tools/build_installer.py` (Inno Setup 6 in %LOCALAPPDATA%\Programs, installed 2026-10-26 with winget).
-  Bump `APP_VERSION` in serve.py for a new release.
+- Installer: `python tools/build_installer.py` (Inno Setup 6 in %LOCALAPPDATA%\Programs, installed 2026-10-26 with winget);
+  `--if-changed --test` = the save-progress build (see above). `python tools/test_installer.py <exe> [--upgrade-from <older exe>]`
+  checks one by itself.
 - Tests: `python tools/test.py` (all) or `python tools/test.py data render ui e2e`; runs in headless Edge.
 - Screenshots: `python serve.py --no-browser --port 5098` in the background, then `python docs/make_screens.py`
   (`python docs/make_screens.py phone` = only the phone shots, on a private server with fake Tailscale).

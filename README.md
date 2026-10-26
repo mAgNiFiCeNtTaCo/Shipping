@@ -106,6 +106,12 @@ toploader, how many cards go in one toploader, whether your envelopes are rigid 
 - In **Mark shipped**, paste one tracking number per line. Either just the numbers, in the same order as your
   labels, or the order number then the tracking number (`SAMPLE-0005 9400 1000 ...`). Or type a number into an
   order's box.
+- **Every shipped order goes in**, also ones whose TCGplayer file isn't loaded any more (for example labels made
+  yesterday, post office photos today). Ship Desk remembers the TCGplayer rows of every file you load for 14 days (in
+  this browser only); for an order without one it builds the row from History (order #, buyer, city, state, ZIP and
+  tracking, no street). Step 4 lists these ("Also going in: ...") and the button counts them. If TCGplayer refuses
+  one of those rows, export that order from TCGplayer again (Export Shipping), drop the file here and make the
+  import file again. Orders you shipped before Ship Desk's first import file were handled another way and stay out.
 - **Only what's new:** the import file leaves out orders already in an earlier import file with the same tracking
   number (or "Shipped"); an order that got a tracking number since goes in again. Step 4 says how many were left
   out; tick **Put them in again** if an upload didn't go through.

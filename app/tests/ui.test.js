@@ -30,14 +30,14 @@ async function openApp(width = 1200) {
   f.style.cssText = `width:${width}px;height:900px;border:1px solid #999`;
   f.src = "../index.html";
   document.body.append(f);
-  await waitFor(() => f.contentWindow && f.contentWindow.shipdesk, "the app to start");
+  await waitFor(() => f.contentWindow && f.contentWindow.shipdesk, "the app to start", 20000);
   return { frame: f, win: f.contentWindow, doc: f.contentDocument, app: f.contentWindow.shipdesk };
 }
 
 async function reload(frame) {
   frame.contentWindow.shipdesk = null;
   frame.contentWindow.location.reload();
-  await waitFor(() => frame.contentWindow.shipdesk && frame.contentDocument.readyState === "complete", "the app to restart");
+  await waitFor(() => frame.contentWindow.shipdesk && frame.contentDocument.readyState === "complete", "the app to restart", 20000);
   return { frame, win: frame.contentWindow, doc: frame.contentDocument, app: frame.contentWindow.shipdesk };
 }
 

@@ -3,9 +3,9 @@
 // (render / slips). See CONTRACT.md "app.js / store.js / UI".
 
 import { load, save, remove, KEYS } from "./store.js";
-import { parseOrders } from "./csv.js";
+import { parseOrders, splitName } from "./csv.js";
 import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS } from "./plan.js";
-import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv } from "./tracking.js";
+import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv, TCG_HEADERS } from "./tracking.js";
 import { parseAddresses } from "./paste.js";
 import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText } from "./render.js";
 import { readSlipPdf, attachSlips } from "./slips.js";
@@ -315,6 +315,7 @@ export function loadCsvText(text, fileName = "your file") {
     return res;
   }
   setBatch("csv", res.orders, fileName, text);
+  keepRows(res.orders);
   const already = res.orders.filter(isShippedNow).length;
   const lines = [];
   if (res.skipped.length) lines.push(skippedList(res.skipped));
@@ -757,14 +758,80 @@ const fileOrders = () => (state.source === "csv" ? state.orders : []);
  * sent in an earlier import file (with the same tracking number or "Shipped") are left out, unless "Put them in
  * again" is ticked.
  */
-export function importFile() {
-  return importFileCsv(fileOrders(), state.shipped, { skipSent: !state.importAgain });
+export function importFile({ skipSent = !state.importAgain } = {}) {
+  const c = importCandidates();
+  const r = importFileCsv(c.orders, c.shipped, { skipSent });
+  const went = new Set(r.included.map((i) => i.id));
+  return { ...r, shipped: c.shipped, extra: c.extra.filter((o) => went.has(o.id)), waiting: c.extra };
+}
+
+// ---------- every shipped order goes in, loaded or not ----------
+// The import file used to hold only the loaded file's orders, so orders shipped later (a post office photo, a mailer
+// scan) whose file was no longer loaded were left out (2026-10-26). Now it also takes every order History has as
+// shipped and not sent yet: with its TCGplayer row from an earlier file (kept ROW_DAYS by keepRows) or, without one, a
+// row built from History (order #, buyer, place, tracking; no street). Orders shipped before this browser's first
+// import file with Ship Desk (History's earliest sentAt) were handled another way and stay out.
+const ROW_DAYS = 14;
+
+function keptRows() {
+  const rows = load(KEYS.rows, {});
+  return rows && typeof rows === "object" && !Array.isArray(rows) ? rows : {};
+}
+
+/** Remember the TCGplayer rows of a loaded file (by order #), forgetting rows older than ROW_DAYS. */
+function keepRows(orders) {
+  const rows = keptRows(), now = new Date().toISOString(), cutoff = Date.now() - ROW_DAYS * 864e5;
+  for (const [id, v] of Object.entries(rows)) if (!v || !(Date.parse(v.at) > cutoff)) delete rows[id];
+  for (const o of orders) if (o.row && safeKey(o.id)) rows[o.id] = { row: o.row, at: now };
+  save(KEYS.rows, rows);
+}
+
+/** A TCGplayer-shaped row from a History record (what Ship Desk knows without the file). */
+function rowFromHistory(r) {
+  const { firstName, lastName } = splitName(r.name);
+  const row = Object.fromEntries(TCG_HEADERS.map((h) => [h, ""]));
+  Object.assign(row, { "Order #": r.id, FirstName: firstName, LastName: lastName, City: r.city || "", State: r.state || "",
+    PostalCode: r.zip || "", "Order Date": r.orderDate || "", "Item Count": r.items ? String(r.items) : "",
+    "Value Of Products": r.value ? Number(r.value).toFixed(2) : "" });
+  return row;
+}
+
+/** Shipped TCGplayer orders from History that aren't in the loaded file, as orders the import file can take. */
+function historyOnlyOrders() {
+  const loaded = new Set(fileOrders().map((o) => o.id));
+  const recs = Object.values(state.history).filter((r) => r && typeof r === "object" && r.source === "csv" && safeKey(r.id));
+  const firstSent = recs.map((r) => r.sentAt).filter(Boolean).sort()[0] || "";
+  const since = stamp(new Date(Date.now() - ROW_DAYS * 864e5));
+  const rows = keptRows();
+  const out = [];
+  for (const r of recs) {
+    const when = String(r.shippedAt || "");
+    if (loaded.has(r.id) || !r.shipped || when < since || (firstSent && when < firstSent)) continue;
+    const kept = own(rows, r.id);
+    out.push({ id: r.id, name: r.name, value: r.value, fromHistory: !kept, row: kept ? kept.row : rowFromHistory(r) });
+  }
+  return out.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** What the import file looks at: the loaded orders + History's shipped ones, and their shipped state. */
+function importCandidates() {
+  const extra = historyOnlyOrders();
+  const orders = [...fileOrders(), ...extra];
+  const shipped = { ...state.shipped };
+  for (const o of orders) {
+    const r = own(state.history, o.id);
+    let entry = own(state.shipped, o.id);
+    if (!entry && r && (r.shipped || r.tracking)) entry = { tracking: r.tracking || "", carrier: r.carrier || "", shipped: true };
+    if (entry && !entry.sent && r && r.sentAt) entry = { ...entry, sent: { at: r.sentAt, what: entry.tracking || "Shipped" } };
+    if (entry) shipped[o.id] = entry;
+  }
+  return { orders, extra, shipped };
 }
 
 export function downloadImportFile() {
   const box = $("#ship-msg");
-  if (state.source !== "csv") { showMsg(box, "warn", "The import file only works with orders from a TCGplayer CSV.", ["Pasted addresses aren't TCGplayer orders, so there's nothing to mark shipped there."]); return null; }
   const r = importFile();
+  if (state.source !== "csv" && !r.waiting.length) { showMsg(box, "warn", "The import file only works with orders from a TCGplayer CSV.", ["Pasted addresses aren't TCGplayer orders, so there's nothing to mark shipped there."]); return null; }
   if (!r.count) {
     showMsg(box, "warn", "Nothing to import yet.", [r.already.length
       ? `The ${plural(r.already.length, "shipped order")} ${r.already.length === 1 ? "was" : "were"} already in an earlier import file. Tick "Put them in again" to send ${r.already.length === 1 ? "it" : "them"} again.`
@@ -775,8 +842,9 @@ export function downloadImportFile() {
   // Remember what went in, so the next import file only has what's new (or changed).
   const at = stamp();
   for (const { id, what } of r.included) {
-    state.shipped[id] = { ...(state.shipped[id] || { tracking: "", carrier: "", shipped: true, at: today() }), sent: { at, what } };
-    if (state.history[id]) state.history[id].sentAt = at;
+    state.shipped[id] = { ...(own(state.shipped, id) || r.shipped[id] || { tracking: "", carrier: "", shipped: true, at: today() }), sent: { at, what } };
+    const rec = own(state.history, id);
+    if (rec) rec.sentAt = at;
   }
   state.importAgain = false;
   saveShipped();
@@ -785,6 +853,8 @@ export function downloadImportFile() {
     showMsg(box, r.missingRequired.length ? "warn" : "ok", `Saved ${res.name} with ${plural(r.count, "order")}.`,
       [...savedLines(res), r.missingRequired.length ? `TCGplayer will refuse ${r.missingRequired.join(", ")} without a tracking number.` : null,
         r.already.length ? `Left out ${plural(r.already.length, "order")} already in an earlier import file.` : null,
+        r.extra.length ? `${plural(r.extra.length, "order")} in it ${r.extra.length === 1 ? "isn't" : "aren't"} in the loaded file (shipped since, from History): ${r.extra.map((o) => o.id).join(", ")}.` : null,
+        r.extra.some((o) => o.fromHistory) ? "If TCGplayer refuses any of those, export them from TCGplayer (Orders → tick them → Export Shipping), drop that file here and make the import file again." : null,
         "Upload it in the Seller Portal: Orders → Import Shipping Info."]);
     return res;
   });
@@ -915,7 +985,8 @@ function renderOutput() {
 }
 
 function renderShip() {
-  const has = state.orders.length > 0;
+  const waiting = importCandidates().extra;
+  const has = state.orders.length > 0 || waiting.length > 0;
   $("#ship-empty").hidden = has;
   $("#ship-area").hidden = !has;
   if (!has) return;
@@ -931,26 +1002,31 @@ function renderShip() {
       el("label", { class: "check ship-check" }, el("input", { type: "checkbox", "data-id": o.id, checked: !!(s.shipped || s.tracking), disabled: !!s.tracking }), " Shipped"));
   }));
   renderShipWarn();
-  $("#btn-import").disabled = state.source !== "csv";
-  $("#btn-import").title = state.source !== "csv" ? "Only for orders from a TCGplayer CSV" : "";
+  $("#btn-import").disabled = state.source !== "csv" && !waiting.length;
+  $("#btn-import").title = $("#btn-import").disabled ? "Only for orders from a TCGplayer CSV" : "";
 }
 
 function renderShipWarn() {
-  const r = state.source === "csv" ? importFile() : { count: 0, missingRequired: [] };
+  const r = importFile();
+  const extra = $("#ship-extra");
+  const fresh = r.waiting.filter((o) => r.included.some((i) => i.id === o.id));
+  extra.hidden = !fresh.length;
+  extra.textContent = fresh.length ? `Also going in: ${plural(fresh.length, "order")} you shipped that ${fresh.length === 1 ? "isn't" : "aren't"} in the loaded file (from History): ${fresh.map((o) => o.id).join(", ")}.` : "";
   const box = $("#ship-warn");
   if (r.missingRequired.length) {
     showMsg(box, "warn", "These orders need a tracking number before TCGplayer will accept them:",
       [r.missingRequired.join(", "), "Orders of $49.99 or more must have tracking. Type it in above, or leave them out of this upload by unticking Shipped."]);
   } else showMsg(box, "", "");
   // Orders already sent in an earlier import file (same tracking number or "Shipped").
-  const sent = state.source === "csv" ? importFileCsv(fileOrders(), state.shipped, { skipSent: true }).already : [];
+  const all = importFile({ skipSent: true });
+  const sent = all.already;
   $("#ship-sent").hidden = !sent.length;
   if (sent.length) {
-    const last = sent.map((id) => state.shipped[id].sent.at).sort().pop();
+    const last = sent.map((id) => all.shipped[id].sent.at).sort().pop();
     $("#ship-sent-text").textContent = `${plural(sent.length, "shipped order")} ${sent.length === 1 ? "was" : "were"} already in an import file (last ${last}) and ${state.importAgain ? "will go in again" : "will be left out"}.`;
     $("#import-again").checked = state.importAgain;
   }
-  $("#btn-import").textContent = state.source === "csv" && r.count ? `Download TCGplayer import file (${plural(r.count, "order")})` : "Download TCGplayer import file";
+  $("#btn-import").textContent = r.count ? `Download TCGplayer import file (${plural(r.count, "order")})` : "Download TCGplayer import file";
 }
 
 // ---------- history ----------

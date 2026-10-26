@@ -103,7 +103,7 @@ async function openApp(hash = "", { folder = false } = {}) {
   f.style.cssText = "width:1200px;height:900px;border:1px solid #999";
   f.src = "../index.html" + hash;
   document.body.append(f);
-  const win = await waitFor(() => f.contentWindow && f.contentWindow.shipdesk && f.contentWindow, "the app to start");
+  const win = await waitFor(() => f.contentWindow && f.contentWindow.shipdesk && f.contentWindow, "the app to start", 20000);
   const saved = [];
   const Orig = win.jspdf.jsPDF;
   function Spy(...args) { const d = new Orig(...args); d.save = (name) => { saved.push({ name }); return d; }; return d; }

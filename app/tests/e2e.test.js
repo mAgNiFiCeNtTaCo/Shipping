@@ -38,7 +38,7 @@ async function openApp({ width = 1200, returnAddress = true } = {}) {
   f.style.cssText = `width:${width}px;height:900px;border:1px solid #999`;
   f.src = "../index.html";
   document.body.append(f);
-  const win = await waitFor(() => f.contentWindow && f.contentWindow.shipdesk && f.contentWindow, "the app to start");
+  const win = await waitFor(() => f.contentWindow && f.contentWindow.shipdesk && f.contentWindow, "the app to start", 20000);
   const saved = [];
   const Orig = win.jspdf.jsPDF;
   function Spy(...args) {
@@ -322,6 +322,66 @@ export const tests = {
     await dropFile(win, await sampleText(), "export.csv");
     await sleep(100);
     eq(app.printOrders().length, 7, "3 shipped orders not ticked again");
+  },
+
+  "the import file takes every shipped order, also ones whose file isn't loaded any more": async () => {
+    let { win, doc, app, saved } = await openApp();
+    const p = (n) => String(n).padStart(2, "0");
+    const stampAt = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const shipInHistory = (id, extra = {}) => Object.assign(app.state.history[id], { shipped: true, shippedAt: stampAt(Date.now()), ...extra });
+    // The day the labels are made: the sample file, labels for all 10, two shipped and sent.
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => app.state.orders.length === 10, "orders");
+    doc.querySelector("#btn-pdf").click();
+    await waitFor(() => app.state.history["SAMPLE-0010"], "History");
+    app.matchPasted("SAMPLE-0005 9400111899223344550005");
+    doc.querySelector('#ship-list input[type=checkbox][data-id="SAMPLE-0001"]').click();
+    doc.querySelector("#btn-import").click();
+    eq(parseCsv(await savedText(saved.pop())).slice(1).map((r) => r[0]), ["SAMPLE-0001", "SAMPLE-0005"]);
+    // Later: another file is loaded, and the phone marks two of the first file's orders shipped (post office photo,
+    // a mailer's tracking number): they go in with their full rows from the first file.
+    await dropFile(win, MESSY, "next-day.csv");
+    await waitFor(() => app.state.orders.length === 3, "the other file");
+    shipInHistory("SAMPLE-0002");
+    shipInHistory("SAMPLE-0006", { tracking: "9400111899223344550006", carrier: "USPS" });
+    shipInHistory("SAMPLE-0004", { shippedAt: stampAt(Date.now() - 2 * 3600e3) }); // before the first import file
+    app.renderAll();
+    let r = app.importFile();
+    eq(r.included.map((i) => i.id).sort(), ["SAMPLE-0002", "SAMPLE-0006"], "both, none of the other file's (not shipped)");
+    ok(/Also going in: 2 orders .*SAMPLE-0002, SAMPLE-0006/.test(doc.querySelector("#ship-extra").textContent), doc.querySelector("#ship-extra").textContent);
+    ok(/2 orders/.test(doc.querySelector("#btn-import").textContent), doc.querySelector("#btn-import").textContent);
+    doc.querySelector("#btn-import").click();
+    const rows = parseCsv(await savedText(saved.pop()));
+    const col = (h) => rows[0].indexOf(h);
+    const r2 = rows.find((x) => x[0] === "SAMPLE-0002"), r6 = rows.find((x) => x[0] === "SAMPLE-0006");
+    eq([r2[col("Address1")], r2[col("Tracking #")], r2[col("Carrier")]], ["1820 Larkspur Ln", "Shipped", "USPS"], "full row from the first file");
+    eq([r6[col("Tracking #")], r6[col("Carrier")]], ["9400111899223344550006", "USPS"]);
+    ok(app.state.history["SAMPLE-0002"].sentAt && app.state.shipped["SAMPLE-0002"].sent, "noted as sent");
+    eq(app.importFile().count, 0, "sent once");
+    // Without a kept row (rows older than 14 days, or a file loaded before Ship Desk kept them): a row from History.
+    win.localStorage.removeItem("shipdesk.rows");
+    const frame = doc.defaultView.frameElement;
+    win.shipdesk = null;
+    win.location.reload();
+    win = await waitFor(() => frame.contentWindow.shipdesk && frame.contentDocument.readyState === "complete" && frame.contentWindow, "the app to restart", 20000);
+    doc = frame.contentDocument; app = win.shipdesk;
+    shipInHistory("SAMPLE-0003");
+    r = app.importFile();
+    eq(r.included.map((i) => i.id), ["SAMPLE-0003"]);
+    ok(r.extra[0].fromHistory, "built from History");
+    const row = parseCsv(r.csv)[1], head = parseCsv(r.csv)[0];
+    const get = (h) => row[head.indexOf(h)];
+    eq([get("Order #"), get("FirstName"), get("LastName"), get("City"), get("State"), get("PostalCode"), get("Address1"), get("Tracking #"), get("Carrier")],
+      ["SAMPLE-0003", "Dmitri", "Vale", "Boston", "MA", "02127", "", "Shipped", "USPS"]);
+    // Even with no TCGplayer file loaded at all, step 4 offers it.
+    doc.querySelector("#btn-clear-batch").click();
+    ok(!doc.querySelector("#ship-area").hidden && !doc.querySelector("#btn-import").disabled, "step 4 still there");
+    app.state.output.saveTo = "downloads"; // (the reload dropped the test's download catcher: no file needed here)
+    const made = app.downloadImportFile();
+    eq(parseCsv(made.csv).slice(1).map((x) => x[0]), ["SAMPLE-0003"]);
+    await app.state.lastSave;
+    ok(/aren't in the loaded file|isn't in the loaded file/.test(doc.querySelector("#ship-msg").textContent) && /Export Shipping/.test(doc.querySelector("#ship-msg").textContent),
+      "says where they came from: " + doc.querySelector("#ship-msg").textContent);
   },
 
   "the import file only has what's new: orders already sent are left out, unless put in again or changed": async () => {

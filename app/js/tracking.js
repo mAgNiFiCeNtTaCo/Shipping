@@ -90,7 +90,7 @@ export function matchTracking(pasted, orders) {
   return { matches, unmatched, warnings };
 }
 
-const TCG_HEADERS = ["Order #", "FirstName", "LastName", "Address1", "Address2", "City", "State", "PostalCode",
+export const TCG_HEADERS = ["Order #", "FirstName", "LastName", "Address1", "Address2", "City", "State", "PostalCode",
   "Country", "Order Date", "Product Weight", "Shipping Method", "Item Count", "Value Of Products",
   "Shipping Fee Paid", "Tracking #", "Carrier"];
 

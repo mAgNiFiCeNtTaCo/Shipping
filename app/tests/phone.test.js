@@ -50,7 +50,7 @@ async function frame(src, id) {
 
 async function openApp(hash = "") {
   const f = await frame("../index.html" + hash, "app-frame");
-  const win = await waitFor(() => f.contentWindow.shipdesk && f.contentWindow, "the app to start");
+  const win = await waitFor(() => f.contentWindow.shipdesk && f.contentWindow, "the app to start", 20000);
   win.shipdesk.state.output.saveTo = "downloads";
   win.HTMLAnchorElement.prototype.click = function () {}; // no real downloads
   const Orig = win.jspdf.jsPDF;

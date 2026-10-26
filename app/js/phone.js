@@ -200,8 +200,11 @@ export async function refresh() {
 
 /** Send the waiting photos, oldest first. Stops at the first sign the PC can't be reached. */
 export async function pump() {
-  if (state.sending || !state.code) return;
+  // Photos added while a round is sending are picked up by one more round straight after it (not at the next timer).
+  if (state.sending) { state.pumpAgain = true; return; }
+  if (!state.code) return;
   state.sending = true;
+  state.pumpAgain = false;
   render();
   try {
     for (const item of await queueAll()) {
@@ -243,6 +246,7 @@ export async function pump() {
     await loadQueue();
     render();
   }
+  if (state.pumpAgain && state.link === "ok") await pump();
 }
 
 async function loadQueue() {
