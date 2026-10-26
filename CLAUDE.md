@@ -114,6 +114,8 @@ explain in plain words and finish jobs end to end.
   polls every 3 s while installing / signing in. `serve.py --open phone` opens the page at `#phone` (installer task
   "phonesetup"). tools/test.py fakes all of it: `tailnet` dict, `POST /__tailnet {...}` (reset, installed, running,
   needsLogin, stopped, needEnable, latest, offline); tests never reach GitHub or Tailscale.
+- `shipdesk.ico` (project root): the Ship Desk icon for the user's desktop shortcut "Ship Desk.lnk" (pythonw.exe
+  serve.py here, made 2026-10-26); the installer makes its own copy in build/stage.
 - `specs/` the build briefs of 2026-10-20.
 
 ## Commands

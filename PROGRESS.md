@@ -29,6 +29,14 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: the user's own copy on 1.1.0; desktop shortcut
+- Restarted the user's running Ship Desk at their request (`serve.py --stop`, then `launcher_command()`): 1.0.0 ->
+  1.1.0; start with Windows, Dropbox backup and phone access (ready, same pairing) carried over; the update check
+  sees 1.1.0 as the newest.
+- Desktop shortcut "Ship Desk" (`C:\Users\RubenNoodle\Desktop\Ship Desk.lnk`): pythonw.exe
+  `D:\ClaudeProjects\Shipping\serve.py` in that folder, icon `shipdesk.ico` (now kept in the project root, a copy of
+  the installer's icon, so a rebuild can't break it). Opens the page; starts Ship Desk first when it's off.
+
 ### 2026-10-26: Ship Desk 1.1.0: everything a new PC needs (Tailscale setup, welcome checklist, update notice)
 - User asked for the update notice and the first-run welcome, and for the package to work exactly like their own
   copy with nothing missing, Tailscale setup included. The gap was Tailscale: a new PC must install it, sign in, and

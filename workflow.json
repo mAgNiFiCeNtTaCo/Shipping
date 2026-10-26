@@ -579,6 +579,28 @@
       "lessons": [
         "A first-run checklist must redraw on every setting that can tick it (its test caught the return address)."
       ]
+    },
+    {
+      "title": "Own copy on 1.1.0; desktop shortcut",
+      "date": "2026-10-26",
+      "summary": "The same session restarted the user's Ship Desk on the 1.1.0 server (settings carried over) and made a desktop shortcut with the Ship Desk icon.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T04:45",
+              "end": "2026-10-26T04:55",
+              "did": "Restart to 1.1.0, desktop shortcut, shipdesk.ico kept in the project",
+              "outcome": "done",
+              "files": 1
+            }
+          ]
+        }
+      ]
     }
   ]
 }
