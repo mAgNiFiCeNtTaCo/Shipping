@@ -632,6 +632,28 @@
       "lessons": [
         "A Ship Desk import file must not depend on which file is loaded: orders are shipped days after their labels."
       ]
+    },
+    {
+      "title": "1.1.1 published; import rows from History confirmed",
+      "date": "2026-10-26",
+      "summary": "The user published 1.1.1; the session restarted the user's copy on 1.1.1, found TCGplayer's rule (only Order # + Tracking # required), dry-ran the real 9-row import file on a private server, and the user's upload imported all 9 rows.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T16:15",
+              "end": "2026-10-26T16:45",
+              "did": "Restart to 1.1.1, TCGplayer import rule from its help, private dry run of the import file, confirmation recorded; save build check: no changes",
+              "outcome": "done",
+              "files": 3
+            }
+          ]
+        }
+      ]
     }
   ]
 }
