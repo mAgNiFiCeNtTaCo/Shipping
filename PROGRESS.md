@@ -9,7 +9,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on a real TCGplayer import.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **166 passed, 0 failed** (2026-10-26).
+- Tests: `python tools/test.py` = **167 passed, 0 failed** (2026-10-26).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -25,6 +25,24 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: one post office photo per order; step through the pile
+- User asked whether a post office photo went to every scanned order: it did (every shutter press went to all orders
+  on the camera screen). Their wish: one post office photo for each scanned order. Now, with Post office selected,
+  a photo goes only to the order(s) scanned since the previous post office photo (`scan.fresh`), ticked ✓ on screen;
+  another photo without a new scan is a retake for the same order (`scan.lastPost`). Contents and packed photos
+  still go to every order on screen (not asked to change).
+- The To do list's "One photo for all N" became **Step through all N** (user's choice over removing it):
+  `openScanner(keys, { steps: true })` makes one order current (▶ chip, "Post office photo for ... (1 of 4)"), each
+  photo moves on to the next (`nextStep`), "All N done" at the end; × skips an order, scanning a label makes it
+  the current one.
+- Explained to the user: scanning picks the order by itself (Ship Desk's QR code always; a bought label's tracking
+  barcode once Ship Desk knows the number, e.g. after dropping Pirate Ship's Shipments export; otherwise it asks
+  once and remembers).
+- Tests 166 -> 167 (scan A / photo / scan B / photo / retake counts per order; stepping: one photo each, skip,
+  scan to jump). Found on the way: awaiting `openScanner` hangs in headless Edge (camera start never settles) and a
+  static canvas `captureStream` sends no frames: tests start it like a tap and keep repainting. Phone cache
+  `shipdesk-phone-v11`; no PC restart.
+
 ### 2026-10-26: phone "To do" list
 - The phone page opens on a new **To do** view (filter `todo`, the old "Not shipped" and "All" stay): orders not
   shipped that are loaded on the PC, labelled in the last 14 days (`TODO_DAYS`) or have photos waiting on the phone,

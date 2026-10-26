@@ -468,6 +468,31 @@
       "lessons": [
         "A new default view must keep showing what the old one always showed (picked orders): two older tests caught it."
       ]
+    },
+    {
+      "title": "One post office photo per order; step through the pile",
+      "date": "2026-10-26",
+      "summary": "At the user's request each post office photo now goes only to the order just scanned, and the To do list steps through the post office pile one order at a time; 167 tests.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T00:25",
+              "end": "2026-10-26T01:05",
+              "did": "shoot() targets scan.fresh / lastPost for post office photos, step-through mode (nextStep, ▶ chip, skip), tests",
+              "outcome": "done",
+              "files": 6
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "Headless Edge: don't await a camera start in tests, and keep repainting a canvas used as a fake camera (captureStream only sends frames on change)."
+      ]
     }
   ]
 }

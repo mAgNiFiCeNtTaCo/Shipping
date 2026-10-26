@@ -580,6 +580,10 @@ function toCanvas(src, w, h, side = SCAN_SIDE, c = document.createElement("canva
 export const scan = {
   open: false,
   found: [],        // order keys picked by scanning, in order
+  fresh: [],        // ... scanned since the last post office photo (the next one goes to these only)
+  lastPost: [],     // ... the last post office photo went to (another one with nothing new scanned goes there too)
+  posted: [],       // ... that got a post office photo on this visit (shown with a tick)
+  steps: [],        // "Step through the pile": these orders get a post office photo each, one after the other
   ask: null,        // { tracking, carrier }: a tracking number no order has yet
   askSearch: "",
   msg: "",
@@ -614,6 +618,7 @@ function addFound(o) {
   if (!state.orders.some((x) => x.key === o.key)) state.orders.push(o);
   if (scan.found.includes(o.key)) { scanSay(`${orderLabel(o)} is already scanned.`); return false; }
   scan.found.push(o.key);
+  if (scan.steps.length) scan.fresh = [o.key]; else scan.fresh.push(o.key);
   hit();
   scanSay(`Got ${orderLabel(o)}${o.name && o.id ? " · " + o.name : ""}. Scan the next one, or take the photo.`);
   renderScan();
@@ -787,17 +792,38 @@ function grab(video, deg) {
 }
 
 /** The shutter: one photo for every order on the camera screen, then straight back to the camera. */
+/** Stepping through the pile: the next order without its post office photo becomes the current one. */
+function nextStep() {
+  const next = scan.steps.find((k) => scan.found.includes(k) && !scan.posted.includes(k));
+  scan.fresh = next ? [next] : [];
+  return next || "";
+}
+
+function stepText() {
+  const total = scan.steps.filter((k) => scan.found.includes(k)).length;
+  const done = scan.steps.filter((k) => scan.found.includes(k) && scan.posted.includes(k)).length;
+  const o = state.orders.find((x) => x.key === scan.fresh[0]);
+  if (!o) return `All ${total} done. Tap Done.`;
+  return `Post office photo for ${orderLabel(o)}${o.name && o.id ? " · " + o.name : ""} (${done + 1} of ${total}). The next order comes up after the photo.`;
+}
+
 export async function shoot() {
   const video = $("#scan-video");
   if (!scan.found.length) { scanSay("Scan a label first, or pick the orders on the main screen."); return 0; }
   if (!scan.stream || !video.videoWidth) { scanSay("The camera isn't ready yet."); return 0; }
+  // Contents and packed photos go to every order on screen. A post office photo goes to its own order only: the
+  // ones scanned since the last post office photo, or (nothing new scanned) the same ones again, for a retake.
+  const post = state.kind === "postoffice";
+  const onScreen = (keys) => keys.filter((k) => scan.found.includes(k));
+  const target = !post ? scan.found : onScreen(scan.fresh).length ? onScreen(scan.fresh) : onScreen(scan.lastPost);
+  if (!target.length) { scanSay("Scan the next order's label, then take its post office photo."); return 0; }
   const deg = photoTurn();
   const blob = await new Promise((r) => grab(video, deg).toBlob(r, "image/jpeg", 0.92));
   const v = $("#scanner .scan-view");
   v.classList.add("flash");
   setTimeout(() => v.classList.remove("flash"), 120);
   if (!blob) return 0;
-  state.pick = new Set(scan.found);
+  state.pick = new Set(target);
   lsSet(LS.pick, [...state.pick]);
   const added = await addFiles([new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" })], { wait: false });
   if (added) {
@@ -805,17 +831,28 @@ export async function shoot() {
     scan.shots.unshift({ id: r.id, kind: r.kind, thumb: r.thumb });
     const k = KINDS.find((x) => x.id === state.kind);
     const n = scan.shots.filter((s) => s.kind === state.kind).length;
-    scanSay(`${k.label} photo ${n} saved for ${r.labels}${state.kind === "postoffice" ? " (marked shipped)" : ""}. Take another, or switch the type above.`);
+    if (post) {
+      scan.lastPost = target;
+      scan.fresh = [];
+      for (const key of target) if (!scan.posted.includes(key)) scan.posted.push(key);
+      if (scan.steps.length) scanSay(`Saved for ${r.labels} (marked shipped). ` + (nextStep() ? stepText() : stepText().replace(". Tap", ": tap")));
+      else scanSay(`Post office photo saved for ${r.labels} (marked shipped). Scan the next order, then take its photo.`);
+    } else scanSay(`${k.label} photo ${n} saved for ${r.labels}. Take another, or switch the type above.`);
     renderScan();
   }
   return added;
 }
 
 /** Open the camera screen: it reads codes (which pick orders) and takes photos until Done. */
-export async function openScanner(startWith = []) {
+export async function openScanner(startWith = [], { steps = false } = {}) {
   startMotion();
   scan.open = true;
   scan.found = [...startWith];
+  scan.fresh = [...startWith];
+  scan.lastPost = [];
+  scan.posted = [];
+  scan.steps = steps ? [...startWith] : [];
+  if (steps) nextStep();
   scan.shots = [];
   scan.ask = null;
   scan.last = "";
@@ -828,7 +865,7 @@ export async function openScanner(startWith = []) {
   try {
     await startCamera();
     if (scan.open) {
-      scanSay(scan.found.length ? "Take the photos (as many as you like), or scan more labels."
+      scanSay(scan.steps.length ? stepText() : scan.found.length ? "Take the photos (as many as you like), or scan more labels."
         : "Point at the QR code on the label, envelope or slip, or at the tracking barcode. Then take the photos.");
       renderScan();
     }
@@ -887,7 +924,8 @@ function renderScan() {
   const byKey = new Map(state.orders.map((o) => [o.key, o]));
   $("#scan-found").replaceChildren(...scan.found.map((k) => {
     const o = byKey.get(k) || { key: k, id: k };
-    return el("li", { class: "chip" }, el("span", { text: orderLabel(o) }),
+    const done = scan.posted.includes(k), now = scan.steps.length > 0 && scan.fresh[0] === k;
+    return el("li", { class: "chip" + (done ? " done" : "") + (now ? " now" : "") }, el("span", { text: (done ? "✓ " : now ? "▶ " : "") + orderLabel(o) }),
       el("button", { type: "button", class: "chip-x", "data-unscan": k, "aria-label": `Remove ${orderLabel(o)}`, text: "×" }));
   }));
   const n = scan.found.length;
@@ -983,7 +1021,7 @@ function todoRows() {
     rows.push(el("li", { class: "todo-head" },
       el("h3", {}, TODO_HEAD[k.id], " ", el("span", { class: "count", text: String(list.length) })),
       k.id === "postoffice" && list.length > 1
-        ? el("button", { type: "button", class: "btn primary small shoot-all", "data-shoot-all": k.id, text: `📷 One photo for all ${list.length}` }) : null));
+        ? el("button", { type: "button", class: "btn primary small shoot-all", "data-shoot-all": k.id, text: `📷 Step through all ${list.length}` }) : null));
     for (const o of list) rows.push(orderRow(o, k.id));
   }
   return rows;
@@ -1133,8 +1171,8 @@ function bind() {
     render();
   });
   $("#btn-clear").addEventListener("click", () => { state.pick.clear(); lsSet(LS.pick, []); render(); });
-  // To do: a camera button on an order (or "One photo for all" at the post office) picks it, sets the kind of photo
-  // it needs next and opens the camera.
+  // To do: a camera button on an order picks it, sets the kind of photo it needs next and opens the camera. "Step
+  // through all" (post office) opens the camera on the first order of the pile; each photo moves on to the next.
   $("#orders").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-shoot], button[data-shoot-all]");
     if (!b) return;
@@ -1144,7 +1182,8 @@ function bind() {
     lsSet(LS.pick, [...state.pick]);
     lsSet(LS.kind, state.kind);
     render();
-    $("#btn-cam").click();
+    if (b.dataset.shootAll && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) openScanner([...state.pick], { steps: true });
+    else $("#btn-cam").click();
   });
   $("#btn-cam").addEventListener("click", () => {
     // The camera screen takes several photos in a row; without a camera there, the iPhone camera takes one.
@@ -1172,6 +1211,7 @@ function bind() {
     const b = e.target.closest("button[data-unscan]");
     if (!b) return;
     scan.found = scan.found.filter((k) => k !== b.dataset.unscan);
+    if (scan.steps.length && !scan.found.includes(scan.fresh[0])) { nextStep(); scanSay(stepText()); }
     renderScan();
   });
   $("#scan-ask-list").addEventListener("click", (e) => {

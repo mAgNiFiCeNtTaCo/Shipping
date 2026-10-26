@@ -202,9 +202,12 @@ like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
 - It reads codes while you aim: the order QR code Ship Desk printed (label, envelope or packing slip) or the
   **tracking barcode** on a bubble mailer's label (Pirate Ship, USPS, UPS). Each one scanned joins the orders on
   screen; scan a whole stack one after another.
-- Pick **Contents / Packed / Post office** at the top and press the round **shutter** as often as you like: every
-  photo goes to all the orders on screen, and you stay on the camera. Switch the type and keep shooting. **Done**
-  goes back. (**iPhone camera** takes one photo with the iPhone's own camera app instead.)
+- Pick **Contents / Packed / Post office** at the top and press the round **shutter** as often as you like: a
+  contents or packed photo goes to all the orders on screen, and you stay on the camera. Switch the type and keep
+  shooting. **Done** goes back. (**iPhone camera** takes one photo with the iPhone's own camera app instead.)
+- **Post office: one photo per order.** Scan an order's label, take its photo, scan the next, take its photo: each
+  post office photo goes only to the order(s) scanned since the previous one (ticked ✓ on screen). Another photo
+  without a new scan goes to the same order again (a retake).
 - **Turned the right way:** the phone's tilt sensor tells which way you hold it, so photos taken sideways are saved
   turned upright. Shooting straight down at the desk keeps the way you last held it. The button on the picture
   ("Photo upright (auto)") shows what the next photo gets; tap it to turn by hand. The first time, the iPhone asks to
@@ -214,8 +217,9 @@ like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
 **To do (the list the phone opens with):** the orders that still need something, grouped by the photo they need
 next: **Contents photo next**, **Packed photo next**, **To the post office**. It lists orders not shipped yet that
 had a label made in the last 14 days, are loaded on the PC, or have photos waiting on the phone. The camera button
-next to an order picks it and opens the camera for the right kind of photo; at the post office, **One photo for all**
-picks the whole pile. A packed photo is enough to move on (the contents photo isn't asked for again), and a post
+next to an order picks it and opens the camera for the right kind of photo. At the post office, **Step through all**
+opens the camera on the first order of the pile ("Post office photo for ... (1 of 4)"); each photo goes to that order
+only and the next one comes up. Tap × on an order to skip it; scanning another label makes that order the current one. A packed photo is enough to move on (the contents photo isn't asked for again), and a post
 office photo takes the order off the list. Orders you picked that aren't on the list show under **Picked** at the
 top. **Not shipped** and **All** show the plain lists.
 

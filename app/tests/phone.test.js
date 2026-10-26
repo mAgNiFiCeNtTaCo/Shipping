@@ -764,6 +764,55 @@ Object.assign(tests, {
     dropFrames();
   },
 
+  "camera: at the post office each photo goes to the order just scanned, not to every order on screen": async () => {
+    const { win, doc, phone } = await phoneWithOrders();
+    const cam = doc.createElement("canvas");
+    cam.width = 640; cam.height = 480;
+    const paint = () => { const g = cam.getContext("2d"); g.fillStyle = "#d8d2c4"; g.fillRect(0, 0, 640, 480); };
+    paint();
+    const painter = setInterval(paint, 100); // (a canvas stream only sends frames while it's drawn on)
+    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(10);
+    const count = async (key) => (((await photosOnPc())[key] || {}).postoffice || 0);
+    const before = { a: await count("SAMPLE-0003"), b: await count("SAMPLE-0004"), c: await count("SAMPLE-0002") };
+    try {
+      phone.openScanner(); // (not awaited: like a tap, the camera starts in the background)
+      await waitFor(() => phone.scan.stream && doc.querySelector("#scan-video").videoWidth, "the camera to start");
+      doc.querySelector('#cam-kinds button[data-kind="postoffice"]').click();
+      phone.handleScan("SHIPDESK:SAMPLE-0003");
+      await waitFor(() => !doc.querySelector("#cam-shutter").disabled, "the shutter");
+      eq(await phone.shoot(), 1, "photo 1");
+      ok(/Post office photo saved for SAMPLE-0003/.test(doc.querySelector("#scan-msg").textContent), doc.querySelector("#scan-msg").textContent);
+      ok(doc.querySelector("#scan-found .chip.done") && /✓/.test(doc.querySelector("#scan-found").textContent), "ticked on screen");
+      phone.handleScan("SHIPDESK:SAMPLE-0004");
+      eq(phone.scan.found, ["SAMPLE-0003", "SAMPLE-0004"], "both still on screen");
+      await phone.shoot();
+      await phone.shoot(); // a retake, nothing new scanned: the same order again
+      ok(/Post office photo saved for SAMPLE-0004 /.test(doc.querySelector("#scan-msg").textContent), "the retake goes to SAMPLE-0004");
+      // Contents and packed photos still go to every order on screen.
+      doc.querySelector('#cam-kinds button[data-kind="packed"]').click();
+      phone.handleScan("SHIPDESK:SAMPLE-0002");
+      await phone.shoot();
+      eq(phone.state.recent[0].n, 3, "a packed photo for all 3 on screen");
+      await waitFor(async () => (await phone.queueAll()).length === 0, "the photos to reach the PC");
+      // Stepping through a pile: × on the current order skips it; a label scanned meanwhile becomes the current one.
+      phone.closeScanner(false);
+      doc.querySelector('#kinds button[data-kind="postoffice"]').click();
+      phone.openScanner(["SAMPLE-0005", "SAMPLE-0006", "SAMPLE-0007"], { steps: true });
+      eq(phone.scan.fresh, ["SAMPLE-0005"], "the first order is current");
+      doc.querySelector('#scan-found button[data-unscan="SAMPLE-0005"]').click();
+      eq(phone.scan.fresh, ["SAMPLE-0006"], "skipped: the next one is current");
+      ok(/\(1 of 2\)/.test(doc.querySelector("#scan-msg").textContent), doc.querySelector("#scan-msg").textContent);
+      phone.handleScan("SHIPDESK:SAMPLE-0009");
+      eq(phone.scan.fresh, ["SAMPLE-0009"], "a scanned label becomes the current order");
+    } finally {
+      clearInterval(painter);
+      phone.closeScanner(false);
+    }
+    eq([await count("SAMPLE-0003") - before.a, await count("SAMPLE-0004") - before.b, await count("SAMPLE-0002") - before.c], [1, 2, 0],
+      "one post office photo for the first order, two (one retake) for the second, none for the one scanned afterwards");
+    dropFrames();
+  },
+
   "post office photo: the order is marked shipped on the PC, unless it already was": async () => {
     const { app, win, doc, phone } = await phoneWithOrders();
     app.matchPasted("SAMPLE-0005 9400111899223344559999");
@@ -809,8 +858,10 @@ Object.assign(tests, {
     eq(doc.querySelectorAll("#orders li.todo button[data-shoot]").length, 3, "a camera button per order");
     const cam = doc.createElement("canvas");
     cam.width = 640; cam.height = 480;
-    cam.getContext("2d").fillRect(0, 0, 640, 480);
-    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(5);
+    const paint = () => { const g = cam.getContext("2d"); g.fillStyle = "#d8d2c4"; g.fillRect(0, 0, 640, 480); };
+    paint();
+    const painter = setInterval(paint, 100); // (a canvas stream only sends frames while it's drawn on)
+    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(10);
     const cameraOpens = async () => {
       ok(!doc.querySelector("#scanner").hidden, "the camera opens");
       await waitFor(() => !doc.querySelector("#cam-shutter").disabled, "the camera to start");
@@ -829,15 +880,29 @@ Object.assign(tests, {
       eq(group("postoffice"), [A, B], "packed: off to the post office next");
       eq(group("contents").length, 1);
       const all = doc.querySelector('#orders button[data-shoot-all="postoffice"]');
-      ok(all && /One photo for all 2/.test(all.textContent), "one photo for the whole pile");
+      ok(all && /Step through all 2/.test(all.textContent), "step through the pile");
       all.click();
       eq([[...phone.state.pick].sort(), phone.state.kind], [[A, B], "postoffice"]);
-      await cameraOpens();
-      await phone.addFiles([await photoFile()]);
+      ok(!doc.querySelector("#scanner").hidden, "the camera opens");
+      await waitFor(() => !doc.querySelector("#cam-shutter").disabled && doc.querySelector("#scan-video").videoWidth, "the camera to start");
+      const first = phone.scan.fresh[0], second = [A, B].find((k) => k !== first);
+      ok(/\(1 of 2\)/.test(doc.querySelector("#scan-msg").textContent) && doc.querySelector("#scan-found .chip.now"), "says which order is first: " + doc.querySelector("#scan-msg").textContent);
+      eq(await phone.shoot(), 1, "photo for the first order");
+      eq(phone.state.recent[0].n, 1, "one order only");
+      eq(phone.scan.fresh, [second], "the next order comes up");
+      ok(/\(2 of 2\)/.test(doc.querySelector("#scan-msg").textContent), doc.querySelector("#scan-msg").textContent);
+      eq(await phone.shoot(), 1, "photo for the second order");
+      ok(/All 2 done/.test(doc.querySelector("#scan-msg").textContent), doc.querySelector("#scan-msg").textContent);
+      eq(doc.querySelectorAll("#scan-found .chip.done").length, 2, "both ticked");
+      await waitFor(async () => (await phone.queueAll()).length === 0, "the photos to reach the PC");
+      const pc = await photosOnPc();
+      eq([pc[A].postoffice, pc[B].postoffice], [1, 1], "one post office photo each");
+      phone.closeScanner(true);
       eq(group("postoffice"), [], "handed in: off the list");
       ok(!/To the post office/.test(doc.querySelector("#orders").textContent), "group gone");
       ok(/Picked\s*2/.test(doc.querySelector("#orders").textContent), "still picked: shown at the top");
     } finally {
+      clearInterval(painter);
       phone.closeScanner(false);
     }
     // A label from months ago that never got shipped isn't nagged about; an order loaded on the PC now is listed.

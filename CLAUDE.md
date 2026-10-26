@@ -38,9 +38,13 @@ explain in plain words and finish jobs end to end.
   `POST /api/photos-rekey` moves its photos (`Saved/Phone/rekeys.json` sends late uploads to the order).
 - Phone "To do" view (default filter `todo`, phone.js `nextPhoto` / `todoGroups` / `todoRows`): not-shipped orders that are
   in the PC batch, labelled in the last `TODO_DAYS` = 14, or have photos waiting; grouped by the next photo (packed
-  skips contents; a post office photo ends it), counting saved + waiting photos. Row camera button (`data-shoot`) /
-  "One photo for all" (`data-shoot-all`) pick, set the kind and click `#btn-cam`. Picked orders off the list show under
+  skips contents; a post office photo ends it), counting saved + waiting photos. Row camera button (`data-shoot`) picks,
+  sets the kind and clicks `#btn-cam`; "Step through all" (`data-shoot-all`) = `openScanner(keys, { steps: true })`:
+  `scan.steps`, `nextStep()` makes one order current (`scan.fresh`), each post office photo moves on; × skips. Picked orders off the list show under
   "Picked".
+- Post office photos on the camera screen go only to `scan.fresh` (scanned since the last post office photo), else
+  `scan.lastPost` (retake); `scan.posted` get a tick chip. Contents/packed photos go to all of `scan.found` (user's
+  wish 2026-10-26).
 - Camera screen = the scanner (`#scanner`): shutter (`shoot`) takes any number of photos for `scan.found` without
   leaving; turn from `devicemotion` gravity (`onMotion`, iOS sign differs from Android; flat keeps the last turn;
   no turn when the page itself is landscape); `#cam-turn` overrides. A post office photo leaves a "shipped" note

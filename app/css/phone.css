@@ -180,6 +180,9 @@ body.scanning { overflow: hidden; }
 .scan-found { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .scan-found:empty { display: none; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border-radius: 999px; background: var(--brand-soft); border: 1px solid var(--brand-line); font-family: var(--mono); font-size: .85rem; font-weight: 700; }
+.chip.now { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.chip.now .chip-x { color: inherit; }
+.chip.done { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
 .chip-x { width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; font-size: 1.2rem; line-height: 1; cursor: pointer; }
 .scanner.asking .scan-panel { flex: 1 1 auto; max-height: none; border-radius: 0; align-content: start; padding-top: calc(16px + env(safe-area-inset-top)); }
 .scan-btns { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
