@@ -7,11 +7,13 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-10-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Windows installer** for other people: `python tools/build_installer.py` -> `dist\ShipDesk-Setup-1.0.0.exe` (13 MB,
-  own Python, per-user, no admin). MIT licence. Published 2026-10-26: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases/tag/v1.0.0
+- **Version 1.1.0**, Windows installer for other people: `python tools/build_installer.py` ->
+  `dist\ShipDesk-Setup-1.1.0.exe` (13 MB, own Python, per-user, no admin). MIT licence. Published 2026-10-26:
+  https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0 = latest). A fresh install sets itself up
+  completely: first-run checklist, guided Tailscale phone setup, update notice.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **169 passed, 0 failed** (2026-10-26).
+- Tests: `python tools/test.py` = **172 passed, 0 failed** (2026-10-26).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -27,6 +29,30 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: Ship Desk 1.1.0: everything a new PC needs (Tailscale setup, welcome checklist, update notice)
+- User asked for the update notice and the first-run welcome, and for the package to work exactly like their own
+  copy with nothing missing, Tailscale setup included. The gap was Tailscale: a new PC must install it, sign in, and
+  switch on Serve/HTTPS for its tailnet once (this PC had all of that already).
+- **Phone setup from scratch** (Phone photos window, steps 1-4, polling every 3 s while installing / signing in):
+  `POST /api/tailscale-install` downloads `https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe`, checks its
+  Windows signature is valid and "O=Tailscale Inc." (PowerShell Get-AuthenticodeSignature, checked on the real file),
+  then starts it; `POST /api/tailscale-login` runs `tailscale up` (Stopped) or `tailscale login` and hands back the
+  sign-in link; switching on phone access returns Tailscale's Serve/HTTPS enable link (`tailscale_with_link` reads
+  the login.tailscale.com link and stops the waiting command); step 4 links the Tailscale app for iPhone and Android.
+- **Welcome checklist** (`#welcome`): return address, print format, sample, then optional phone / backup / start with
+  Windows / update notice; ticks from the real settings; hide + "Setup checklist" to bring it back. Found by its test:
+  typing the return address didn't redraw it (now `renderWelcome` on input).
+- **Update notice**: `/api/update` asks GitHub `releases/latest` (once a day, from the page), `Saved/update.json`,
+  banner with Download / Not now, switch on the History page; on by default; README says what goes out.
+- Installer: optional task "Help me set up phone photos" -> `serve.py --open phone` opens the page at #phone;
+  uninstall also removes update.json. Generic texts instead of "Start Ship Desk.bat".
+- Tests 169 -> 172 (setup checklist, update notice incl. offline, phone setup from not-installed to QR code);
+  tools/test.py stands in for Tailscale and GitHub (`POST /__tailnet`). Install test: 1.0.0 then 1.1.0 over it
+  keeps the files folder and its files; the user's copy and Windows entries untouched.
+- Released v1.1.0 (the user ran `gh release create`; asset checksum matches the tested file; GitHub's latest = 1.1.0).
+- Not yet confirmed: the first-time Tailscale steps on a PC that never had Tailscale (only stand-ins + the real
+  pieces were tested here). The user's running Ship Desk still runs the older server code until Turn off / Turn on.
+
 ### 2026-10-26: Windows installer (Ship Desk 1.0.0), MIT licence
 - User asked to package Ship Desk as a Windows installer others can set up their own way. Inno Setup 6.7.3 installed
   with winget at the user's OK (build tool only).

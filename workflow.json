@@ -554,6 +554,31 @@
         "A stop command for 'this copy only' must refuse when the running copy can't say where it runs from.",
         "Silent Inno installs take the default-ticked tasks: name them off (/MERGETASKS) when testing on a real PC."
       ]
+    },
+    {
+      "title": "Ship Desk 1.1.0: Tailscale setup, welcome checklist, update notice",
+      "date": "2026-10-26",
+      "summary": "The same session made a fresh install set itself up completely (guided, signature-checked Tailscale install and sign-in, first-run checklist, daily update notice), tested an upgrade from 1.0.0, and the user published v1.1.0; 172 tests.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T03:35",
+              "end": "2026-10-26T04:40",
+              "did": "serve.py tailscale install/login/enable link + update check, app.js phone steps 1-4, welcome checklist, update banner, test stand-ins, installer task, upgrade test",
+              "outcome": "done",
+              "files": 12
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "A first-run checklist must redraw on every setting that can tick it (its test caught the return address)."
+      ]
     }
   ]
 }
