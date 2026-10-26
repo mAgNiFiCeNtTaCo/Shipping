@@ -9,14 +9,28 @@ The only exception is your own phone (see "Phone photos"): through your private 
 order's buyer name, city, state and ZIP (no street) to pick from, and the photos you take of labels go back to
 this PC.
 
-## Start it
+## Install and start it
 
-Double-click **`Start Ship Desk.bat`**. Ship Desk starts in the background (no window stays open) and your
-browser opens it (http://127.0.0.1:5091/). Turn it off with the switch at the top of the page, or double-click
-**`Stop Ship Desk.bat`**. Starting it when it's already running just opens the page. Messages and problems
-go to `Saved\ship-desk.log`; a problem that stops it from starting also pops up.
+**With the installer** (`ShipDesk-Setup-<version>.exe`, Windows 10 or 11): run it and click through. It installs
+for your Windows user only (no administrator needed) and brings everything it needs, its own Python included.
+Setup asks:
+- **where Ship Desk keeps your files** (labels, packing slips, import files, phone photos): `Documents\Ship Desk`
+  unless you pick another folder;
+- whether to put an icon on the desktop, and whether Ship Desk should **start in the background when you sign in
+  to Windows** (you can change that later at the top of the Ship Desk page).
 
-No internet needed. (It needs Python; if it's missing, the window tells you how to install it.)
+Then open **Ship Desk** from the Start menu (or the desktop icon). Ship Desk starts in the background (no window
+stays open) and your browser opens it (http://127.0.0.1:5091/). The Start menu also has **Turn off Ship Desk**,
+**Ship Desk files** (the folder with everything it made) and this guide. Windows may warn that the installer is from
+an unknown publisher (it isn't signed): click **More info → Run anyway** if you trust where you got it.
+To remove it: **Settings → Apps → Installed apps → Ship Desk → Uninstall**; it asks whether to delete the files it
+made too (No keeps them).
+
+**From the source folder** (the GitHub copy): double-click **`Start Ship Desk.bat`** (it needs Python 3), and
+**`Stop Ship Desk.bat`** to turn it off. Files then go to the `Saved` folder next to it.
+
+Starting it when it's already running just opens the page. Messages and problems go to `ship-desk.log` in the
+files folder; a problem that stops it from starting also pops up. No internet needed.
 
 ## The 4 steps
 
@@ -108,8 +122,8 @@ toploader, how many cards go in one toploader, whether your envelopes are rigid 
 The top of the page shows **Ship Desk on** with a **Turn off** button. Turn off asks first, then stops Ship Desk and
 it stops running in the background. The page stays open (it works from its offline copy) and shows **Ship Desk is off** with
 **Turn on**: click it and Ship Desk starts again. The first time, the browser asks whether this site may open
-"Ship Desk": tick "Always allow" and click Open. If Ship Desk stops some other way (Stop Ship Desk.bat, a
-restart of the PC), the page notices within a few seconds.
+"Ship Desk": tick "Always allow" and click Open. If Ship Desk stops some other way (Turn off Ship Desk in
+the Start menu, Stop Ship Desk.bat, a restart of the PC), the page notices within a few seconds.
 
 - **Start with Windows** (the tick box next to the switch): Ship Desk starts in the background when you log in to
   Windows, without opening the browser. It's in Windows' own startup list, so **Task Manager → Startup apps**
@@ -121,8 +135,10 @@ restart of the PC), the page notices within a few seconds.
 
 ## Where your files go (the Saved folder)
 
-Everything Ship Desk makes is saved straight into the **`Saved`** folder inside the Ship Desk folder
-(`D:\ClaudeProjects\Shipping\Saved`), not into your Downloads. Your browser's other downloads still go to Downloads as before.
+Everything Ship Desk makes is saved straight into its files folder, not into your Downloads: the folder you picked
+when installing (`Documents\Ship Desk` unless you chose another; Start menu → **Ship Desk files** opens it), or the
+**`Saved`** folder next to Ship Desk when it runs from the source folder. Below it's called `Saved`. Your browser's
+other downloads still go to Downloads as before.
 
 | Folder | What's in it |
 |---|---|
@@ -191,8 +207,8 @@ Take photos of each order with your iPhone: **what's inside** (the cards), the *
 like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
 
 **Set it up once:**
-1. Your phone reaches this PC through **Tailscale** (already on this PC and your iPhone). The Tailscale app on
-   the iPhone must say Connected.
+1. Your phone reaches this PC through **Tailscale**, a free private network: install it on this PC and on your iPhone
+   (tailscale.com) and sign in to both with the same account. The Tailscale app on the iPhone must say Connected.
 2. In Ship Desk click **Phone photos** (top right), then **Switch on phone access**. That gives the phone page an
    address only your own Tailscale devices can open (not the internet). The rest of Ship Desk stays on this PC.
 3. Point the iPhone's **Camera** at the QR code and tap the link. In Safari tap **Share → Add to Home Screen**:
@@ -264,7 +280,8 @@ Only in this browser on this PC: your return addresses, design and settings, whi
 the History list, and the orders you last loaded (with their addresses, until you clear them or 14 days pass).
 Order files are read in the browser and never uploaded. Once a phone is set up, Ship Desk keeps the list
 the phone picks from (order #, buyer name, city, state, ZIP; no street) in `Saved\Phone`. Photos are in
-`Saved\Photos`. Both stay on this PC and are never put on GitHub. A different browser (or another PC) starts empty.
+`Saved\Photos`. Both stay on this PC (unless you switch on the Dropbox / OneDrive backup). A different browser (or
+another PC) starts empty.
 
 ## Honest limits
 
@@ -274,13 +291,19 @@ the phone picks from (order #, buyer name, city, state, ZIP; no street) in `Save
   Weigh a heavy order to be sure.
 - The import file for orders shipped without tracking (`Shipped` in the tracking column, carrier `USPS`) was
   confirmed on a real upload on 2026-10-25 ("1 row successfully imported"; an empty carrier had been refused).
-- Built from public descriptions because TCGplayer's help pages couldn't be read directly, so **check it on a
-  real batch:** reading the **card list from TCGplayer's packing-slip PDF**. If a slip shows "Card details are on your
-    TCGplayer packing slip" instead of the cards, the reader didn't recognise the layout: use
-    **Slips in label order** to print TCGplayer's own slips.
+- The **card list from TCGplayer's packing-slip PDF** was checked on a real slip on 2026-10-26. If a slip shows
+  "Card details are on your TCGplayer packing slip" instead of the cards, the reader didn't recognise the layout:
+  use **Slips in label order** to print TCGplayer's own slips.
+
+## Licence
+
+Ship Desk is free to use and share under the **MIT licence** (`LICENSE`; `LICENSE.txt` in the installed folder). It
+comes with no warranty. It includes other people's libraries and a copy of Python, listed with their licences in
+`installer/THIRD-PARTY-NOTICES.txt` (`THIRD-PARTY-NOTICES.txt` in the installed folder).
 
 ## For developers
 
 Static browser app in `app/` (no build step), served by `serve.py`. Tests: `python tools/test.py` (runs every
-suite in headless Edge). Screenshots: start `python serve.py --no-browser --port 5098`, then
+suite in headless Edge). Windows installer: `python tools/build_installer.py` (needs Inno Setup 6) ->
+`dist\ShipDesk-Setup-<version>.exe`; the version is `APP_VERSION` in `serve.py`, the setup script `installer/ShipDesk.iss`. Screenshots: start `python serve.py --no-browser --port 5098`, then
 `python docs/make_screens.py`. Build spec: `CONTRACT.md`; test results: `docs/TEST_REPORT.md`.

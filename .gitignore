@@ -24,3 +24,7 @@ Saved/
 *ShippingExport*
 *PackingSlip*.pdf
 orders/
+
+# installer builds (tools/build_installer.py)
+build/
+dist/

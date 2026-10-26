@@ -2,6 +2,11 @@
 
     python serve.py              # http://127.0.0.1:5091/
     python serve.py --port 5092 --no-browser
+    python serve.py --stop       # turn off this copy of Ship Desk if it's the one running (installer, Start menu)
+
+Installed with the Windows installer (installer/ShipDesk.iss), Ship Desk runs on its own copy of Python and keeps
+its files in the folder chosen during setup (install.json next to this file: {"dataDir": ...}); without
+install.json they go to the Saved folder next to this file.
 
 The app runs entirely in the browser. This server hands out the files in app/ and saves the files the app
 makes (label PDFs, packing slips, import/Pirate Ship/history CSVs) into the Saved folder next to this file,
@@ -65,9 +70,25 @@ import time
 import urllib.parse
 import webbrowser
 
+APP_VERSION = "1.0.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "app")
-SAVE_ROOT = os.path.join(HERE, "Saved")
+
+
+def data_root():
+    """Where the files Ship Desk makes go: install.json's "dataDir" (set by the installer), else Saved next to this file."""
+    try:
+        with open(os.path.join(HERE, "install.json"), encoding="utf-8-sig") as f:
+            d = json.load(f)
+        path = d.get("dataDir") if isinstance(d, dict) else None
+        if isinstance(path, str) and path.strip():
+            return os.path.abspath(os.path.expandvars(path.strip()))
+    except (OSError, ValueError):
+        pass
+    return os.path.join(HERE, "Saved")
+
+
+SAVE_ROOT = data_root()
 DEFAULT_PORT = 5091
 MAX_BYTES = 100 * 1024 * 1024
 MAX_PHOTO_BYTES = 30 * 1024 * 1024
@@ -482,7 +503,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if path == "/api/ping":
             self.reply(200, {"ok": True, "launcher": LAUNCHER_URL if launcher_registered() else "",
-                             "autostart": self.autostart_enabled()})
+                             "autostart": self.autostart_enabled(), "version": APP_VERSION, "home": HERE})
         elif path == "/api/phone-link":
             self.reply(200, {"ok": True, **self.phone_link()})
         elif path == "/api/photos":
@@ -1158,23 +1179,59 @@ def tell(message, hidden):
             pass
 
 
-def already_running(port):
-    """Is Ship Desk itself answering on this port?"""
+def ping(port):
+    """Ship Desk's answer on this port ({ok, version, home, ...}), or None when nothing (or something else) answers."""
     import urllib.request
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{port}/api/ping", headers={"X-Ship-Desk": "1"})
         with urllib.request.urlopen(req, timeout=3) as r:
-            return bool(json.loads(r.read().decode("utf-8")).get("ok"))
+            data = json.loads(r.read().decode("utf-8"))
+        return data if isinstance(data, dict) and data.get("ok") else None
     except (OSError, ValueError):
-        return False
+        return None
+
+
+def already_running(port):
+    """Is Ship Desk itself answering on this port?"""
+    return ping(port) is not None
+
+
+def stop_running(port, any_copy=False):
+    """Turn off the Ship Desk on this port if it is this copy (or any copy). Returns a line saying what happened."""
+    import urllib.request
+    info = ping(port)
+    if not info:
+        return "Ship Desk wasn't running."
+    home = info.get("home")
+    # Only this copy (an older Ship Desk doesn't say where it runs from: left on too, unless any_copy).
+    if not any_copy and (not isinstance(home, str) or os.path.normcase(os.path.abspath(home)) != os.path.normcase(HERE)):
+        return f"Another copy of Ship Desk is running (from {home or 'an older version'}); left on."
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/shutdown", data=b"", method="POST",
+                                     headers={"X-Ship-Desk": "1", "Origin": f"http://127.0.0.1:{port}"})
+        urllib.request.urlopen(req, timeout=5).close()
+    except OSError:
+        pass
+    for _ in range(40):
+        if not already_running(port):
+            return "Ship Desk is off."
+        time.sleep(0.25)
+    return "Ship Desk didn't stop."
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--stop", action="store_true", help="turn off this copy of Ship Desk if it is the one running")
+    ap.add_argument("--stop-any", action="store_true", help="turn off whichever Ship Desk runs on the port")
     a = ap.parse_args()
     hidden = sys.stdout is None  # started with pythonw: no window
+    if a.stop or a.stop_any:
+        msg = stop_running(a.port, any_copy=a.stop_any)
+        if not hidden:
+            print(msg)
+        return
     if hidden:
         start_log()
     url = f"http://127.0.0.1:{a.port}/"

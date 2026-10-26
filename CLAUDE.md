@@ -92,11 +92,23 @@ explain in plain words and finish jobs end to end.
   by the Phone photos window, tailnet only, never Funnel). Anything with X-Forwarded-For / Tailscale-User-* headers or a
   non-local Host gets only `PHONE_FILES` + `/api/phone/*` (with the `X-Ship-Desk-Key` pairing code).
 - `serve.py` local server, `tools/test.py` test runner, `docs/make_screens.py` + `docs/screens/` screenshots.
+- Windows installer (2026-10-26): `tools/build_installer.py` -> `dist/ShipDesk-Setup-<APP_VERSION>.exe` (build/ and dist/
+  gitignored). It stages serve.py + app/ (no tests) + Python's embeddable zip (`PY_VERSION`, checked against
+  `PY_SHA256` from python.org's API) + `shipdesk.ico` (icon.svg drawn by Edge, Pillow) + "Ship Desk guide.html" (README
+  without "For developers", own small converter) + `installer/THIRD-PARTY-NOTICES.txt`, then compiles
+  `installer/ShipDesk.iss` (Inno Setup 6, per-user, no admin, AppId DCB21337-...). Setup asks the files folder (default
+  Documents\Ship Desk, `/DATADIR=` on the command line) and writes `{app}\install.json` {"dataDir"}; serve.py
+  `data_root()` reads it (no install.json = Saved next to serve.py, as in this folder). Tasks: desktop icon, start
+  with Windows (same Run value as `launcher_command()`). Uninstall removes the Run value / shipdesk:// key only when
+  they point into {app}, and asks before deleting only Ship Desk's own subfolders in the files folder.
+  `serve.py --stop` turns off only the copy whose `/api/ping` "home" is this folder (`--stop-any` for any).
 - `specs/` the build briefs of 2026-10-20.
 
 ## Commands
 - Run: `Start Ship Desk.bat` (background) / `Stop Ship Desk.bat`, or `python serve.py` (in a window) ->
-  http://127.0.0.1:5091/ (`--port`, `--no-browser`).
+  http://127.0.0.1:5091/ (`--port`, `--no-browser`, `--stop`).
+- Installer: `python tools/build_installer.py` (Inno Setup 6 in %LOCALAPPDATA%\Programs, installed 2026-10-26 with winget).
+  Bump `APP_VERSION` in serve.py for a new release.
 - Tests: `python tools/test.py` (all) or `python tools/test.py data render ui e2e`; runs in headless Edge.
 - Screenshots: `python serve.py --no-browser --port 5098` in the background, then `python docs/make_screens.py`
   (`python docs/make_screens.py phone` = only the phone shots, on a private server with fake Tailscale).
@@ -113,6 +125,12 @@ explain in plain words and finish jobs end to end.
 
 ## Gotchas
 - No Node on this PC: JS tests only run through `tools/test.py` (headless Edge).
+- Testing the installer on this PC: install silently to a temp folder with `/MERGETASKS="!desktopicon,!autostart"
+  /NOICONS /DATADIR=...` (both tasks are ticked by default: a plain silent install would point the user's "Start with
+  Windows" at the test copy), run it on another port, never on 5091. On 2026-10-26 a test `--stop` turned off the
+  user's running copy because that older process didn't report "home"; now a copy that doesn't say where it runs
+  from is left on. PowerShell scripts can't be run with `powershell -Command & x.ps1` here (execution policy): use
+  the PowerShell tool.
 - TCGplayer's help pages are behind a Cloudflare check (403 to fetchers). Confirmed on a real upload 2026-10-25: an
   untracked row = Tracking `Shipped` + Carrier `USPS` (an empty carrier is refused: "Carrier is unrecognized").
   Slip reader checked on a real slip 2026-10-26: items read "Game - Set - Name - #Number - Rarity - Condition" and wrap
