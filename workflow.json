@@ -654,6 +654,28 @@
           ]
         }
       ]
+    },
+    {
+      "title": "Next steps agreed",
+      "date": "2026-10-26",
+      "summary": "Suggested and agreed the next work (security audit of 1.1, Order List cross-check, History not-sent filter), saved before clearing the context.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T16:50",
+              "end": "2026-10-26T16:55",
+              "did": "Suggestions, plan recorded for the next session; build check: no changes",
+              "outcome": "done",
+              "files": 2
+            }
+          ]
+        }
+      ]
     }
   ]
 }

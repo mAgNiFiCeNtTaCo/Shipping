@@ -30,6 +30,17 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: next steps agreed (before a context clear)
+- Agreed with the user, in this order: (1) a `/security-audit` of the 1.1 additions (Tailscale installer download +
+  run, `/api/tailscale-*`, `/api/update` GitHub check, `--stop`, install.json / data folder, the import rows built from
+  History, what the release installer contains); report first, fix only with the user's OK. (2) Read TCGplayer's
+  **Order List** export (`TCGplayer_OrderList_*.csv`: Order #, Buyer Name, Order Date, Status, Shipping Type, ...,
+  Carrier Information) when dropped on the page: list "shipped in Ship Desk but still Ready to Ship on TCGplayer"
+  (upload forgotten) and "Ready to Ship on TCGplayer with no label / post office photo" (missed), and mark orders
+  TCGplayer already shows shipped as sent so they don't wait for the import file. (3) A "Not sent to TCGplayer yet"
+  filter on the History page. Later: fresh-PC Tailscale test, photo storage, label layout ideas.
+- Save build check: no changes since 1.1.1.
+
 ### 2026-10-26: import file takes every shipped order; automatic builds on save; 1.1.1
 - **Bug (user report):** after scanning all packages at the post office, the TCGplayer import file had 1 order. Cause:
   the import file only took the *loaded* file's orders, and the kept batch was the 1-order packing-slip test file;
