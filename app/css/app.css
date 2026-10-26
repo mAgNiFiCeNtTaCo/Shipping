@@ -381,6 +381,10 @@ table.orders { width: 100%; border-collapse: collapse; font-size: .93rem; }
 .phone-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--brand-line); background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: .93rem; cursor: pointer; }
 .phone-btn:hover { border-color: var(--brand); }
 
+/* already sent to TCGplayer */
+.sent { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-line); font-weight: 600; white-space: nowrap; }
+.ship-sent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 10px 0 0; color: var(--muted); }
+
 /* Ship Desk on/off */
 .power { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 4px 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: .9rem; }
 .power-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }

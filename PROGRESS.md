@@ -4,16 +4,17 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-10-21)
+## Where it stands (2026-10-25)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; not yet tried
   on a real TCGplayer import.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **152 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 13, e2e 9, phone 21).
+- Tests: `python tools/test.py` = **155 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 14, e2e 10, phone 22).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
-  named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`).
+  named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`). History has a copy in
+  `Saved\History` (+ daily backups); import files only carry what's new ("Sent to TCGplayer"); proof pack PDF per order.
 - Phone page (`/phone.html`, iPhone through Tailscale serve, pairing code): photos per order (contents / packed /
   post office) into `Saved\Photos`, offline queue. Its camera screen scans order QR codes and mailer tracking
   barcodes and takes any number of photos in a row, turned upright by the tilt sensor. Post office photos mark
@@ -21,6 +22,31 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-25: History copy on the PC, "sent to TCGplayer", proof packs
+- User asked for improvement ideas, then "start wherever you think is best". Suggested (in order): History copy,
+  remember what went to TCGplayer, proof pack, Pirate Ship export import, phone "to do" view, photo storage growth
+  (~5 MB/order), backups of `Saved\`, first real TCGplayer upload check, real-iPhone checks, a security review. Did the
+  first three; the rest stay open.
+- **History copy:** `GET/POST /api/history-copy` -> `Saved/History/ship-desk-history.json` + `Backups/history-<date>.json`
+  (30 days). The browser writes it 0.8 s after each change, but only once "linked" (`shipdesk.historyCopy`): a cleared
+  browser (or another one) gets an offer in History (Restore = merge + rebuild step 4's shipped list; Keep = this
+  browser's becomes the copy) and never overwrites the copy first. Clear history is followed by the copy (dated
+  backups stay). The live copy is written when the user next loads the page (not there yet at the save).
+- **Sent to TCGplayer:** making the import file marks each order `state.shipped[id].sent = { at, what }` and History
+  `sentAt`; the next file leaves out orders sent with the same tracking / "Shipped" (an order that got tracking since
+  goes in again); step 4 shows how many and a "Put them in again" box; "Sent to TCGplayer <date>" in step 4 and History.
+  `withSent` keeps the note when other code rewrites a shipped entry. Import files made before 2026-10-25 weren't
+  recorded, so their orders can appear once more.
+- **Proof pack:** "Make proof pack (PDF)" in an order's photos window: letter PDF, page 1 = order, buyer, city/ZIP,
+  value, label made, shipped, tracking + clickable tracking page, sent to TCGplayer, every photo small with its
+  time; then one photo per page. `Saved\Proof packs`, `Proof pack <date time> - <buyer> - <order #>.pdf`, no street.
+  Screenshot `docs/screens/proof-pack.png` (new phone-preview mode "proof").
+- Phone status no longer says "Sending..." for a moment when nothing is waiting (it made a phone test flaky in a
+  full run once).
+- Tests 152 -> 155 (History copy offer/restore/keep/clear and refusals; import only what's new / changed / again;
+  proof pack pages, text, link, images, file name), passed twice. Caches `shipdesk-v15` / `shipdesk-phone-v7`.
+  Ship Desk restarted at the user's OK (off via the page's request, on via shipdesk://start).
+
 ### 2026-10-21: on/off switch, runs in the background, starts with Windows
 - **On/off switch** (user: a button on the web app to turn Ship Desk on and off; asked which "this" meant, user chose
   Ship Desk itself): header `#power` shows on / off / turning off / starting, checks `GET /api/ping` every 10 s.

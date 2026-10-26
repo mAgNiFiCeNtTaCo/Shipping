@@ -22,6 +22,7 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
     PC page:  GET  /api/ping                  "Ship Desk is on" (+ the shipdesk://start link once registered)
               POST /api/shutdown              the page's Turn off (shipdesk://start turns it on again)
               POST /api/autostart?on=1|0      start with Windows (this user's startup list) or not
+              GET/POST /api/history-copy      the History list's copy in Saved/History (+ a dated copy per day)
               GET  /api/phone-link            QR link, code, Tailscale state
               POST /api/phone-access?on=1|0   switch the Tailscale address on/off
               POST /api/phone-key             make a new pairing code (old phones must scan again)
@@ -76,6 +77,7 @@ FOLDERS = {
     "import": "TCGplayer import files",
     "pirate": "Pirate Ship",
     "history": "History",
+    "proof": "Proof packs",
     "photos": "Photos",
 }
 NAME_OK = re.compile(r"^[\w ,.'&()+-]{1,150}\.(pdf|csv)$")  # \w: letters of any language, digits, _
@@ -88,6 +90,9 @@ ORDER_FIELDS = ("key", "id", "source", "name", "city", "state", "zip", "labelled
 TRACKING_OK = re.compile(r"^[0-9A-Z]{8,40}$")
 CARRIERS = {"", "USPS", "UPS", "FedEx", "DHL"}
 MAX_LINK_BYTES = 4096
+MAX_HISTORY_BYTES = 20 * 1024 * 1024
+HISTORY_COPY = "ship-desk-history.json"
+HISTORY_BACKUP_DAYS = 30
 
 # The only files a phone (anything through the Tailscale proxy) may load.
 PHONE_FILES = {"/phone.html", "/css/phone.css", "/js/phone.js", "/phone-sw.js", "/icon.svg", "/apple-touch-icon.png",
@@ -315,6 +320,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_photo(arg("id"), arg("order"))
         elif path == "/api/links":
             self.reply(200, {"ok": True, "links": [ln for ln in self.links() if not ln.get("applied")]})
+        elif path == "/api/history-copy":
+            self.reply(200, {"ok": True, **self.history_copy()})
         else:
             self.send_error(404)
 
@@ -336,7 +343,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if url.path not in ("/api/save", "/api/open-folder", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
                             "/api/links-done", "/api/photos-rekey", "/api/photo-rotate", "/api/shutdown",
-                            "/api/autostart"):
+                            "/api/autostart", "/api/history-copy"):
             self.send_error(404)
             return
         if not self.from_ship_desk():
@@ -346,6 +353,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # The page's "Turn off": answer first, then stop (the black window closes by itself).
             self.reply(200, {"ok": True})
             threading.Timer(0.3, self.stop_server).start()
+            return
+        if url.path == "/api/history-copy":
+            self.save_history_copy()
             return
         if url.path == "/api/autostart":
             ok = self.set_autostart(arg("on") == "1")
@@ -406,6 +416,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def stop_server(self):
         self.server.shutdown()
+
+    # ---------- the History list's copy on this PC ----------
+    # The PC page keeps History in the browser; this keeps a copy in Saved/History so a cleared browser (or another
+    # browser) can get it back: ship-desk-history.json, plus one dated copy per day in Saved/History/Backups.
+
+    def history_dir(self):
+        return os.path.join(self.save_root, FOLDERS["history"])
+
+    def history_copy(self):
+        data = read_json(os.path.join(self.history_dir(), HISTORY_COPY), {})
+        hist = data.get("history") if isinstance(data, dict) else None
+        if not isinstance(hist, dict):
+            return {"history": None, "count": 0, "savedAt": ""}
+        return {"history": hist, "count": len(hist), "savedAt": data.get("savedAt", "")}
+
+    def save_history_copy(self):
+        d = self.read_json_body(MAX_HISTORY_BYTES)
+        hist = d.get("history") if isinstance(d, dict) else None
+        if not isinstance(hist, dict) or not all(isinstance(v, dict) for v in hist.values()):
+            self.reply(400, {"ok": False, "error": "Bad history."})
+            return
+        now = time.strftime("%Y-%m-%d %H:%M")
+        data = {"savedAt": now, "history": hist}
+        with lock:
+            write_json(os.path.join(self.history_dir(), HISTORY_COPY), data)
+            backups = os.path.join(self.history_dir(), "Backups")
+            write_json(os.path.join(backups, f"history-{now[:10]}.json"), data)
+            old = sorted(f for f in os.listdir(backups) if re.match(r"^history-\d{4}-\d{2}-\d{2}\.json$", f))
+            for f in old[:-HISTORY_BACKUP_DAYS]:
+                try:
+                    os.remove(os.path.join(backups, f))
+                except OSError:
+                    pass
+        self.reply(200, {"ok": True, "count": len(hist), "savedAt": now})
 
     # (methods, so the tests can stand in for the Windows startup list)
     def autostart_enabled(self):

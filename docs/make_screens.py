@@ -174,6 +174,7 @@ def phone_shots():
         live_shot(base + "pc", "app-1280-phone.png", 1280, 900)
         live_shot(base + "pc", "app-1280-phone-dark.png", 1280, 900, "dark")
         live_shot(base + "photos", "app-1280-photos.png", 1280, 900)
+        live_shot(base + "proof", "proof-pack.png", 1300, 880)
         live_shot(base + "history", "app-1280-history-photos.png", 1280, 900)
         live_shot(base + "history", "app-390-history-photos.png", 390, 1600)
         live_shot(base + "pc", "app-390-phone.png", 390, 1100)

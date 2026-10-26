@@ -272,4 +272,58 @@ tests["saved folder: the server refuses other websites and bad file names"] = as
   eq((await post("/api/open-folder?kind=..")).status, 400, "unknown folder");
 };
 
+tests["copy on the PC: a cleared browser is offered the saved History; a linked browser keeps the copy current"] = async () => {
+  const PC = { "X-Ship-Desk": "1" };
+  const copy = async () => (await fetch("/api/history-copy", { headers: PC })).json();
+  const put = (history) => fetch("/api/history-copy", { method: "POST", headers: { ...PC, "Content-Type": "application/json" }, body: JSON.stringify({ history }) });
+  eq((await fetch("/api/history-copy")).status, 403, "only Ship Desk's own page reads it");
+  eq((await fetch("/api/history-copy", { method: "POST", body: "{}" })).status, 403, "or writes it");
+  eq((await fetch("/api/history-copy", { method: "POST", headers: PC, body: "[]" })).status, 400, "not a History list: refused");
+  eq((await fetch("/api/history-copy", { method: "POST", headers: PC, body: JSON.stringify({ history: { a: 1 } }) })).status, 400, "records must be objects");
+  // A copy from before: two orders, one shipped with tracking.
+  const h = {};
+  recordPrinted(h, [order("C-1"), order("C-2")], { format: "thermal4x6", when: "2026-10-22 10:00" });
+  recordShipped(h, order("C-2"), { tracking: "9400100000000000000222", carrier: "USPS", shipped: true }, { when: "2026-10-22 16:00" });
+  ok((await put(h)).ok, "copy written");
+  eq((await copy()).count, 2);
+  // This browser lost its History (cleared): it's asked, and doesn't overwrite the copy meanwhile.
+  clearStore();
+  let { doc, app, win } = await openApp("#history");
+  await waitFor(() => visible(doc.querySelector("#history-copy")), "the offer");
+  ok(doc.querySelector("#history-copy-text").textContent.includes("2 orders"), doc.querySelector("#history-copy-text").textContent);
+  app.loadCsvText(await sampleText(), "sample.csv");
+  doc.querySelector("#btn-pdf").click(); // a change before answering
+  await sleep(1200);
+  eq((await copy()).count, 2, "the copy wasn't overwritten by the cleared browser");
+  doc.querySelector("#btn-history-restore").click();
+  await waitFor(() => !visible(doc.querySelector("#history-copy")) && app.state.history["C-2"], "the restore");
+  ok(app.state.history["C-1"] && Object.keys(app.state.history).length === 12, "both: the copy's 2 + this browser's 10");
+  eq(app.state.shipped["C-2"] && app.state.shipped["C-2"].tracking, "9400100000000000000222", "step 4's shipped list rebuilt");
+  await waitFor(async () => (await copy()).count === 12, "the copy to follow");
+  ok(doc.querySelector("#history-totals").textContent.includes("copy in Saved\\History"), "History says where the copy is");
+  // Reopened: linked, nothing to ask.
+  ({ doc, app, win } = await openApp("#history"));
+  await sleep(600);
+  ok(!visible(doc.querySelector("#history-copy")), "no offer for the linked browser");
+  // Clear history: the copy follows (the dated backup of the day stays).
+  win.confirm = () => true;
+  doc.querySelector("#btn-clear-history").click();
+  await waitFor(async () => (await copy()).count === 0, "the copy to be cleared too");
+  // Another browser with its own, different History: Keep makes it the copy.
+  ok((await put(h)).ok);
+  clearStore();
+  ({ doc, app, win } = await openApp("#history"));
+  app.loadCsvText(await sampleText(), "sample.csv");
+  app.setFilter("tracked");
+  doc.querySelector("#btn-pdf").click();
+  app.checkHistoryCopy();
+  await waitFor(() => visible(doc.querySelector("#history-copy")), "the offer (different History)");
+  win.confirm = () => true;
+  doc.querySelector("#btn-history-keep").click();
+  await waitFor(async () => (await copy()).count === 5, "this browser's 5 orders to become the copy");
+  ok(!visible(doc.querySelector("#history-copy")), "offer gone");
+  document.getElementById("history-frame").remove();
+  clearStore();
+};
+
 export { tests };

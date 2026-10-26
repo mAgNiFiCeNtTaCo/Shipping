@@ -100,10 +100,13 @@ const findHeader = (headers, key) => {
 };
 
 /**
- * importFileCsv(orders, shippedState) -> { csv, count, missingRequired: [orderId] }
- * TCGplayer "Import Shipping Info" file: original columns and order, one row per shipped/tracked order.
+ * importFileCsv(orders, shippedState, { skipSent }) -> { csv, count, missingRequired: [orderId], included: [{ id, what }],
+ *   already: [orderId] }
+ * TCGplayer "Import Shipping Info" file: original columns and order, one row per shipped/tracked order. `what` is
+ * the tracking number sent, or "Shipped". With skipSent, orders whose shippedState entry says they were already
+ * sent with the same `what` (entry.sent = { at, what }) are left out and listed in `already`.
  */
-export function importFileCsv(orders, shippedState) {
+export function importFileCsv(orders, shippedState, { skipSent = false } = {}) {
   const state = shippedState || {};
   const fileOrders = orders.filter((o) => o.row && Object.keys(o.row).length);
   const headers = [];
@@ -112,11 +115,14 @@ export function importFileCsv(orders, shippedState) {
   const trackingCol = findHeader(headers, "tracking") || (headers.push("Tracking #"), "Tracking #");
   const carrierCol = findHeader(headers, "carrier") || (headers.push("Carrier"), "Carrier");
 
-  const rows = [], missingRequired = [];
+  const rows = [], missingRequired = [], included = [], already = [];
   for (const o of fileOrders) {
     const st = state[o.id] || {};
     const tracking = compact(st.tracking || o.tracking);
     if (!tracking && !st.shipped) continue;
+    const what = tracking || "Shipped";
+    if (skipSent && st.sent && st.sent.what === what) { already.push(o.id); continue; }
+    included.push({ id: o.id, what });
     const row = { ...o.row };
     if (tracking) {
       row[trackingCol] = tracking;
@@ -128,7 +134,7 @@ export function importFileCsv(orders, shippedState) {
     }
     rows.push(headers.map((h) => row[h] ?? ""));
   }
-  return { csv: toCsv([headers, ...rows]), count: rows.length, missingRequired };
+  return { csv: toCsv([headers, ...rows]), count: rows.length, missingRequired, included, already };
 }
 
 /**

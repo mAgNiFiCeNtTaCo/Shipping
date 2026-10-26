@@ -47,6 +47,15 @@ explain in plain words and finish jobs end to end.
   `set_autostart` / `autostart_enabled`, `POST /api/autostart?on=1|0`, `#power-auto` in the header; refreshed on each
   start). Switched on for the user on 2026-10-21. tools/test.py stands in for it (never touches the registry).
   tools/test.py fakes `stop_server` (records "STOP" in `/__opened`).
+- History copy: `GET/POST /api/history-copy` -> `Saved/History/ship-desk-history.json` (+ `Backups/history-<date>.json`,
+  30 days). A browser writes it only once linked (`KEYS.historyCopy` = "on"); unlinked + different -> `#history-copy`
+  offer (`restoreHistoryCopy` merges, rebuilds `state.shipped`; `keepThisHistory`). `copyHistory` runs 0.8 s after
+  every `saveHistory`.
+- Sent to TCGplayer: making the import file sets `state.shipped[id].sent = { at, what }` (what = tracking or
+  "Shipped") and history `sentAt`; `importFileCsv(..., { skipSent })` leaves out same-`what` orders unless
+  `state.importAgain` ("Put them in again"). Code that rewrites a shipped entry keeps `sent` (`withSent`).
+- Proof pack (app.js `proofPack`, photos window button): jsPDF letter PDF, page 1 facts + thumbnails, then one photo
+  per page (photos redrawn as JPEG via createImageBitmap); kind "proof" -> `Saved/Proof packs`.
 - Saved file names come from app.js `fileName()` ("Labels <date> <HH-MM> - N orders - buyer, buyer ...pdf"); serve.py
   `NAME_OK` must keep allowing what it produces (any-language letters, `,'&+()`).
 - `app/sw.js` offline cache (bump `VERSION` whenever app files change), `app/manifest.webmanifest`, `app/icon.svg`.

@@ -269,6 +269,32 @@
     "On Windows, Python http.server sets SO_REUSEADDR, so a second server can bind the same port: use SO_EXCLUSIVEADDRUSE.",
     "cmd reads a running .bat from disk as it goes: editing it while an old window runs it can run the new lines."
    ]
+  },
+  {
+   "title": "History copy, sent to TCGplayer, proof packs",
+   "date": "2026-10-25",
+   "summary": "The orchestrator session suggested ten improvements and built the top three: a History copy on the PC with a safe restore, import files that only carry what is new, and a proof-pack PDF per order (155 tests).",
+   "stages": [
+    {
+     "name": "Follow-up requests",
+     "kind": "solo",
+     "sessions": [
+      {
+       "id": "bce15ced",
+       "role": "Orchestrator (solo)",
+       "start": "2026-10-25T18:30",
+       "end": "2026-10-25T19:55",
+       "did": "/api/history-copy + linked-browser offer/restore; sent-to-TCGplayer marks + skipSent import; proofPack PDF; phone status fix; 3 new tests",
+       "outcome": "done",
+       "files": 16
+      }
+     ]
+    }
+   ],
+   "events": [],
+   "lessons": [
+    "A browser-only store needs a copy on disk, but a browser that lost its data must not overwrite the copy: link the browser first and offer a restore otherwise."
+   ]
   }
  ]
 }

@@ -271,6 +271,8 @@
         </div>
       </div>
       <div id="ship-warn" class="msg warn" role="status" aria-live="polite" hidden></div>
+      <p id="ship-sent" class="ship-sent small" hidden><span id="ship-sent-text"></span>
+        <label class="check"><input type="checkbox" id="import-again"> Put them in again</label></p>
       <div class="row ship-actions">
         <button type="button" id="btn-import" class="btn primary">Download TCGplayer import file</button>
         <button type="button" id="btn-pirate" class="btn secondary">Download Pirate Ship CSV</button>
@@ -285,7 +287,15 @@
 <main id="history-view" class="wrap" hidden>
   <section class="card" aria-labelledby="history-h">
     <h2 id="history-h">History</h2>
-    <p class="muted small history-intro">Every order you made labels for or marked shipped, newest first. Kept in this browser on this PC: buyer name, city and ZIP only, no street addresses. Photos you take with <button type="button" class="link" data-open-phone>your phone</button> show in the Photos column.</p>
+    <p class="muted small history-intro">Every order you made labels for or marked shipped, newest first. Kept in this browser on this PC: buyer name, city and ZIP only, no street addresses. Photos you take with <button type="button" class="link" data-open-phone>your phone</button> show in the Photos column. A copy is kept in the <code>Saved\History</code> folder, so clearing the browser doesn't lose it.</p>
+    <div id="history-copy" class="msg info" role="status" hidden>
+      <p class="msg-title">A saved copy of your History is on this PC</p>
+      <p id="history-copy-text"></p>
+      <div class="row">
+        <button type="button" id="btn-history-restore" class="btn primary">Restore the saved copy</button>
+        <button type="button" id="btn-history-keep" class="btn ghost">Keep this browser's History</button>
+      </div>
+    </div>
     <p id="history-empty" class="empty-note">Nothing here yet. Orders show up here after you download labels (step 3) or mark them shipped (step 4).</p>
     <div id="history-area" hidden>
       <div class="history-bar">

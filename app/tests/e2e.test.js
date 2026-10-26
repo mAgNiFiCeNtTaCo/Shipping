@@ -324,6 +324,44 @@ export const tests = {
     eq(app.printOrders().length, 7, "3 shipped orders not ticked again");
   },
 
+  "the import file only has what's new: orders already sent are left out, unless put in again or changed": async () => {
+    const { win, doc, app, saved } = await openApp();
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => app.state.orders.length === 10, "orders");
+    app.matchPasted("SAMPLE-0005 9400111899223344550005\nSAMPLE-0006 9400111899223344550006");
+    doc.querySelector('#ship-list input[type=checkbox][data-id="SAMPLE-0001"]').click();
+    ok(doc.querySelector("#btn-import").textContent.includes("3 orders"), doc.querySelector("#btn-import").textContent);
+    ok(doc.querySelector("#ship-sent").hidden, "nothing sent before");
+    doc.querySelector("#btn-import").click();
+    const first = parseCsv(await savedText(saved.pop())).slice(1).map((r) => r[0]);
+    eq(first, ["SAMPLE-0001", "SAMPLE-0005", "SAMPLE-0006"], "first file");
+    ok(doc.querySelector('#ship-list li[data-id="SAMPLE-0005"] .sent'), "step 4 shows Sent to TCGplayer");
+    ok(app.state.history["SAMPLE-0005"].sentAt, "History notes it");
+    ok(!doc.querySelector("#ship-sent").hidden && doc.querySelector("#ship-sent-text").textContent.includes("3 shipped orders were already in an import file"), doc.querySelector("#ship-sent-text").textContent);
+    // Nothing new: nothing to import, and it says why.
+    doc.querySelector("#btn-import").click();
+    ok(doc.querySelector("#ship-msg").textContent.includes("already in an earlier import file"), doc.querySelector("#ship-msg").textContent);
+    // New: one more shipped order, and SAMPLE-0001 (sent as "Shipped") now has tracking.
+    app.matchPasted("SAMPLE-0007 9400111899223344550007");
+    const box = doc.querySelector('#ship-list .trk-input[data-id="SAMPLE-0001"]');
+    box.value = "9400111899223344550001";
+    box.dispatchEvent(new win.Event("change", { bubbles: true }));
+    doc.querySelector("#btn-import").click();
+    const second = parseCsv(await savedText(saved.pop())).slice(1);
+    eq(second.map((r) => r[0]), ["SAMPLE-0001", "SAMPLE-0007"], "only what's new or changed");
+    eq(second[0].slice(15), ["9400111899223344550001", "USPS"], "with the new tracking number");
+    ok(doc.querySelector("#ship-msg").textContent.includes("Left out 2 orders already in an earlier import file"), doc.querySelector("#ship-msg").textContent);
+    // An upload that failed: put them in again.
+    const again = doc.querySelector("#import-again");
+    again.click();
+    ok(doc.querySelector("#btn-import").textContent.includes("4 orders"), "all four again: " + doc.querySelector("#btn-import").textContent);
+    doc.querySelector("#btn-import").click();
+    eq(parseCsv(await savedText(saved.pop())).length - 1, 4, "all 4 shipped orders");
+    ok(!doc.querySelector("#import-again").checked, "the tick resets after the file is made");
+    // The note survives a reload (it's kept with the shipped list).
+    eq(app.state.shipped["SAMPLE-0006"].sent.what, "9400111899223344550006");
+  },
+
   "Pirate Ship CSV lists tracked orders that have no tracking yet": async () => {
     const { win, doc, app, saved } = await openApp();
     await dropFile(win, await sampleText(), "export.csv");

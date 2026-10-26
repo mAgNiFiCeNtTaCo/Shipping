@@ -79,6 +79,9 @@ toploader, how many cards go in one toploader, whether your envelopes are rigid 
 - In **Mark shipped**, paste one tracking number per line. Either just the numbers, in the same order as your
   labels, or the order number then the tracking number (`SAMPLE-0005 9400 1000 ...`). Or type a number into an
   order's box.
+- **Only what's new:** the import file leaves out orders already in an earlier import file with the same tracking
+  number (or "Shipped"); an order that got a tracking number since goes in again. Step 4 says how many were left
+  out; tick **Put them in again** if an upload didn't go through.
 - Orders of **$49.99 or more** must have tracking: Ship Desk warns you if one is ticked Shipped without it.
 - **Download Pirate Ship CSV** lists the orders that should get a tracked label and don't have one yet, with their
   estimated weight. In Pirate Ship choose Import -> Spreadsheet.
@@ -112,7 +115,8 @@ Everything Ship Desk makes is saved straight into the **`Saved`** folder inside 
 | `Saved\Packing slips` | "Only my slips, in label order" PDFs |
 | `Saved\TCGplayer import files` | the files you upload under Orders -> Import Shipping Info |
 | `Saved\Pirate Ship` | Pirate Ship CSVs |
-| `Saved\History` | History downloads |
+| `Saved\History` | History downloads, and the History copy (`ship-desk-history.json`, `Backups\`) |
+| `Saved\Proof packs` | proof packs (one PDF per order: details, tracking, photos) |
 | `Saved\Photos` | photos from your phone, one folder per order (see "Phone photos") |
 | `Saved\Phone` | the phone's pairing code and the order list it picks from (name, city, ZIP) |
 
@@ -139,6 +143,16 @@ Click **History** at the top to see every order you made labels for or marked sh
   order then also counts as shipped in step 4, so it goes in the import file next time you load its CSV.
 - Buttons: **All / Labels made, not shipped / Shipped**, a search box (order #, buyer, city or tracking),
   **Download history (CSV)** for Excel or Google Sheets, **Remove** on a row, and **Clear history**.
+- **A copy on this PC:** History is also saved in `Saved\History\ship-desk-history.json` after every change, plus one
+  dated copy per day (last 30) in `Saved\History\Backups`. If the browser loses its History (cleared browsing data,
+  another browser), History shows **"A saved copy of your History is on this PC"** with **Restore the saved copy**
+  (it also brings back which orders were shipped) or **Keep this browser's History**. A browser that lost its
+  History never overwrites the saved copy before you choose.
+- **Sent to TCGplayer:** orders in an import file are marked "Sent to TCGplayer <date>" in step 4 and History.
+- **Proof pack:** in an order's photos window, **Make proof pack (PDF)** makes one PDF for a claim or a buyer's
+  question: page 1 has the order, where it went, when the label was made and it shipped, the tracking number
+  (with a link to the tracking page), when it went to TCGplayer, and every photo small with its time; then each
+  photo full size. Saved in `Saved\Proof packs` as `Proof pack <date time> - <buyer> - <order #>.pdf`. No street address.
 - Only the buyer's name, city, state and ZIP are kept, never the street address. Up to 5,000 orders; the oldest
   drop off after that.
 

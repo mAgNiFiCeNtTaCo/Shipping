@@ -952,7 +952,9 @@ const waitingPhotos = () => new Set(state.queue.filter((q) => !q.link).map((q) =
 function statusText() {
   const n = waitingPhotos();
   const wait = n ? ` · ${n} waiting` : "";
-  if (state.link === "ok") return [state.sending ? "ok busy" : "ok", state.sending ? `Sending${wait}…` : n ? "Connected" + wait : "Connected to PC"];
+  // ("Sending" only while photos are actually going: a check with nothing waiting stays "Connected to PC".)
+  const busy = state.sending && n > 0;
+  if (state.link === "ok") return [busy ? "ok busy" : "ok", busy ? `Sending${wait}…` : n ? "Connected" + wait : "Connected to PC"];
   if (state.link === "code") return ["bad", state.code ? "Code out of date" : "Not connected"];
   if (state.link === "down") return ["down", "PC offline" + wait];
   return ["", "Checking…"];

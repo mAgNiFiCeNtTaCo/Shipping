@@ -212,7 +212,7 @@ const tests = {
     const { win, doc, phone } = await openPhone(code.replace(/-/g, ""));
     await waitFor(() => phone.state.link === "ok" && phone.state.orders.length === 10, "the phone to get 10 orders");
     ok(doc.querySelector("#pair").hidden, "paired");
-    ok(doc.querySelector("#status").textContent.includes("Connected"), "status says connected");
+    ok(doc.querySelector("#status").textContent.includes("Connected"), "status says connected: " + doc.querySelector("#status").textContent);
     ok(!/Example St|Larkspur/.test(JSON.stringify(phone.state.orders)), "no street addresses on the phone");
     ok(doc.querySelector("#btn-cam").disabled, "camera waits for an order");
     pick(doc, win, ["SAMPLE-0001", "SAMPLE-0002"]);
@@ -759,6 +759,38 @@ Object.assign(tests, {
     await waitFor(async () => (await size())[0] === 960, "the saved file to turn");
     eq(await size(), [960, 1280], "tall now");
     dlg.querySelector("[data-close]").click();
+    dropFrames();
+  },
+
+  "PC: a proof pack is one PDF with the order, its tracking and every photo": async () => {
+    clearAll();
+    const { doc, app } = await openApp("#history");
+    app.loadCsvText(await sampleText(), "sample.csv");
+    doc.querySelector("#btn-pdf").click(); // labels made: SAMPLE-0010 is in History
+    app.matchPasted("SAMPLE-0010 9400111899223344550010");
+    await app.refreshPhotos();
+    const key = "SAMPLE-0010";
+    const count = app.state.photos[key].total;
+    ok(count >= 3, "the camera test's photos: " + count);
+    await app.openPhotos(key);
+    const btn = [...doc.querySelectorAll("#photos-dialog button")].find((b) => b.textContent.includes("proof pack"));
+    ok(btn, "Make proof pack button in the photos window");
+    const pdfDoc = await app.proofPack(key);
+    const pdf = await pdfjs.getDocument({ data: pdfDoc.output("arraybuffer") }).promise;
+    eq(pdf.numPages, 1 + count, "page 1 + one page per photo");
+    const text = async (n) => (await (await pdf.getPage(n)).getTextContent()).items.map((i) => i.str).join(" ");
+    const first = await text(1);
+    for (const want of ["Proof of shipment", "Order SAMPLE-0010", "9400111899223344550010", "tools.usps.com", "contents", "packed"]) ok(first.includes(want), `page 1 has ${want}`);
+    ok(!/Example St|Larkspur/.test(first), "no street address");
+    const links = (await (await pdf.getPage(1)).getAnnotations()).filter((a) => a.url);
+    ok(links.some((a) => a.url.includes("9400111899223344550010")), "the tracking page is a link");
+    ok((await text(2)).includes("Contents photo") && (await text(2)).includes("taken 20"), "photo pages say what and when");
+    ok((await text(pdf.numPages)).includes("Packed, ready to ship photo"), "packed photos after contents: " + (await text(pdf.numPages)));
+    const ops = await (await pdf.getPage(2)).getOperatorList();
+    ok(ops.fnArray.includes(pdfjs.OPS.paintImageXObject), "the photo itself is on the page");
+    const res = await app.state.lastSave;
+    ok(/^Proof pack \d{4}-\d{2}-\d{2} \d{2}-\d{2} - .+ - SAMPLE-0010\.pdf$/.test(res.name), "file name: " + res.name);
+    await waitFor(() => doc.querySelector("#proof-msg") && doc.querySelector("#proof-msg").textContent.includes(`${count} photos`), "the window says it's saved");
     dropFrames();
   },
 

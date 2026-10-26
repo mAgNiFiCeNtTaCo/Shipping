@@ -7,10 +7,10 @@ import { parseOrders } from "./csv.js";
 import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS } from "./plan.js";
 import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv } from "./tracking.js";
 import { parseAddresses } from "./paste.js";
-import { renderPdf, FORMATS, slipsInLabelOrderPdf } from "./render.js";
+import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText } from "./render.js";
 import { readSlipPdf, attachSlips } from "./slips.js";
 import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
-  trackingUrl, formatName, historyKey, recordSeen } from "./history.js";
+  trackingUrl, formatName, historyKey, recordSeen, stamp } from "./history.js";
 
 // ---------- small helpers ----------
 
@@ -166,6 +166,9 @@ export const state = {
   history: {},         // history.js records, by key
   historyFilter: "all",
   historySearch: "",
+  importAgain: false,    // step 4: put orders already sent to TCGplayer in the next import file too
+  historyCopy: null,     // the saved copy in Saved\History when this browser should be asked about it
+  historySavedAt: "",    // when the copy was last written
   photos: {},          // order key -> { contents, packed, postoffice, total, photos: [{ id, kind, taken, file }] } from serve.py
   phone: null,         // serve.py's /api/phone-link answer while the Phone photos window is open
 };
@@ -449,7 +452,102 @@ function downloadSlipsOnly() {
 // ---------- tracking / shipped ----------
 
 function saveShipped() { save(KEYS.shipped, state.shipped); }
-function saveHistory() { save(KEYS.history, state.history); }
+function saveHistory() { save(KEYS.history, state.history); scheduleHistoryCopy(); }
+
+// ---------- History's copy on this PC (Saved\History\ship-desk-history.json) ----------
+// The browser holds History; Ship Desk keeps a copy so clearing the browser (or another browser) doesn't lose it.
+// A browser only writes the copy once it is "linked" (KEYS.historyCopy): a browser that lost its History is
+// offered the copy instead of overwriting it. Clearing the browser's storage clears that mark too.
+
+let historyCopyTimer = 0;
+function scheduleHistoryCopy() {
+  clearTimeout(historyCopyTimer);
+  historyCopyTimer = setTimeout(copyHistory, 800);
+}
+
+/** Write this browser's History to Saved\History (only when this browser is the linked one). */
+export async function copyHistory() {
+  clearTimeout(historyCopyTimer);
+  if (load(KEYS.historyCopy, "") !== "on") return false;
+  try {
+    const r = await shipdeskFetch("api/history-copy", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ history: state.history }) });
+    if (!r.ok) return false;
+    state.historySavedAt = (await r.json()).savedAt || "";
+    if (!$("#history-view").hidden) renderHistory();
+    return true;
+  } catch {
+    return false; // Ship Desk is off: copied with the next change
+  }
+}
+
+const sameRecords = (a, b) => {
+  const ka = Object.keys(a || {}), kb = Object.keys(b || {});
+  if (ka.length !== kb.length) return false;
+  const sig = (r) => JSON.stringify([r.id, r.name, r.lastPrintedAt, r.printCount, r.shipped, r.shippedAt, r.tracking]);
+  return ka.every((k) => b[k] && sig(a[k]) === sig(b[k]));
+};
+
+/** At start: link this browser to the copy, or (when it differs and this browser isn't linked) offer it. */
+export async function checkHistoryCopy() {
+  let copy;
+  try {
+    const r = await shipdeskFetch("api/history-copy");
+    if (!r.ok) return null;
+    copy = await r.json();
+  } catch {
+    return null;
+  }
+  state.historyCopy = null;
+  state.historySavedAt = copy.savedAt || "";
+  const linked = load(KEYS.historyCopy, "") === "on";
+  if (linked || !copy.count || sameRecords(state.history, copy.history)) {
+    save(KEYS.historyCopy, "on");
+    if (!sameRecords(state.history, copy.history)) await copyHistory();
+  } else {
+    state.historyCopy = copy; // this browser lost its History, or is another browser: ask
+  }
+  renderHistory();
+  return state.historyCopy ? "offer" : "linked";
+}
+
+/** The saved copy's records back into this browser (records this browser has win), plus step 4's shipped list. */
+export async function restoreHistoryCopy() {
+  const copy = state.historyCopy;
+  if (!copy || !copy.history) return 0;
+  state.history = { ...copy.history, ...state.history };
+  for (const r of Object.values(state.history)) {
+    if (r.source === "csv" && r.id && r.shipped && !state.shipped[r.id]) {
+      state.shipped[r.id] = { tracking: r.tracking || "", carrier: r.carrier || "", shipped: true, at: String(r.shippedAt || "").slice(0, 10) };
+    }
+  }
+  state.historyCopy = null;
+  save(KEYS.historyCopy, "on");
+  saveShipped();
+  saveHistory();
+  await copyHistory();
+  renderAll();
+  toast(`History restored: ${plural(Object.keys(state.history).length, "order")}.`);
+  return Object.keys(state.history).length;
+}
+
+/** Keep this browser's History and make it the copy from now on (the earlier copy stays in Saved\History\Backups). */
+export async function keepThisHistory() {
+  state.historyCopy = null;
+  save(KEYS.historyCopy, "on");
+  renderHistory();
+  await copyHistory();
+  toast("This browser's History is the saved copy now.");
+}
+
+function renderHistoryCopy() {
+  const box = $("#history-copy");
+  const c = state.historyCopy;
+  box.hidden = !c;
+  if (!c) return;
+  $("#history-copy-text").textContent = `Ship Desk has a saved copy of your History: ${plural(c.count, "order")}, last saved ${c.savedAt || "earlier"}. `
+    + "This browser's History is different (it may have been cleared). Restore the saved copy?";
+}
 
 // Copy an order's shipped state (from this batch) into the history.
 function noteShipped(id) {
@@ -459,9 +557,12 @@ function noteShipped(id) {
   saveHistory();
 }
 
+// A new shipped entry for an order, keeping the note of what was already sent to TCGplayer (entry.sent).
+const withSent = (id, entry) => (state.shipped[id] && state.shipped[id].sent ? { ...entry, sent: state.shipped[id].sent } : entry);
+
 function setTracking(id, tracking) {
   const t = String(tracking || "").trim();
-  if (t) state.shipped[id] = { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true, at: today() };
+  if (t) state.shipped[id] = withSent(id, { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true, at: today() });
   else if (state.shipped[id]) state.shipped[id] = { ...state.shipped[id], tracking: "", carrier: "" };
   saveShipped();
   noteShipped(id);
@@ -490,7 +591,7 @@ export function matchPasted(text) {
   if (!String(text || "").trim()) { showMsg(box, "warn", "Paste some tracking numbers first."); return null; }
   const res = matchTracking(String(text), labelOrder());
   for (const m of res.matches) {
-    state.shipped[m.orderId] = { tracking: m.tracking, carrier: m.carrier || detectCarrier(m.tracking) || "USPS", shipped: true, at: today() };
+    state.shipped[m.orderId] = withSent(m.orderId, { tracking: m.tracking, carrier: m.carrier || detectCarrier(m.tracking) || "USPS", shipped: true, at: today() });
   }
   saveShipped();
   for (const m of res.matches) noteShipped(m.orderId);
@@ -504,25 +605,45 @@ export function matchPasted(text) {
 
 const fileOrders = () => (state.source === "csv" ? state.orders : []);
 
-/** The TCGplayer import file for this batch: { csv, count, missingRequired }. */
+/**
+ * The TCGplayer import file for this batch: { csv, count, missingRequired, included, already }. Orders already
+ * sent in an earlier import file (with the same tracking number or "Shipped") are left out, unless "Put them in
+ * again" is ticked.
+ */
 export function importFile() {
-  return importFileCsv(fileOrders(), state.shipped);
+  return importFileCsv(fileOrders(), state.shipped, { skipSent: !state.importAgain });
 }
 
 export function downloadImportFile() {
   const box = $("#ship-msg");
   if (state.source !== "csv") { showMsg(box, "warn", "The import file only works with orders from a TCGplayer CSV.", ["Pasted addresses aren't TCGplayer orders, so there's nothing to mark shipped there."]); return null; }
   const r = importFile();
-  if (!r.count) { showMsg(box, "warn", "Nothing to import yet.", ["Add a tracking number or tick Shipped for at least one order."]); return null; }
+  if (!r.count) {
+    showMsg(box, "warn", "Nothing to import yet.", [r.already.length
+      ? `The ${plural(r.already.length, "shipped order")} ${r.already.length === 1 ? "was" : "were"} already in an earlier import file. Tick "Put them in again" to send ${r.already.length === 1 ? "it" : "them"} again.`
+      : "Add a tracking number or tick Shipped for at least one order."]);
+    return null;
+  }
   const name = fileName(["TCGplayer import", "TCGplayer import"], "csv", [], r.count);
+  // Remember what went in, so the next import file only has what's new (or changed).
+  const at = stamp();
+  for (const { id, what } of r.included) {
+    state.shipped[id] = { ...(state.shipped[id] || { tracking: "", carrier: "", shipped: true, at: today() }), sent: { at, what } };
+    if (state.history[id]) state.history[id].sentAt = at;
+  }
+  state.importAgain = false;
+  saveShipped();
+  saveHistory();
   state.lastSave = saveBlob(name, "import", new Blob([r.csv], { type: "text/csv" })).then((res) => {
     showMsg(box, r.missingRequired.length ? "warn" : "ok", `Saved ${res.name} with ${plural(r.count, "order")}.`,
       [...savedLines(res), r.missingRequired.length ? `TCGplayer will refuse ${r.missingRequired.join(", ")} without a tracking number.` : null,
+        r.already.length ? `Left out ${plural(r.already.length, "order")} already in an earlier import file.` : null,
         "Upload it in the Seller Portal: Orders → Import Shipping Info."]);
     return res;
   });
   state.done[4] = true;
   renderSteps();
+  renderShip();
   return r;
 }
 
@@ -656,7 +777,8 @@ function renderShip() {
     const s = state.shipped[o.id] || {};
     const id = `trk-${o.id.replace(/[^\w-]/g, "_")}`;
     return el("li", { class: "ship-row", "data-id": o.id },
-      el("div", { class: "who" }, el("span", { class: "oid", text: o.id }), el("span", { class: "muted", text: o.name }), chip(o.plan)),
+      el("div", { class: "who" }, el("span", { class: "oid", text: o.id }), el("span", { class: "muted", text: o.name }), chip(o.plan),
+        s.sent ? el("span", { class: "sent small", title: `In the import file of ${s.sent.at} (${s.sent.what})`, text: `Sent to TCGplayer ${String(s.sent.at).slice(5, 10)}` }) : null),
       el("label", { class: "sr", for: id, text: `Tracking number for order ${o.id}` }),
       el("input", { id, class: "trk-input", type: "text", value: s.tracking || "", placeholder: o.tracking || "Tracking #", "data-id": o.id, autocomplete: "off", spellcheck: "false" }),
       el("label", { class: "check ship-check" }, el("input", { type: "checkbox", "data-id": o.id, checked: !!(s.shipped || s.tracking), disabled: !!s.tracking }), " Shipped"));
@@ -673,6 +795,15 @@ function renderShipWarn() {
     showMsg(box, "warn", "These orders need a tracking number before TCGplayer will accept them:",
       [r.missingRequired.join(", "), "Orders of $49.99 or more must have tracking. Type it in above, or leave them out of this upload by unticking Shipped."]);
   } else showMsg(box, "", "");
+  // Orders already sent in an earlier import file (same tracking number or "Shipped").
+  const sent = state.source === "csv" ? importFileCsv(fileOrders(), state.shipped, { skipSent: true }).already : [];
+  $("#ship-sent").hidden = !sent.length;
+  if (sent.length) {
+    const last = sent.map((id) => state.shipped[id].sent.at).sort().pop();
+    $("#ship-sent-text").textContent = `${plural(sent.length, "shipped order")} ${sent.length === 1 ? "was" : "were"} already in an import file (last ${last}) and ${state.importAgain ? "will go in again" : "will be left out"}.`;
+    $("#import-again").checked = state.importAgain;
+  }
+  $("#btn-import").textContent = state.source === "csv" && r.count ? `Download TCGplayer import file (${plural(r.count, "order")})` : "Download TCGplayer import file";
 }
 
 // ---------- history ----------
@@ -702,7 +833,8 @@ function historyRow(r) {
           r.shipped ? ` Shipped ${String(r.shippedAt).slice(0, 10)}` : " Shipped"),
         el("label", { class: "sr", for: tid, text: `Tracking number for ${label}` }),
         el("input", { id: tid, class: "trk-input h-trk", type: "text", value: r.tracking || "", placeholder: "Tracking #", autocomplete: "off", spellcheck: "false" }),
-        link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", class: "small", text: `Track on ${r.carrier} ↗` }) : null)),
+        link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", class: "small", text: `Track on ${r.carrier} ↗` }) : null,
+        r.sentAt ? el("span", { class: "sent small", text: `Sent to TCGplayer ${String(r.sentAt).slice(0, 10)}` }) : null)),
     photoCell(r, label),
     el("td", { class: "c-del" }, el("button", { type: "button", class: "link danger h-del", "aria-label": `Remove ${label} from the history`, text: "Remove" })));
 }
@@ -717,6 +849,7 @@ function photoCell(r, label) {
 
 export function renderHistory() {
   schedulePhoneSync();
+  renderHistoryCopy();
   const counts = historyCounts(state.history);
   const badge = $("#history-count");
   badge.hidden = !counts.all;
@@ -729,7 +862,8 @@ export function renderHistory() {
     b.setAttribute("aria-pressed", String(b.dataset.filter === state.historyFilter));
     b.querySelector(".count").textContent = String(counts[b.dataset.filter] ?? 0);
   }
-  $("#history-totals").textContent = `${plural(counts.all, "order")} · ${counts.printed} with labels made here · ${counts.shipped} shipped · ${counts.waiting} not shipped yet`;
+  $("#history-totals").textContent = `${plural(counts.all, "order")} · ${counts.printed} with labels made here · ${counts.shipped} shipped · ${counts.waiting} not shipped yet`
+    + (state.historySavedAt && load(KEYS.historyCopy, "") === "on" ? ` · copy in Saved\\History (${state.historySavedAt})` : "");
   const rows = historyList(state.history, { filter: state.historyFilter, search: state.historySearch });
   const body = $("#history-table tbody");
   body.replaceChildren(...(rows.length ? rows.map(historyRow)
@@ -744,7 +878,7 @@ function updateHistoryShipped(key, entry) {
   applyShipped(r, entry);
   saveHistory();
   if (r.source === "csv" && r.id) {
-    if (r.shipped) state.shipped[r.id] = { tracking: r.tracking, carrier: r.carrier, shipped: true, at: today() };
+    if (r.shipped) state.shipped[r.id] = withSent(r.id, { tracking: r.tracking, carrier: r.carrier, shipped: true, at: today() });
     else delete state.shipped[r.id];
     saveShipped();
   }
@@ -767,7 +901,7 @@ export async function setOrderNumber(oldKey, value) {
   rec.shippedAt = (cur && cur.shippedAt) || r.shippedAt;
   delete state.history[oldKey];
   state.history[id] = rec;
-  state.shipped[id] = { tracking: rec.tracking, carrier: rec.carrier, shipped: true, at: today() };
+  state.shipped[id] = withSent(id, { tracking: rec.tracking, carrier: rec.carrier, shipped: true, at: today() });
   saveHistory();
   saveShipped();
   try {
@@ -834,6 +968,10 @@ function bindHistory() {
     if (!window.confirm("Forget the whole history list? This doesn't change anything on TCGplayer.")) return;
     clearHistory();
     toast("History cleared.");
+  });
+  $("#btn-history-restore").addEventListener("click", () => restoreHistoryCopy());
+  $("#btn-history-keep").addEventListener("click", () => {
+    if (window.confirm("Keep this browser's History and replace the saved copy with it? (The earlier copy stays in Saved\\History\\Backups.)")) keepThisHistory();
   });
 }
 
@@ -935,7 +1073,7 @@ export async function checkPower() {
     if (!up) power.state = "off";
     else if (waited > POWER_WAIT_MS) { power.state = "on"; toast("Ship Desk didn't turn off. Double-click \"Stop Ship Desk\" in the Shipping folder."); }
   } else if (power.state === "starting") {
-    if (up) { power.state = "on"; toast("Ship Desk is on."); refreshPhotos(); takePhoneLinks(); }
+    if (up) { power.state = "on"; toast("Ship Desk is on."); refreshPhotos(); takePhoneLinks(); checkHistoryCopy(); }
     else if (waited > POWER_WAIT_MS) { power.state = "off"; toast("Ship Desk didn't start. Double-click \"Start Ship Desk\" in the Shipping folder."); }
   } else {
     power.state = up ? "on" : "off";
@@ -1180,6 +1318,133 @@ function closePhotos() {
   photoUrls = [];
 }
 
+// ---------- proof pack: one PDF per order for a claim or a buyer's question ----------
+
+// A saved photo as a JPEG the PDF can hold (at most 2000 px), or null (missing, or a kind the browser can't draw).
+async function photoForPdf(p, key) {
+  try {
+    const res = await shipdeskFetch(`api/photo?id=${encodeURIComponent(p.id)}&order=${encodeURIComponent(key)}`);
+    if (!res.ok) return null;
+    const bmp = await createImageBitmap(await res.blob());
+    const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * s);
+    c.height = Math.round(bmp.height * s);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    return { data: c.toDataURL("image/jpeg", 0.85), w: c.width, h: c.height };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The proof pack for one order: page 1 = the order, where it went, when its label was made and it shipped, the
+ * tracking number (with its tracking page), when it went to TCGplayer; then every photo (contents, packed,
+ * post office), one per page with the time it was taken. Saved in Saved\Proof packs. Returns the jsPDF doc.
+ */
+export async function proofPack(key) {
+  const box = $("#proof-msg");
+  const r = state.history[key] || { key, id: key.startsWith("paste:") || key.startsWith("mailer:") ? "" : key, name: "" };
+  const ph = state.photos[key] || { photos: [] };
+  if (box) showMsg(box, "info", "Making the proof pack…");
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "in", format: "letter", compress: true });
+  doc.setProperties({ title: `Proof of shipment ${r.id || r.name}`, creator: "Ship Desk" });
+  const W = 8.5, M = 0.75;
+  const t = (s) => cleanText(s);
+  let y = M + 0.2;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.text("Proof of shipment", M, y);
+  y += 0.45;
+  doc.setFontSize(14);
+  doc.text(t(r.id ? `Order ${r.id}` : r.source === "mailer" ? "Mailer (no order # yet)" : "Pasted address"), M, y);
+  y += 0.5;
+  const kinds = PHOTO_KINDS.map((k) => ({ ...k, list: ph.photos.filter((p) => p.kind === k.id).sort((a, b) => String(a.taken).localeCompare(String(b.taken))) }));
+  const link = trackingUrl(r.tracking, r.carrier);
+  const facts = [
+    ["Buyer", r.name],
+    ["Ships to", `${r.city || ""}${r.city && r.state ? ", " : ""}${r.state || ""} ${r.zip || ""}`.trim()],
+    ["Order date", r.orderDate],
+    ["Value", r.value ? money(r.value) : ""],
+    ["Items", r.items ? String(r.items) : ""],
+    ["Label made", r.printedAt ? `${r.lastPrintedAt || r.printedAt}${r.format ? ` (${formatName(r.format)})` : ""}` : ""],
+    ["Shipped", r.shipped ? (r.shippedAt || "yes") : "not marked shipped"],
+    ["Tracking", r.tracking ? `${r.tracking}${r.carrier ? ` (${r.carrier})` : ""}` : "none"],
+    ["Sent to TCGplayer", r.sentAt || ""],
+    ["Photos", ph.photos.length ? kinds.filter((k) => k.list.length).map((k) => `${k.list.length} ${k.short}`).join(", ") : "none"],
+  ].filter(([, v]) => v);
+  doc.setFontSize(11);
+  for (const [k, v] of facts) {
+    doc.setFont("helvetica", "bold");
+    doc.text(t(k), M, y);
+    doc.setFont("helvetica", "normal");
+    const lines = doc.splitTextToSize(t(v), W - M - 2.6);
+    doc.text(lines, M + 1.9, y);
+    y += 0.3 * lines.length;
+  }
+  if (link) {
+    y += 0.1;
+    doc.setTextColor(19, 111, 99);
+    doc.textWithLink(t(`Tracking page: ${link}`.slice(0, 110)), M, y, { url: link });
+    doc.setTextColor(0, 0, 0);
+    y += 0.3;
+  }
+  doc.setFontSize(9);
+  doc.setTextColor(90, 90, 90);
+  doc.text(doc.splitTextToSize(t(`Made by Ship Desk on ${stamp()}. Photos were taken with Ship Desk Photos and saved on the seller's PC; `
+    + "times are the phone's clock when each photo was taken."), W - 2 * M), M, 10.4);
+  doc.setTextColor(0, 0, 0);
+  const shots = [];
+  let skipped = 0;
+  for (const k of kinds) {
+    for (const p of k.list) {
+      const img = await photoForPdf(p, key);
+      if (img) shots.push({ k, p, img }); else skipped++;
+    }
+  }
+  // Page 1 also shows every photo small, with what and when, so the first page tells the whole story.
+  if (shots.length) {
+    y += 0.25;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("Photos (each one full size on the next pages)", M, y);
+    y += 0.2;
+    const cols = 4, gap = 0.15, cw = (W - 2 * M - gap * (cols - 1)) / cols, ch = cw * 1.1;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    shots.forEach(({ k, p, img }, i) => {
+      const cx = M + (i % cols) * (cw + gap), cy = y + Math.floor(i / cols) * (ch + 0.4);
+      if (cy + ch > 10.1) return; // more than fit: they're on the pages after
+      const s = Math.min(cw / img.w, ch / img.h);
+      doc.addImage(img.data, "JPEG", cx + (cw - img.w * s) / 2, cy, img.w * s, img.h * s, undefined, "FAST");
+      doc.text(t(`${k.label}, ${String(p.taken).replace("T", " ").slice(0, 16)}`), cx, cy + ch + 0.15, { maxWidth: cw });
+    });
+  }
+  // One photo per page, largest that fits under its caption.
+  let shown = 0;
+  for (const { k, p, img } of shots) {
+    doc.addPage("letter", "portrait");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(t(`${k.label} photo`), M, M + 0.1);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(t(`${r.id ? `Order ${r.id}` : r.name} - taken ${String(p.taken).replace("T", " ")}`), M, M + 0.38);
+    const bw = W - 2 * M, bh = 11 - 2 * M - 0.6;
+    const s = Math.min(bw / img.w, bh / img.h);
+    doc.addImage(img.data, "JPEG", M + (bw - img.w * s) / 2, M + 0.6, img.w * s, img.h * s, undefined, "FAST");
+    shown++;
+  }
+  const name = fileName(["Proof pack", "Proof pack"], "pdf", [{ id: r.id, name: r.name }]);
+  state.lastSave = savePdf(doc, name, "proof").then((res) => {
+    if (box) showMsg(box, "ok", `Saved ${res.name}: the order and ${plural(shown, "photo")}.`,
+      [...savedLines(res), skipped ? `${plural(skipped, "photo")} couldn't be put in the PDF (not a picture this browser can show).` : null]);
+    return res;
+  });
+  return doc;
+}
+
 /** Turn a saved photo a quarter turn (deg = 90 right, -90 left) and save it over the old file. */
 export async function rotatePhoto(p, key, img, deg) {
   if (!img.naturalWidth) return false;
@@ -1236,7 +1501,10 @@ export async function openPhotos(key) {
       })));
   }).filter(Boolean);
   $("#photos-body").replaceChildren(...(groups.length ? groups : [el("p", { class: "muted", text: "No photos for this order yet." })]),
-    el("div", { class: "row" }, el("button", { type: "button", class: "btn secondary", text: "Open this order's photo folder", onclick: () => openSavedFolder("photos", key) })));
+    el("div", { class: "row" },
+      el("button", { type: "button", class: "btn primary", text: "Make proof pack (PDF)", title: "One PDF with the order, its tracking and every photo, for a claim or a buyer question", onclick: () => proofPack(key) }),
+      el("button", { type: "button", class: "btn secondary", text: "Open this order's photo folder", onclick: () => openSavedFolder("photos", key) })),
+    el("div", { id: "proof-msg", class: "msg", role: "status", "aria-live": "polite", hidden: true }));
   if (!dlg.open) dlg.showModal();
   return groups.length;
 }
@@ -1539,6 +1807,7 @@ function bindShip() {
   $("#btn-paste").addEventListener("click", () => { const r = loadPastedText($("#paste-text").value); if (r.orders.length) jumpTo("#step2"); });
   $("#btn-sample").addEventListener("click", loadSample);
   $("#btn-match").addEventListener("click", () => matchPasted($("#track-text").value));
+  $("#import-again").addEventListener("change", (e) => { state.importAgain = e.target.checked; renderShipWarn(); });
   const list = $("#ship-list");
   list.addEventListener("change", (e) => {
     const id = e.target.dataset.id;
@@ -1600,6 +1869,7 @@ export function init() {
   renderDesign();
   renderAll();
   registerWorker();
+  checkHistoryCopy();
   window.shipdesk = api;
   // index.html?sample opens with the sample loaded (handy for a quick look and for screenshots).
   if (new URLSearchParams(location.search).has("sample")) loadSample(false);
@@ -1613,6 +1883,7 @@ export const api = {
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
   power, checkPower, turnOff, setAutostart,
+  copyHistory, checkHistoryCopy, restoreHistoryCopy, keepThisHistory, proofPack,
 };
 
 if (document.querySelector("[data-shipdesk]")) init();

@@ -10,6 +10,7 @@ export const KEYS = {
   plan: "shipdesk.plan",
   shipped: "shipdesk.shipped",
   history: "shipdesk.history",
+  historyCopy: "shipdesk.historyCopy", // "on" once this browser's History is the one copied to Saved\History
 };
 
 const memory = new Map(); // key -> JSON text written during this visit
