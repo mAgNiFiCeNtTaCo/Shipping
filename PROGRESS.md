@@ -53,8 +53,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 - First automatic build: **1.1.1** (`caf281a5...`). The first try stopped on a test that timed out opening the page
   (8 s) during the long full run; it passed 3/3 alone, so the page-start waits are now 20 s; the second try: 173 tests,
   install test 14/14 (over 1.1.0). Release notes rewritten in plain words (the generated list only sees commits).
-- Open: the user publishes 1.1.1 (`gh release create v1.1.1 ...`); confirm on TCGplayer that History-built rows (no
-  street) are accepted; the user's running copy still reports 1.1.0 until restarted.
+- Later the same day: 1.1.1 published by the user; the user's copy restarted on 1.1.1 (no banner; backup, phone,
+  autostart kept). TCGplayer's help says only Order Number + Tracking Number are required (rows matched by order
+  number). Dry run on a private server from the real History copy: the import file has the expected 9 rows, each
+  with order #, `Shipped` or tracking, carrier USPS. Waiting for the user's real upload result.
 
 ### 2026-10-26: the user's own copy on 1.1.0; desktop shortcut
 - Restarted the user's running Ship Desk at their request (`serve.py --stop`, then `launcher_command()`): 1.0.0 ->
