@@ -377,6 +377,50 @@ export const tests = {
     eq(r9, ["SAMPLE-0009", "Rafael Ito-Brandt", "1400 Lakeshore Dr", "Suite 900", "Chicago", "IL", "60611", "US", "0.9"], "0.18 + 0.2 + 0.16 + 0.3 = 0.84 oz, rounded up to 0.9");
   },
 
+  "Pirate Ship's Shipments export (.xlsx) puts tracking on the orders, then into the import file": async () => {
+    const xlsx = await (await fetch("../samples/pirateship-shipments-sample.xlsx")).arrayBuffer();
+    const { win, doc, app } = await openApp();
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => app.state.orders.length === 10, "orders");
+    await dropFile(win, xlsx, "Shipments.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    await waitFor(() => app.state.shipped["SAMPLE-0009"], "tracking from the file");
+    eq(app.state.shipped["SAMPLE-0005"].tracking, "9300110000000000000005");
+    eq(app.state.shipped["SAMPLE-0008"].tracking, "9300110000000000000008");
+    eq(app.state.shipped["SAMPLE-0009"].carrier, "USPS");
+    ok(!app.state.shipped["SAMPLE-0007"], "refunded label left out");
+    ok(!app.state.shipped["SAMPLE-0006"], "a label from before the order isn't put on it");
+    const msg = doc.querySelector("#match-msg").textContent;
+    ok(/Added 3 tracking numbers from Shipments\.xlsx/.test(msg), msg);
+    ok(/Pat Nobody/.test(msg) && /1 voided label/.test(msg), "says what wasn't used: " + msg);
+    eq(app.state.history["SAMPLE-0005"].tracking, "9300110000000000000005", "History has it");
+    eq(app.importFile().count, 3, "all three in the import file");
+    // The same file again adds nothing.
+    await dropFile(win, xlsx, "Shipments.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    await waitFor(() => /No new tracking numbers/.test(doc.querySelector("#match-msg").textContent), "second drop");
+    ok(/3 labels were already on their orders/.test(doc.querySelector("#match-msg").textContent));
+  },
+
+  "Pirate Ship's export with no orders loaded marks History; other spreadsheets are explained": async () => {
+    const xlsx = await (await fetch("../samples/pirateship-shipments-sample.xlsx")).arrayBuffer();
+    const { win, doc, app } = await openApp();
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => app.state.orders.length === 10, "orders");
+    doc.querySelector("#btn-pdf").click(); // labels made: the orders are in History
+    await waitFor(() => app.state.history["SAMPLE-0005"], "History");
+    doc.querySelector("#btn-clear-batch").click();
+    await dropFile(win, xlsx, "Shipments.xlsx");
+    await waitFor(() => /Added 3 tracking numbers/.test(doc.querySelector("#load-msg").textContent), "message in step 1");
+    eq(app.state.history["SAMPLE-0008"].tracking, "9300110000000000000008");
+    ok(app.state.history["SAMPLE-0008"].shipped, "shipped in History");
+    eq(app.state.shipped["SAMPLE-0008"].tracking, "9300110000000000000008", "kept for the import file");
+    ok(/Drop that day's TCGplayer CSV/.test(doc.querySelector("#load-msg").textContent), "says how to get them into an import file");
+    await dropFile(win, "Date,Type,Description,Total,Balance\n10/19/26,Label,x,-4.97,10\n", "Transactions.csv");
+    await waitFor(() => /doesn't look like/.test(doc.querySelector("#load-msg").textContent), "a CSV that is neither");
+    await dropFile(win, new TextEncoder().encode("not a zip"), "Transactions.xlsx");
+    await waitFor(() => /isn't a file Ship Desk can use/.test(doc.querySelector("#load-msg").textContent), "a broken spreadsheet explained");
+    clearStore();
+  },
+
   "offline: the service worker caches every file the app loads": async () => {
     // Every file: the page's src/href, every module import (followed through the modules), the pdf.js worker,
     // the manifest's icons and the sample.

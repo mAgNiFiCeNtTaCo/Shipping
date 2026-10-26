@@ -4,6 +4,7 @@ import { parseCsv, HEADER_ALIASES, parseOrders, toCsv, normalizeZip } from "../j
 import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, letterPostage } from "../js/plan.js";
 import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv } from "../js/tracking.js";
 import { parseAddresses } from "../js/paste.js";
+import { readXlsx, readShipments, shipmentsFromCsv, matchShipments, nameKey, isoDate } from "../js/pirate.js";
 
 const TCG_HEADER = "Order #,FirstName,LastName,Address1,Address2,City,State,PostalCode,Country,Order Date,Product Weight,Shipping Method,Item Count,Value Of Products,Shipping Fee Paid,Tracking #,Carrier";
 const row = (id, first, last, value, more = {}) => {
@@ -417,6 +418,66 @@ export const tests = {
     ok(r.problems[0].text.includes("Just a name") && /city, state and ZIP/.test(r.problems[0].reason), JSON.stringify(r.problems[0]));
     ok(r.problems[1].text.includes("Bo Lee") && /street/i.test(r.problems[1].reason), JSON.stringify(r.problems[1]));
     eq(parseAddresses(""), { orders: [], problems: [] });
+  },
+  "Pirate Ship: the Shipments export (.xlsx) reads like a real one": async () => {
+    const rows = await readXlsx(await (await fetch("../samples/pirateship-shipments-sample.xlsx")).arrayBuffer());
+    eq(rows[0].slice(0, 6), ["Created Date", "Recipient", "Email", "Tracking Number", "Cost", "Status"]);
+    eq(rows[1][2], "", "an empty cell left out of the file still keeps the columns in place");
+    eq(rows[1][3], "9300110000000000000005");
+    eq(rows[1][4], "4.97", "number cells too");
+    const r = readShipments(rows);
+    eq(r.voided, 1, "the refunded label is left out");
+    eq(r.shipments.length, 5);
+    eq(r.shipments[0], { name: "Marcus Delgado", tracking: "9300110000000000000005", carrier: "USPS", created: "2026-10-18",
+      status: "Purchased", orderId: "", zip: "" });
+    eq(r.shipments[2].name, "rafael ito brandt", "trailing comma trimmed");
+    let bad = null;
+    try { await readXlsx(new TextEncoder().encode("not a zip").buffer); } catch (e) { bad = e; }
+    ok(bad, "a file that isn't an .xlsx is refused");
+  },
+  "Pirate Ship: a .csv export and the helpers": async () => {
+    const r = shipmentsFromCsv("Created Date,Recipient,Tracking Number,Status,Order ID,Zipcode\n2026-10-18,Ash Example,9400 1000 0000 0000 0000 01,Purchased,SAMPLE-0001,90012\n");
+    eq(r.shipments[0].tracking, "9400100000000000000001");
+    eq(r.shipments[0].orderId, "SAMPLE-0001");
+    eq(r.shipments[0].zip, "90012");
+    eq(shipmentsFromCsv("Order #,FirstName\n1,A\n"), null, "a TCGplayer file isn't a Shipments export");
+    eq(nameKey("  Zo\u00eb  O'Neil-Smith "), "zoe o neil smith");
+    eq(isoDate("9/4/26 3:04 PM EDT"), "2026-09-04");
+    eq(isoDate("2026-10-19"), "2026-10-19");
+    eq(isoDate("soon"), "");
+  },
+  "Pirate Ship: labels go to the one open order of that buyer, never guessed": async () => {
+    const S = (name, tracking, created, extra = {}) => ({ name, tracking, carrier: "USPS", created, status: "Purchased", orderId: "", zip: "", ...extra });
+    const C = (id, name, date, extra = {}) => ({ id, name, zip: "", date, tracking: "", shipped: false, ...extra });
+    const m = matchShipments([
+      S("Ash Example", "T1", "2026-10-18"),                    // one open order
+      S("ASH  EXAMPLE", "T2", "2026-10-19"),                   // same buyer again: the first label took the order -> conflict
+      S("Bo Lee", "T3", "2026-10-18"),                         // two open orders -> not guessed
+      S("Cy Moe", "T4", "2026-10-18"),                         // already has this tracking
+      S("Di Ray", "T5", "2026-10-18"),                         // her only order is from long ago
+      S("Ed Fox", "T6", "2026-10-18", { orderId: "E-2" }),     // the Order ID column decides
+      S("Fay Kim", "T7", "2026-10-18"),                        // one ticked Shipped (envelope), one open: the open one
+      S("Gus Tan Moreno", "T8", "2026-10-18"),                 // first + last name when the middle name differs
+      S("Hal Ng", "T9", "2026-10-18", { zip: "10001" }),       // ZIP picks between two buyers of the same name
+      S("Old Timer", "T0", "2026-07-01"),                      // before every known order: summed up, not listed
+    ], [
+      C("A-1", "Ash Example", "2026-10-15"),
+      C("B-1", "Bo Lee", "2026-10-14"), C("B-2", "Bo Lee", "2026-10-15"),
+      C("C-1", "Cy Moe", "2026-10-15", { tracking: "T4" }),
+      C("D-1", "Di Ray", "2026-08-01"),
+      C("E-1", "Ed Fox", "2026-10-15"), C("E-2", "Ed Fox", "2026-10-16"),
+      C("F-1", "Fay Kim", "2026-10-15", { shipped: true }), C("F-2", "Fay Kim", "2026-10-16"),
+      C("G-1", "Gus Moreno", "2026-10-16"),
+      C("H-1", "Hal Ng", "2026-10-16", { zip: "94110" }), C("H-2", "Hal Ng", "2026-10-16", { zip: "10001-2345" }),
+    ]);
+    eq(m.matches.map((x) => `${x.orderId} ${x.tracking}`).sort(), ["A-1 T1", "E-2 T6", "F-2 T7", "G-1 T8", "H-2 T9"]);
+    eq(m.already, [{ orderId: "C-1", tracking: "T4" }]);
+    eq(m.conflicts.map((x) => `${x.orderId} ${x.tracking}`), ["A-1 T2"]);
+    eq(m.unmatched.map((x) => x.tracking).sort(), ["T3", "T5"]);
+    ok(/2 orders/.test(m.unmatched.find((x) => x.tracking === "T3").why), "says why");
+    eq(m.older, [{ name: "Old Timer", tracking: "T0" }]);
+    // A label bought before the order isn't for it.
+    eq(matchShipments([S("Ash Example", "T1", "2026-10-14")], [C("A-1", "Ash Example", "2026-10-15")]).matches, []);
   },
   "parseAddresses: single address with no blank lines is one block": async () => {
     const r = parseAddresses("Ash Example\n45 Example St\nLos Angeles, CA 90012");

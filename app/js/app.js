@@ -2,13 +2,14 @@
 // and tracking panels to the Data modules (csv / plan / tracking / paste) and the PDF modules
 // (render / slips). See CONTRACT.md "app.js / store.js / UI".
 
-import { load, save, KEYS } from "./store.js";
+import { load, save, remove, KEYS } from "./store.js";
 import { parseOrders } from "./csv.js";
 import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS } from "./plan.js";
 import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv } from "./tracking.js";
 import { parseAddresses } from "./paste.js";
 import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText } from "./render.js";
 import { readSlipPdf, attachSlips } from "./slips.js";
+import { readXlsx, isShipmentsHeader, readShipments, shipmentsFromCsv, matchShipments, isoDate } from "./pirate.js";
 import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
   trackingUrl, formatName, historyKey, recordSeen, stamp } from "./history.js";
 
@@ -156,6 +157,8 @@ const filterList = asList(FILTERS);
 export const state = {
   source: "",          // "csv" (TCGplayer file) or "paste"
   fileName: "",
+  batchText: "",       // the file / pasted text the orders came from (kept in KEYS.batch)
+  batchAt: "",         // when it was loaded (ISO time)
   orders: [],
   selected: new Set(), // order ids ticked for printing
   filter: "all",
@@ -230,9 +233,12 @@ const isShippedNow = (o) => { const s = state.shipped[o.id]; return !!(o.trackin
 
 // ---------- loading orders ----------
 
-function setBatch(source, orders, fileName) {
+/** Make `orders` the batch. text = what they were read from (kept for reloads); kept = a restored KEYS.batch. */
+function setBatch(source, orders, fileName, text, kept = null) {
   state.source = source;
   state.fileName = fileName;
+  state.batchText = String(text || "");
+  state.batchAt = (kept && kept.at) || new Date().toISOString();
   state.orders = orders;
   state.filter = "all";
   state.slips = null;
@@ -241,7 +247,63 @@ function setBatch(source, orders, fileName) {
   replan();
   const fresh = orders.filter((o) => !isShippedNow(o));
   state.selected = new Set((fresh.length ? fresh : orders).map((o) => o.id));
+  if (kept) {
+    const ids = new Set(orders.map((o) => o.id));
+    if (Array.isArray(kept.selected)) state.selected = new Set(kept.selected.filter((id) => ids.has(id)));
+    if (filterList.some((f) => f.id === kept.filter)) state.filter = kept.filter;
+    if (Array.isArray(kept.lastPrinted)) state.lastPrinted = kept.lastPrinted.filter((id) => ids.has(id));
+  }
+  keepBatch();
   renderAll();
+}
+
+// ---------- keeping the batch ----------
+// The loaded orders stay in this browser (KEYS.batch: the file's text plus what is ticked), so a reload or a
+// restart of the PC still has them and the TCGplayer import file can be made later without dropping the CSV
+// again. They hold buyers' addresses, so they are forgotten after BATCH_DAYS, when a new batch replaces them,
+// or with "Clear these orders". Packing-slip pages are not kept (too big): the PDF is added again if needed.
+const BATCH_DAYS = 14;
+
+function keepBatch() {
+  if (!state.batchText) return;
+  save(KEYS.batch, { source: state.source, fileName: state.fileName, text: state.batchText, at: state.batchAt,
+    selected: [...state.selected], filter: state.filter, lastPrinted: state.lastPrinted });
+}
+
+/** "2026-10-25 14:05" for an ISO time. */
+function whenText(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${today(d)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Bring back the batch kept by keepBatch (on start). True when there was one. */
+export function restoreBatch() {
+  const b = load(KEYS.batch, null);
+  if (!b || typeof b !== "object" || typeof b.text !== "string" || !b.text) return false;
+  if (!(Date.now() - Date.parse(b.at) < BATCH_DAYS * 864e5)) { remove(KEYS.batch); return false; }
+  const source = b.source === "paste" ? "paste" : "csv";
+  let res;
+  try { res = source === "paste" ? parseAddresses(b.text) : parseOrders(b.text); } catch { res = null; }
+  if (!res || !res.orders.length) { remove(KEYS.batch); return false; }
+  const name = typeof b.fileName === "string" && b.fileName ? b.fileName : "your file";
+  setBatch(source, res.orders, name, b.text, b);
+  if (source === "paste") $("#paste-text").value = b.text;
+  showMsg($("#load-msg"), "info", `Your orders are still here: ${plural(res.orders.length, "order")} from ${name}, loaded ${whenText(b.at)}.`,
+    ["Drop a new file to replace them, or press Clear these orders when you're done with them."]);
+  return true;
+}
+
+/** Forget the loaded orders (the "Clear these orders" button). History and shipped marks stay. */
+export function clearBatch() {
+  remove(KEYS.batch);
+  Object.assign(state, { source: "", fileName: "", batchText: "", batchAt: "", orders: [], selected: new Set(), filter: "all",
+    slips: null, lastPrinted: [], done: { 3: false, 4: false } });
+  for (const id of ["#load-msg", "#slip-msg", "#print-msg", "#match-msg", "#ship-msg"]) showMsg($(id), "", "");
+  $("#paste-text").value = "";
+  renderAll();
+  toast("Orders cleared. Your History is still there.");
 }
 
 /** Load the text of a TCGplayer shipping CSV (what a drop or "Try the sample" does). */
@@ -252,7 +314,7 @@ export function loadCsvText(text, fileName = "your file") {
     showLoadProblem(res, fileName);
     return res;
   }
-  setBatch("csv", res.orders, fileName);
+  setBatch("csv", res.orders, fileName, text);
   const already = res.orders.filter(isShippedNow).length;
   const lines = [];
   if (res.skipped.length) lines.push(skippedList(res.skipped));
@@ -294,7 +356,7 @@ export function loadPastedText(text) {
       probs.length ? el("ul", { class: "plain" }, probs) : null]);
     return res;
   }
-  setBatch("paste", res.orders, "pasted addresses");
+  setBatch("paste", res.orders, "pasted addresses", text);
   showMsg(box, probs.length ? "warn" : "ok", `Got ${plural(res.orders.length, "address", "addresses")}.` + (probs.length ? ` ${plural(probs.length, "part")} could not be read:` : ""),
     [probs.length ? el("ul", { class: "plain" }, probs) : null]);
   return res;
@@ -323,12 +385,16 @@ async function handleFiles(files) {
   }
   if (csvs.length) {
     const f = csvs[0];
-    if (/\.(xlsx?|numbers|ods)$/i.test(f.name)) {
+    if (/\.xlsx$/i.test(f.name)) {
+      await loadSpreadsheet(f);
+    } else if (/\.(xls|numbers|ods)$/i.test(f.name)) {
       showMsg($("#load-msg"), "error", `${f.name} is a spreadsheet, not a CSV.`, ["Use the .csv file from TCGplayer's Export Shipping button, or in Excel use File → Save As → CSV."]);
     } else {
       let text = "";
       try { text = await f.text(); } catch { showMsg($("#load-msg"), "error", `${f.name} couldn't be read.`); return; }
+      const shipments = text.startsWith("%PDF") ? null : shipmentsFromCsv(text);
       if (text.startsWith("%PDF")) pdfs.push(f);
+      else if (shipments) applyShipments(shipments, f.name);
       else { const res = loadCsvText(text, f.name); if (res.orders.length && !pdfs.length) jumpTo("#step2"); }
     }
   }
@@ -338,6 +404,80 @@ async function handleFiles(files) {
 function jumpTo(sel) {
   const t = $(sel);
   if (t && t.scrollIntoView) t.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+
+// ---------- Pirate Ship's Shipments export ----------
+
+/** A dropped .xlsx: Pirate Ship's Shipments export gives tracking numbers; anything else gets told what to use. */
+async function loadSpreadsheet(f) {
+  let rows = null;
+  try { rows = await readXlsx(await f.arrayBuffer()); } catch { rows = null; }
+  if (rows && rows.length && isShipmentsHeader(rows[0])) return applyShipments(readShipments(rows), f.name);
+  const heads = rows && rows[0] ? rows[0].filter((h) => String(h).trim()) : [];
+  const payments = heads.some((h) => /balance/i.test(h)) && heads.some((h) => /description/i.test(h));
+  showMsg($("#load-msg"), "error", payments ? `${f.name} is Pirate Ship's Transactions list (payments), not the Shipments list.` : `${f.name} isn't a file Ship Desk can use.`, [
+    payments ? "In Pirate Ship open Reports → View All Shipments, then Export: that file has the tracking numbers."
+      : "For orders, use the .csv file from TCGplayer's Export Shipping button. For tracking numbers, use Pirate Ship's Shipments export (Reports → View All Shipments → Export).",
+    heads.length ? el("div", { class: "found" }, el("span", { class: "small muted", text: "Columns in your file: " }), heads.map((h) => el("code", { text: h }))) : null]);
+  return null;
+}
+
+/**
+ * Orders a Pirate Ship label can go to: this batch's TCGplayer orders and History's, one per order #. History
+ * entries of other kinds (mailers) that carry a tracking number come along so their labels count as already there.
+ */
+function shipmentCandidates() {
+  const out = new Map();
+  for (const o of fileOrders()) {
+    const s = own(state.shipped, o.id) || {};
+    out.set(o.id, { id: o.id, name: o.name, zip: o.zip, date: isoDate(o.orderDate), tracking: s.tracking || o.tracking || "", shipped: !!s.shipped });
+  }
+  for (const r of Object.values(state.history)) {
+    if (!r || typeof r !== "object") continue;
+    const id = r.source === "csv" ? r.id : r.key;
+    if (!safeKey(id) || out.has(id) || (r.source !== "csv" && !r.tracking)) continue;
+    const s = (r.source === "csv" && own(state.shipped, id)) || {};
+    out.set(id, { id, name: r.name, zip: r.zip, date: isoDate(r.orderDate) || String(r.printedAt || "").slice(0, 10),
+      tracking: s.tracking || r.tracking || "", shipped: !!(s.shipped || r.shipped) });
+  }
+  return [...out.values()];
+}
+
+/** Put the tracking numbers from Pirate Ship's Shipments export on their orders (readShipments' result). */
+export function applyShipments(res, fileName = "the Pirate Ship file") {
+  const box = state.orders.length ? $("#match-msg") : $("#load-msg");
+  if (!res || !res.shipments.length) {
+    showMsg(box, "warn", `${fileName} has no labels with tracking numbers.`, [res && res.voided ? `${plural(res.voided, "voided label")} left out.` : null]);
+    return null;
+  }
+  const m = matchShipments(res.shipments, shipmentCandidates());
+  const inBatch = new Set(fileOrders().map((o) => o.id));
+  for (const x of m.matches) {
+    const entry = { tracking: x.tracking, carrier: x.carrier, shipped: true, at: today() };
+    state.shipped[x.orderId] = withSent(x.orderId, entry);
+    if (inBatch.has(x.orderId)) noteShipped(x.orderId);
+    else { const r = own(state.history, x.orderId); if (r) applyShipped(r, entry); }
+  }
+  if (m.matches.length) { saveShipped(); saveHistory(); }
+  const list = (items, text) => (items.length ? el("ul", { class: "plain" }, items.slice(0, 12).map((x) => el("li", {}, ...text(x))),
+    items.length > 12 ? el("li", { text: `…and ${items.length - 12} more.` }) : null) : null);
+  const lines = [
+    list(m.matches, (x) => [`${x.orderId} (${x.name}): `, el("code", { text: x.tracking })]),
+    m.already.length ? `${plural(m.already.length, "label was", "labels were")} already on ${m.already.length === 1 ? "its order" : "their orders"}.` : null,
+    m.matches.some((x) => !inBatch.has(x.orderId))
+      ? `${plural(m.matches.filter((x) => !inBatch.has(x.orderId)).length, "order isn't", "orders aren't")} in the orders loaded now: marked in History. Drop that day's TCGplayer CSV to put ${m.matches.length === 1 ? "it" : "them"} in an import file.` : null,
+    m.conflicts.length ? "These buyers' orders already have a different tracking number (left as they are):" : null,
+    list(m.conflicts, (x) => [`${x.name}: `, el("code", { text: x.tracking }), x.has ? ` (order ${x.orderId} has ${x.has})` : ` (order ${x.orderId})`]),
+    m.unmatched.length ? "Not matched (type these on the order in the list if they're yours):" : null,
+    list(m.unmatched, (x) => [`${x.name || "No name"}: `, el("code", { text: x.tracking }), ` (${x.why})`]),
+    m.older.length ? `${plural(m.older.length, "label is", "labels are")} older than any order Ship Desk knows (left out).` : null,
+    res.voided ? `${plural(res.voided, "voided label")} left out.` : null,
+  ];
+  showMsg(box, m.conflicts.length || m.unmatched.length ? "warn" : m.matches.length ? "ok" : "info",
+    m.matches.length ? `Added ${plural(m.matches.length, "tracking number")} from ${fileName}.` : `No new tracking numbers in ${fileName}.`, lines);
+  renderAll();
+  if (state.orders.length) jumpTo("#step4");
+  return m;
 }
 
 // ---------- packing slips ----------
@@ -427,6 +567,7 @@ export function downloadPdf() {
     return res;
   });
   state.lastPrinted = orders.map((o) => o.id);
+  keepBatch();
   state.done[3] = true;
   recordPrinted(state.history, orders, { source: state.source, format: state.output.format });
   saveHistory();
@@ -1581,8 +1722,16 @@ function renderSteps() {
   }
 }
 
+function renderBatchRow() {
+  $("#batch-row").hidden = !state.orders.length;
+  $("#batch-info").textContent = state.orders.length
+    ? `${plural(state.orders.length, "order")} from ${state.fileName}, loaded ${whenText(state.batchAt)}. They stay here until you clear them or load new ones (${BATCH_DAYS} days at most).`
+    : "";
+}
+
 export function renderAll() {
   renderSteps();
+  renderBatchRow();
   renderProfiles();
   renderTable();
   renderOutput();
@@ -1700,6 +1849,7 @@ function bindTable() {
     const id = e.target.dataset.id;
     if (!id) return;
     if (e.target.checked) state.selected.add(id); else state.selected.delete(id);
+    keepBatch();
     e.target.closest("tr").classList.toggle("off", !e.target.checked);
     const rows = visibleOrders();
     const n = rows.filter((o) => state.selected.has(o.id)).length;
@@ -1709,6 +1859,7 @@ function bindTable() {
   });
   $("#check-all").addEventListener("change", (e) => {
     for (const o of visibleOrders()) { if (e.target.checked) state.selected.add(o.id); else state.selected.delete(o.id); }
+    keepBatch();
     renderTable();
     renderOutput();
   });
@@ -1738,6 +1889,7 @@ function bindTable() {
 /** Show only the orders matching a FILTERS id. */
 export function setFilter(id) {
   state.filter = filterList.some((f) => f.id === id) ? id : "all";
+  keepBatch();
   renderTable();
   renderOutput();
 }
@@ -1813,6 +1965,7 @@ function shrinkImage(file, max) {
 function bindShip() {
   $("#btn-paste").addEventListener("click", () => { const r = loadPastedText($("#paste-text").value); if (r.orders.length) jumpTo("#step2"); });
   $("#btn-sample").addEventListener("click", loadSample);
+  $("#btn-clear-batch").addEventListener("click", clearBatch);
   $("#btn-match").addEventListener("click", () => matchPasted($("#track-text").value));
   $("#import-again").addEventListener("change", (e) => { state.importAgain = e.target.checked; renderShipWarn(); });
   const list = $("#ship-list");
@@ -1880,13 +2033,14 @@ export function init() {
   window.shipdesk = api;
   // index.html?sample opens with the sample loaded (handy for a quick look and for screenshots).
   if (new URLSearchParams(location.search).has("sample")) loadSample(false);
+  else restoreBatch();
   return api;
 }
 
 export const api = {
   state, init, loadCsvText, loadPastedText, setFilter, visibleOrders, printOrders, returnAddress, planSettings,
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
-  clearShipped, renderAll, handleFiles, loadSlipFile, today,
+  clearShipped, renderAll, handleFiles, loadSlipFile, today, restoreBatch, clearBatch, applyShipments,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
   power, checkPower, turnOff, setAutostart,

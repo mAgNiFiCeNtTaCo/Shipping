@@ -135,6 +135,17 @@ TCGplayer thresholds (order value = "Value Of Products"):
   `Order ID,Name,Address,Address Line 2,City,State,Zipcode,Country,Ounces` (Ounces = estimated packed weight,
   rounded up to 0.1).
 
+## pirate.js (Data)
+
+Pirate Ship's Shipments export -> tracking numbers (added 2026-10-25).
+- `readXlsx(arrayBuffer)` -> rows (first sheet, text cells, empty cells keep their column). Throws on a non-.xlsx.
+- `readShipments(rows)` -> `{ shipments: [{ name, tracking, carrier, created, status, orderId, zip }], voided, headers }`;
+  `shipmentsFromCsv(text)` -> the same or null; `isShipmentsHeader(headers)`.
+- `matchShipments(shipments, candidates)` -> `{ matches, already, conflicts, unmatched, older }`; candidates =
+  `[{ id, name, zip, date, tracking, shipped }]`. Rules: Order ID column first; else same name (first + last name
+  as a fallback, ZIP narrows when both have one); only orders without tracking dated within `MATCH_DAYS` before the
+  label; several -> unmatched (never guessed).
+
 ## paste.js (Data)
 
 - `parseAddresses(text) -> { orders: Order[], problems: [{text, reason}] }`: addresses pasted from eBay,
@@ -221,7 +232,9 @@ One page, mobile-friendly, works offline (service worker caches the app + vendor
 
 `store.js` wraps localStorage (try/catch everywhere; the app must work if storage is blocked):
 `load(key, fallback)`, `save(key, value)`; keys `shipdesk.profiles`, `shipdesk.activeProfile`,
-`shipdesk.design`, `shipdesk.output`, `shipdesk.plan`, `shipdesk.shipped`.
+`shipdesk.design`, `shipdesk.output`, `shipdesk.plan`, `shipdesk.shipped`, `shipdesk.batch` (the loaded file's
+text + ticks/filter/label order: `{ source, fileName, text, at, selected, filter, lastPrinted }`, re-read on start by
+app.js `restoreBatch`, forgotten after `BATCH_DAYS` = 14 or by `clearBatch`; slip pages are not kept).
 
 ## Done means
 

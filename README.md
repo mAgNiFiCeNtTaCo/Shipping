@@ -33,6 +33,11 @@ No internet needed. (It needs Python; if it's missing, the window tells you how 
    Each order also shows its estimated packed weight and, for envelopes, how many Forever stamps it needs.
    Untick any order you don't want to print. The filter buttons show just envelopes, just tracked orders, or
    orders not yet marked shipped.
+
+   The orders stay on the page when you reload it, close the browser or restart the PC, so you can make the
+   TCGplayer import file later (after the phone has marked them shipped) without dropping the CSV again. They go
+   away when you load a new file, press **Clear these orders** in step 1, or after 14 days. A packing-slip PDF
+   (step 3) isn't kept: drop it again if you reprint.
 3. **Print.** Fill in your return address once (it is remembered), pick what you print on, click
    **Download PDF**, open it and print at **100% scale** ("Actual size", not "Fit to page"). On a thermal label
    printer, set the margins to **zero**.
@@ -88,6 +93,13 @@ toploader, how many cards go in one toploader, whether your envelopes are rigid 
 - Orders of **$49.99 or more** must have tracking: Ship Desk warns you if one is ticked Shipped without it.
 - **Download Pirate Ship CSV** lists the orders that should get a tracked label and don't have one yet, with their
   estimated weight. In Pirate Ship choose Import -> Spreadsheet.
+- **Tracking numbers back from Pirate Ship:** in Pirate Ship open **Reports -> View All Shipments** and click
+  **Export**. Drop that `.xlsx` file anywhere on Ship Desk. Each label's tracking number goes on its order, matched
+  by the buyer's name: the buyer's one order without tracking from the 3 weeks before the label. If a buyer
+  has two or more such orders, Ship Desk doesn't guess: it lists the label so you can type it on the right order.
+  It also says which labels were already there, which didn't match, and leaves out voided labels and labels
+  older than any order it knows. Dropping the same file again is harmless. Works with no orders loaded too
+  (it marks them in History). The **Transactions** export is the money list and has no tracking numbers.
 - Ship Desk remembers what you marked shipped, so if you drop the same file again those orders aren't ticked
   for printing. **Clear shipped history** forgets it.
 
@@ -225,7 +237,7 @@ turned). Orders of the loaded file that get photos, and orders given a tracking 
 ## Where your data is kept
 
 Only in this browser on this PC: your return addresses, design and settings, which orders you marked shipped,
-and the History list.
+the History list, and the orders you last loaded (with their addresses, until you clear them or 14 days pass).
 Order files are read in the browser and never uploaded. Once a phone is set up, Ship Desk keeps the list
 the phone picks from (order #, buyer name, city, state, ZIP; no street) in `Saved\Phone`. Photos are in
 `Saved\Photos`. Both stay on this PC and are never put on GitHub. A different browser (or another PC) starts empty.

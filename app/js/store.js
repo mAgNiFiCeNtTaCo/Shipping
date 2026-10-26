@@ -11,6 +11,7 @@ export const KEYS = {
   shipped: "shipdesk.shipped",
   history: "shipdesk.history",
   historyCopy: "shipdesk.historyCopy", // "on" once this browser's History is the one copied to Saved\History
+  batch: "shipdesk.batch", // the loaded orders (file or pasted text) so a reload keeps them; app.js BATCH_DAYS
 };
 
 const memory = new Map(); // key -> JSON text written during this visit

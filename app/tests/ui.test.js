@@ -190,6 +190,50 @@ export const tests = {
     clearStore();
   },
 
+  "app: the loaded orders survive a reload until cleared": async () => {
+    clearStore();
+    let { frame, win, doc, app } = await openApp();
+    ok(doc.querySelector("#batch-row").hidden, "no Clear button before a file");
+    app.loadCsvText(await sampleText(), "sample.csv");
+    const [a, b] = app.state.orders;
+    const box = doc.querySelector(`#orders-table input[data-id="${a.id}"]`);
+    box.checked = false;
+    box.dispatchEvent(new win.Event("change", { bubbles: true }));
+    app.matchPasted(`${b.id} 9400111899223344556677`);
+    const count = app.state.orders.length;
+    ({ win, doc, app } = await reload(frame));
+    eq(app.state.orders.length, count, "orders back after a reload");
+    eq(app.state.source, "csv");
+    eq(app.state.fileName, "sample.csv");
+    ok(!app.state.selected.has(a.id) && app.state.selected.has(b.id), "ticks kept");
+    eq(bodyRows(doc).length, count, "table filled");
+    ok(!doc.querySelector("#batch-row").hidden, "Clear button shown");
+    ok(/still here/.test(doc.querySelector("#load-msg").textContent), "says the orders are back");
+    eq(app.importFile().count, 1, "import file made without dropping the CSV again");
+
+    doc.querySelector("#btn-clear-batch").click();
+    eq(app.state.orders.length, 0, "cleared");
+    eq(localStorage.getItem(KEYS.batch), null, "forgotten in the browser");
+    ok(doc.querySelector("#batch-row").hidden && !doc.querySelector("#plan-empty").hidden, "page back to empty");
+    ok(app.state.shipped[b.id], "shipped marks stay");
+    ({ win, doc, app } = await reload(frame));
+    eq(app.state.orders.length, 0, "still empty after a reload");
+
+    app.loadPastedText("Jamie Sample\n12 Maple Ave\nSpringfield, IL 62701\n\nRobin Test\n400 Harbor Rd\nPortland, ME 04101\n");
+    ({ win, doc, app } = await reload(frame));
+    eq(app.state.source, "paste", "pasted addresses come back too");
+    eq(bodyRows(doc).length, 2);
+    ok(/Robin Test/.test(doc.querySelector("#paste-text").value), "pasted text back in the box");
+
+    const kept = JSON.parse(localStorage.getItem(KEYS.batch));
+    kept.at = new Date(Date.now() - 15 * 864e5).toISOString();
+    localStorage.setItem(KEYS.batch, JSON.stringify(kept));
+    ({ win, doc, app } = await reload(frame));
+    eq(app.state.orders.length, 0, "a batch older than 14 days is forgotten");
+    eq(localStorage.getItem(KEYS.batch), null, "and removed");
+    clearStore();
+  },
+
   "app: the PDF builds for the ticked orders": async () => {
     clearStore();
     const { app } = await openApp();

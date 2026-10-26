@@ -1,373 +1,398 @@
 {
- "project": "Shipping",
- "about": "Ship Desk: TCGplayer shipping CSV -> address labels, packing slips, envelopes, shipping plan + stamps, mark-shipped import file (local, offline browser app)",
- "runs": [
-  {
-   "title": "First build of Ship Desk + landscape thermal label",
-   "date": "2026-10-20",
-   "summary": "A 4-station nodeterm team built a local copy of what tcgspeedshipper.com does from one contract; QA proved it end to end (113 tests), then a landscape 6x4 thermal label was added (117 tests).",
-   "stages": [
+  "project": "Shipping",
+  "about": "Ship Desk: TCGplayer shipping CSV -> address labels, packing slips, envelopes, shipping plan + stamps, mark-shipped import file (local, offline browser app)",
+  "runs": [
     {
-     "name": "Plan",
-     "kind": "lead",
-     "note": "research, contract, briefs, test harness, vendored libraries",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator",
-       "start": "2026-10-20T13:42",
-       "end": "2026-10-20T13:48",
-       "did": "Read the site and sample CSV, wrote CONTRACT.md + 4 briefs, serve.py, headless-Edge test harness, vendored jsPDF/pdf.js/qrcode",
-       "outcome": "done",
-       "files": 10
-      }
-     ]
+      "title": "First build of Ship Desk + landscape thermal label",
+      "date": "2026-10-20",
+      "summary": "A 4-station nodeterm team built a local copy of what tcgspeedshipper.com does from one contract; QA proved it end to end (113 tests), then a landscape 6x4 thermal label was added (117 tests).",
+      "stages": [
+        {
+          "name": "Plan",
+          "kind": "lead",
+          "note": "research, contract, briefs, test harness, vendored libraries",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator",
+              "start": "2026-10-20T13:42",
+              "end": "2026-10-20T13:48",
+              "did": "Read the site and sample CSV, wrote CONTRACT.md + 4 briefs, serve.py, headless-Edge test harness, vendored jsPDF/pdf.js/qrcode",
+              "outcome": "done",
+              "files": 10
+            }
+          ]
+        },
+        {
+          "name": "Builders",
+          "kind": "build",
+          "note": "in parallel, shared working tree",
+          "sessions": [
+            {
+              "id": "6b69dd20",
+              "role": "Data",
+              "start": "2026-10-20T13:48",
+              "end": "2026-10-20T13:59",
+              "did": "CSV reader, shipping plan + stamps, tracking match, TCGplayer import + Pirate Ship files, paste parser, sample CSV; 39 tests",
+              "outcome": "done",
+              "files": 6
+            },
+            {
+              "id": "c8819c4f",
+              "role": "PDF",
+              "start": "2026-10-20T13:48",
+              "end": "2026-10-20T14:05",
+              "did": "8 label formats, packing slips, design options, TCGplayer slip-PDF reader; 50 tests",
+              "outcome": "done",
+              "files": 3
+            },
+            {
+              "id": "37946309",
+              "role": "UI",
+              "start": "2026-10-20T13:48",
+              "end": "2026-10-20T14:05",
+              "did": "4-step page, return-address profiles, offline service worker, Start Ship Desk.bat; 13 tests",
+              "outcome": "done",
+              "files": 8
+            }
+          ]
+        },
+        {
+          "name": "QA",
+          "kind": "review",
+          "note": "armed after-success on all three builders",
+          "sessions": [
+            {
+              "id": "f3bbcddd",
+              "role": "QA + integration",
+              "start": "2026-10-20T14:02",
+              "end": "2026-10-20T14:17",
+              "did": "9 end-to-end tests (113 total), 16 screenshots checked, README + test report, 3 small fixes",
+              "outcome": "done",
+              "files": 6
+            }
+          ]
+        },
+        {
+          "name": "Check + user request",
+          "kind": "fix",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator",
+              "start": "2026-10-20T14:17",
+              "end": "2026-10-20T14:29",
+              "did": "Re-ran all tests, looked at screenshots, added landscape thermal 6x4 label (117 tests)",
+              "outcome": "done",
+              "files": 5
+            }
+          ]
+        }
+      ],
+      "events": [],
+      "lessons": [
+        "A test harness proven before launch (headless Edge, results POSTed back) let every station test on a PC without Node.",
+        "File ownership + a Requests section in each brief kept parallel stations out of each other's files.",
+        "Check each vendored download separately: one failed silently in an && chain."
+      ]
     },
     {
-     "name": "Builders",
-     "kind": "build",
-     "note": "in parallel, shared working tree",
-     "sessions": [
-      {
-       "id": "6b69dd20",
-       "role": "Data",
-       "start": "2026-10-20T13:48",
-       "end": "2026-10-20T13:59",
-       "did": "CSV reader, shipping plan + stamps, tracking match, TCGplayer import + Pirate Ship files, paste parser, sample CSV; 39 tests",
-       "outcome": "done",
-       "files": 6
-      },
-      {
-       "id": "c8819c4f",
-       "role": "PDF",
-       "start": "2026-10-20T13:48",
-       "end": "2026-10-20T14:05",
-       "did": "8 label formats, packing slips, design options, TCGplayer slip-PDF reader; 50 tests",
-       "outcome": "done",
-       "files": 3
-      },
-      {
-       "id": "37946309",
-       "role": "UI",
-       "start": "2026-10-20T13:48",
-       "end": "2026-10-20T14:05",
-       "did": "4-step page, return-address profiles, offline service worker, Start Ship Desk.bat; 13 tests",
-       "outcome": "done",
-       "files": 8
-      }
-     ]
+      "title": "History tab + Saved folder",
+      "date": "2026-10-20",
+      "summary": "The orchestrator session added a History page of every order labelled or shipped, and made every generated file save into Ship Desk's own Saved folder instead of Downloads (130 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-20T14:35",
+              "end": "2026-10-20T15:05",
+              "did": "history.js + History page; serve.py /api/save + /api/open-folder, Saved/ gitignored; 13 new tests",
+              "outcome": "done",
+              "files": 16
+            }
+          ]
+        }
+      ],
+      "events": [],
+      "lessons": [
+        "Files a local app writes for the user that hold customer data must be gitignored before the first write when the repo is public.",
+        "A localhost endpoint that writes files must check Host, Origin and a custom header, or any website the user visits can write there."
+      ]
     },
     {
-     "name": "QA",
-     "kind": "review",
-     "note": "armed after-success on all three builders",
-     "sessions": [
-      {
-       "id": "f3bbcddd",
-       "role": "QA + integration",
-       "start": "2026-10-20T14:02",
-       "end": "2026-10-20T14:17",
-       "did": "9 end-to-end tests (113 total), 16 screenshots checked, README + test report, 3 small fixes",
-       "outcome": "done",
-       "files": 6
-      }
-     ]
+      "title": "Phone photos, label scanning, sideways label fix",
+      "date": "2026-10-20",
+      "summary": "The orchestrator session added an iPhone page for order photos (through Tailscale, with an offline queue), fixed the cut-off sideways label, and added order QR codes plus mailer tracking-barcode scanning that feeds History (144 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-20T15:05",
+              "end": "2026-10-20T22:40",
+              "did": "phone.html/js + offline IndexedDB queue, serve.py phone API + Tailscale switch + pairing code, History photos; sideways label as upright page; order QR on prints, zxing scanner, tracking links into History; 14 new tests",
+              "outcome": "done",
+              "files": 40
+            }
+          ]
+        }
+      ],
+      "events": [],
+      "lessons": [
+        "Thermal printers don't rotate a wide PDF page onto a narrow roll; they cut it off. Draw a landscape label turned on an upright page.",
+        "An iPhone that can't reach the PC on a double-NAT LAN can use `tailscale serve` (tailnet only) with the server still on 127.0.0.1; treat proxied requests as a separate, restricted client.",
+        "Headless --virtual-time-budget screenshots don't wait for IndexedDB; use real-time DevTools capture.",
+        "A canvas captureStream() makes a fake camera for testing getUserMedia scanners in headless Edge."
+      ]
     },
     {
-     "name": "Check + user request",
-     "kind": "fix",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator",
-       "start": "2026-10-20T14:17",
-       "end": "2026-10-20T14:29",
-       "did": "Re-ran all tests, looked at screenshots, added landscape thermal 6x4 label (117 tests)",
-       "outcome": "done",
-       "files": 5
-      }
-     ]
-    }
-   ],
-   "events": [],
-   "lessons": [
-    "A test harness proven before launch (headless Edge, results POSTed back) let every station test on a PC without Node.",
-    "File ownership + a Requests section in each brief kept parallel stations out of each other's files.",
-    "Check each vendored download separately: one failed silently in an && chain."
-   ]
-  },
-  {
-   "title": "History tab + Saved folder",
-   "date": "2026-10-20",
-   "summary": "The orchestrator session added a History page of every order labelled or shipped, and made every generated file save into Ship Desk's own Saved folder instead of Downloads (130 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-20T14:35",
-       "end": "2026-10-20T15:05",
-       "did": "history.js + History page; serve.py /api/save + /api/open-folder, Saved/ gitignored; 13 new tests",
-       "outcome": "done",
-       "files": 16
-      }
-     ]
-    }
-   ],
-   "events": [],
-   "lessons": [
-    "Files a local app writes for the user that hold customer data must be gitignored before the first write when the repo is public.",
-    "A localhost endpoint that writes files must check Host, Origin and a custom header, or any website the user visits can write there."
-   ]
-  },
-  {
-   "title": "Phone photos, label scanning, sideways label fix",
-   "date": "2026-10-20",
-   "summary": "The orchestrator session added an iPhone page for order photos (through Tailscale, with an offline queue), fixed the cut-off sideways label, and added order QR codes plus mailer tracking-barcode scanning that feeds History (144 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-20T15:05",
-       "end": "2026-10-20T22:40",
-       "did": "phone.html/js + offline IndexedDB queue, serve.py phone API + Tailscale switch + pairing code, History photos; sideways label as upright page; order QR on prints, zxing scanner, tracking links into History; 14 new tests",
-       "outcome": "done",
-       "files": 40
-      }
-     ]
-    }
-   ],
-   "events": [],
-   "lessons": [
-    "Thermal printers don't rotate a wide PDF page onto a narrow roll; they cut it off. Draw a landscape label turned on an upright page.",
-    "An iPhone that can't reach the PC on a double-NAT LAN can use `tailscale serve` (tailnet only) with the server still on 127.0.0.1; treat proxied requests as a separate, restricted client.",
-    "Headless --virtual-time-budget screenshots don't wait for IndexedDB; use real-time DevTools capture.",
-    "A canvas captureStream() makes a fake camera for testing getUserMedia scanners in headless Edge."
-   ]
-  },
-  {
-   "title": "Mailer entries, camera screen, post office = shipped, photo turning",
-   "date": "2026-10-21",
-   "summary": "The orchestrator session turned unknown mailer scans into History entries, made the scanner a multi-photo camera that turns sideways shots upright, marked orders shipped from post office photos, and added photo turn buttons on the PC (148 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-20T22:40",
-       "end": "2026-10-21T00:25",
-       "did": "mailer:<tracking> entries + Add order # in History with photo re-key; camera screen with shutter, type switch and tilt-based turning; post office photo -> shipped note; PC photo turn buttons; Windows file-replace retry; 4 new tests",
-       "outcome": "done",
-       "files": 14
-      }
-     ]
-    }
-   ],
-   "events": [
-    {
-     "time": "2026-10-20T23:50",
-     "text": "A failed patch script emptied app/js/phone.js; rebuilt from git and re-applied"
-    }
-   ],
-   "lessons": [
-    "Write a file only after its new content is fully encoded: open(..., 'w') empties it before a failing write.",
-    "On Windows, os.replace onto a JSON file that another thread is reading raises PermissionError: retry briefly.",
-    "Photos shot straight down at a desk lose their orientation; a web camera can use devicemotion gravity and keep the last turn while flat."
-   ]
-  },
-  {
-   "title": "File names that say what is inside, camera asked for once",
-   "date": "2026-10-21",
-   "summary": "The orchestrator session named saved files by time and buyers and kept the phone camera ready between uses so the iPhone stops re-asking (148 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-21T00:25",
-       "end": "2026-10-21T00:35",
-       "did": "fileName() for labels/slips/import/Pirate Ship/history, wider NAME_OK; camera stream kept 5 min after Done and reused; tests updated",
-       "outcome": "done",
-       "files": 9
-      }
-     ]
-    }
-   ],
-   "events": [],
-   "lessons": [
-    "An iPhone home-screen web app re-asks for the camera on each getUserMedia call: keep and reuse the stream for a while."
-   ]
-  },
-  {
-   "title": "Tracking barcodes read much better",
-   "date": "2026-10-21",
-   "summary": "The orchestrator session benchmarked barcode reading on 96 phone-like mailer pictures, found zxing-js failing beside darker mailers, and switched the phone to zxing-wasm (15 -> 50 of 96) with a JS fallback (150 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-21T00:35",
-       "end": "2026-10-21T00:58",
-       "did": "barcode benchmark; JS strip reader with local thresholds; zxing-wasm 3.1.6 vendored as main reader; serve.py wasm type + phone files; 2 new tests",
-       "outcome": "done",
-       "files": 7
-      }
-     ]
-    }
-   ],
-   "events": [],
-   "lessons": [
-    "zxing-js 1D reading uses a whole-row threshold: a dark surface beside a white label makes it fail; zxing-wasm (zxing-cpp) read 3x more phone-like barcode pictures.",
-    "Measure barcode readers on generated camera-like pictures (blur, tilt, grain, background) before tuning."
-   ]
-  },
-  {
-   "title": "On/off switch, background, start with Windows",
-   "date": "2026-10-21",
-   "summary": "The orchestrator session added an on/off switch to the page (shutdown + shipdesk://start), made Ship Desk run windowless in the background, fixed two copies sharing the port, and added Start with Windows (152 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-21T01:00",
-       "end": "2026-10-21T17:10",
-       "did": "header on/off switch, /api/ping + /api/shutdown, shipdesk:// launcher; pythonw background start, log, Stop bat; SO_EXCLUSIVEADDRUSE; Start with Windows (HKCU Run); 2 new tests; live checks",
-       "outcome": "done",
-       "files": 12
-      }
-     ]
-    }
-   ],
-   "events": [
-    {
-     "time": "2026-10-21T01:32",
-     "text": "Live test found two Ship Desks on one port (old window re-ran the edited .bat); fixed with an exclusive port"
-    }
-   ],
-   "lessons": [
-    "On Windows, Python http.server sets SO_REUSEADDR, so a second server can bind the same port: use SO_EXCLUSIVEADDRUSE.",
-    "cmd reads a running .bat from disk as it goes: editing it while an old window runs it can run the new lines."
-   ]
-  },
-  {
-   "title": "History copy, sent to TCGplayer, proof packs",
-   "date": "2026-10-25",
-   "summary": "The orchestrator session suggested ten improvements and built the top three: a History copy on the PC with a safe restore, import files that only carry what is new, and a proof-pack PDF per order (155 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-25T18:30",
-       "end": "2026-10-25T19:55",
-       "did": "/api/history-copy + linked-browser offer/restore; sent-to-TCGplayer marks + skipSent import; proofPack PDF; phone status fix; 3 new tests",
-       "outcome": "done",
-       "files": 16
-      }
-     ]
-    }
-   ],
-   "events": [],
-   "lessons": [
-    "A browser-only store needs a copy on disk, but a browser that lost its data must not overwrite the copy: link the browser first and offer a restore otherwise."
-   ]
-  },
-  {
-   "title": "First real TCGplayer upload",
-   "date": "2026-10-25",
-   "summary": "The user uploaded a real import file; TCGplayer refused the empty carrier on an untracked row, the session set Carrier USPS and the re-upload imported cleanly (155 tests).",
-   "stages": [
-    {
-     "name": "Follow-up requests",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator (solo)",
-       "start": "2026-10-25T19:58",
-       "end": "2026-10-25T20:20",
-       "did": "read the error screenshot, Carrier USPS for Shipped rows, tests + docs; confirmed by the user re-upload",
-       "outcome": "done",
-       "files": 7
-      }
-     ]
-    }
-   ],
-   "events": [
-    {
-     "time": "2026-10-25T20:08",
-     "text": "Real TCGplayer upload: 1 row successfully imported, 0 errors"
-    }
-   ],
-   "lessons": [
-    "When a site's help pages can't be read, let the real upload's error screen decide the format."
-   ]
-  },
-  {
-   "title": "Security audit and fixes",
-   "date": "2026-10-25",
-   "summary": "A security-auditor subagent audited the week's new parts (0 critical/high/medium, 3 low); the orchestrator fixed all three lows the same day (158 tests).",
-   "stages": [
-    {
-     "name": "Audit",
-     "kind": "review",
-     "sessions": [
-      {
-       "id": "a86fe280",
-       "role": "security-auditor (subagent)",
-       "start": "2026-10-25T20:25",
-       "end": "2026-10-25T20:50",
-       "did": "full audit, offline proofs p1-p5, report 2026-10-25-Shipping.md: __proto__ key, CSV formulas, missing headers; 4 info",
-       "outcome": "done",
-       "files": 0
-      }
-     ]
+      "title": "Mailer entries, camera screen, post office = shipped, photo turning",
+      "date": "2026-10-21",
+      "summary": "The orchestrator session turned unknown mailer scans into History entries, made the scanner a multi-photo camera that turns sideways shots upright, marked orders shipped from post office photos, and added photo turn buttons on the PC (148 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-20T22:40",
+              "end": "2026-10-21T00:25",
+              "did": "mailer:<tracking> entries + Add order # in History with photo re-key; camera screen with shutter, type switch and tilt-based turning; post office photo -> shipped note; PC photo turn buttons; Windows file-replace retry; 4 new tests",
+              "outcome": "done",
+              "files": 14
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "time": "2026-10-20T23:50",
+          "text": "A failed patch script emptied app/js/phone.js; rebuilt from git and re-applied"
+        }
+      ],
+      "lessons": [
+        "Write a file only after its new content is fully encoded: open(..., 'w') empties it before a failing write.",
+        "On Windows, os.replace onto a JSON file that another thread is reading raises PermissionError: retry briefly.",
+        "Photos shot straight down at a desk lose their orientation; a web camera can use devicemotion gravity and keep the last turn while flat."
+      ]
     },
     {
-     "name": "Fixes",
-     "kind": "solo",
-     "sessions": [
-      {
-       "id": "bce15ced",
-       "role": "Orchestrator",
-       "start": "2026-10-25T20:55",
-       "end": "2026-10-25T22:05",
-       "did": "valid_order_key + own() lookups, spreadsheetSafe CSV, CSP and headers, README wording; 3 new tests; restart",
-       "outcome": "done",
-       "files": 10
-      }
-     ]
+      "title": "File names that say what is inside, camera asked for once",
+      "date": "2026-10-21",
+      "summary": "The orchestrator session named saved files by time and buyers and kept the phone camera ready between uses so the iPhone stops re-asking (148 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-21T00:25",
+              "end": "2026-10-21T00:35",
+              "did": "fileName() for labels/slips/import/Pirate Ship/history, wider NAME_OK; camera stream kept 5 min after Done and reused; tests updated",
+              "outcome": "done",
+              "files": 9
+            }
+          ]
+        }
+      ],
+      "events": [],
+      "lessons": [
+        "An iPhone home-screen web app re-asks for the camera on each getUserMedia call: keep and reuse the stream for a while."
+      ]
+    },
+    {
+      "title": "Tracking barcodes read much better",
+      "date": "2026-10-21",
+      "summary": "The orchestrator session benchmarked barcode reading on 96 phone-like mailer pictures, found zxing-js failing beside darker mailers, and switched the phone to zxing-wasm (15 -> 50 of 96) with a JS fallback (150 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-21T00:35",
+              "end": "2026-10-21T00:58",
+              "did": "barcode benchmark; JS strip reader with local thresholds; zxing-wasm 3.1.6 vendored as main reader; serve.py wasm type + phone files; 2 new tests",
+              "outcome": "done",
+              "files": 7
+            }
+          ]
+        }
+      ],
+      "events": [],
+      "lessons": [
+        "zxing-js 1D reading uses a whole-row threshold: a dark surface beside a white label makes it fail; zxing-wasm (zxing-cpp) read 3x more phone-like barcode pictures.",
+        "Measure barcode readers on generated camera-like pictures (blur, tilt, grain, background) before tuning."
+      ]
+    },
+    {
+      "title": "On/off switch, background, start with Windows",
+      "date": "2026-10-21",
+      "summary": "The orchestrator session added an on/off switch to the page (shutdown + shipdesk://start), made Ship Desk run windowless in the background, fixed two copies sharing the port, and added Start with Windows (152 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-21T01:00",
+              "end": "2026-10-21T17:10",
+              "did": "header on/off switch, /api/ping + /api/shutdown, shipdesk:// launcher; pythonw background start, log, Stop bat; SO_EXCLUSIVEADDRUSE; Start with Windows (HKCU Run); 2 new tests; live checks",
+              "outcome": "done",
+              "files": 12
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "time": "2026-10-21T01:32",
+          "text": "Live test found two Ship Desks on one port (old window re-ran the edited .bat); fixed with an exclusive port"
+        }
+      ],
+      "lessons": [
+        "On Windows, Python http.server sets SO_REUSEADDR, so a second server can bind the same port: use SO_EXCLUSIVEADDRUSE.",
+        "cmd reads a running .bat from disk as it goes: editing it while an old window runs it can run the new lines."
+      ]
+    },
+    {
+      "title": "History copy, sent to TCGplayer, proof packs",
+      "date": "2026-10-25",
+      "summary": "The orchestrator session suggested ten improvements and built the top three: a History copy on the PC with a safe restore, import files that only carry what is new, and a proof-pack PDF per order (155 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-25T18:30",
+              "end": "2026-10-25T19:55",
+              "did": "/api/history-copy + linked-browser offer/restore; sent-to-TCGplayer marks + skipSent import; proofPack PDF; phone status fix; 3 new tests",
+              "outcome": "done",
+              "files": 16
+            }
+          ]
+        }
+      ],
+      "events": [],
+      "lessons": [
+        "A browser-only store needs a copy on disk, but a browser that lost its data must not overwrite the copy: link the browser first and offer a restore otherwise."
+      ]
+    },
+    {
+      "title": "First real TCGplayer upload",
+      "date": "2026-10-25",
+      "summary": "The user uploaded a real import file; TCGplayer refused the empty carrier on an untracked row, the session set Carrier USPS and the re-upload imported cleanly (155 tests).",
+      "stages": [
+        {
+          "name": "Follow-up requests",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator (solo)",
+              "start": "2026-10-25T19:58",
+              "end": "2026-10-25T20:20",
+              "did": "read the error screenshot, Carrier USPS for Shipped rows, tests + docs; confirmed by the user re-upload",
+              "outcome": "done",
+              "files": 7
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "time": "2026-10-25T20:08",
+          "text": "Real TCGplayer upload: 1 row successfully imported, 0 errors"
+        }
+      ],
+      "lessons": [
+        "When a site's help pages can't be read, let the real upload's error screen decide the format."
+      ]
+    },
+    {
+      "title": "Security audit and fixes",
+      "date": "2026-10-25",
+      "summary": "A security-auditor subagent audited the week's new parts (0 critical/high/medium, 3 low); the orchestrator fixed all three lows the same day (158 tests).",
+      "stages": [
+        {
+          "name": "Audit",
+          "kind": "review",
+          "sessions": [
+            {
+              "id": "a86fe280",
+              "role": "security-auditor (subagent)",
+              "start": "2026-10-25T20:25",
+              "end": "2026-10-25T20:50",
+              "did": "full audit, offline proofs p1-p5, report 2026-10-25-Shipping.md: __proto__ key, CSV formulas, missing headers; 4 info",
+              "outcome": "done",
+              "files": 0
+            }
+          ]
+        },
+        {
+          "name": "Fixes",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "bce15ced",
+              "role": "Orchestrator",
+              "start": "2026-10-25T20:55",
+              "end": "2026-10-25T22:05",
+              "did": "valid_order_key + own() lookups, spreadsheetSafe CSV, CSP and headers, README wording; 3 new tests; restart",
+              "outcome": "done",
+              "files": 10
+            }
+          ]
+        }
+      ],
+      "events": [],
+      "lessons": [
+        "Objects keyed by data from outside (order keys) need own-property lookups and a key whitelist on the server: __proto__ reached every record.",
+        "After adding a Content-Security-Policy, test that features with fallbacks (WebAssembly reader) still use the main path, not just that tests pass."
+      ]
+    },
+    {
+      "title": "Orders survive a reload; tracking from Pirate Ship's export",
+      "date": "2026-10-25",
+      "summary": "One session kept the loaded batch across reloads (Clear button, 14 days) and added reading Pirate Ship's Shipments export (.xlsx) to put tracking numbers on orders by buyer name; 164 tests.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-25T22:03",
+              "end": "2026-10-25T23:05",
+              "did": "Batch kept in the browser + Clear these orders; pirate.js (.xlsx reader, name matching), applyShipments, sample export, tests 158 -> 164",
+              "outcome": "done",
+              "files": 14
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "Pirate Ship has two exports: Transactions (money, no tracking) and Shipments (tracking, but no order # or ZIP), so matching is by name and date."
+      ]
     }
-   ],
-   "events": [],
-   "lessons": [
-    "Objects keyed by data from outside (order keys) need own-property lookups and a key whitelist on the server: __proto__ reached every record.",
-    "After adding a Content-Security-Policy, test that features with fallbacks (WebAssembly reader) still use the main path, not just that tests pass."
-   ]
-  }
- ]
+  ]
 }

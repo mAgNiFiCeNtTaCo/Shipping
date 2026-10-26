@@ -9,11 +9,13 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on a real TCGplayer import.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **158 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 15, e2e 10, phone 24).
+- Tests: `python tools/test.py` = **164 passed, 0 failed** (two full runs 2026-10-25).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
-  named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`). History has a copy in
+  named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`). The loaded orders stay through
+  reloads and restarts (until cleared, a new file, or 14 days). Pirate Ship's Shipments export (.xlsx) dropped on
+  the page puts the tracking numbers on their orders. History has a copy in
   `Saved\History` (+ daily backups); import files only carry what's new ("Sent to TCGplayer"); proof pack PDF per order.
 - Phone page (`/phone.html`, iPhone through Tailscale serve, pairing code): photos per order (contents / packed /
   post office) into `Saved\Photos`, offline queue. Its camera screen scans order QR codes and mailer tracking
@@ -22,6 +24,31 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-25: loaded orders survive a reload; tracking numbers from Pirate Ship's export
+- **Batch kept across reloads** (the agreed next step): the loaded CSV / pasted text, ticks, filter and label order
+  are kept in the browser (`shipdesk.batch`, app.js `keepBatch` / `restoreBatch` / `clearBatch`) and come back on
+  start with a "Your orders are still here" note. Step 1 shows "N orders from <file>, loaded <time>" and a **Clear
+  these orders** button (History and shipped marks stay). Forgotten after 14 days (`BATCH_DAYS`) or when a new file
+  replaces them. Packing-slip pages are not kept (too big). So the import file can be made later without dropping
+  the CSV again.
+- **Pirate Ship tracking import**: new `app/js/pirate.js`. The user's first file was the Transactions export
+  (payments only, no tracking); the Shipments export (Reports -> View All Shipments -> Export) is an .xlsx with
+  Created Date, Recipient, Tracking Number, Status, ... and **no order # or ZIP**. So:
+  - `readXlsx` reads .xlsx with the browser's own `DecompressionStream` (no library); a .csv export works too.
+  - `matchShipments` matches by buyer name (accents/case/punctuation ignored, first+last fallback): the buyer's one
+    order without tracking from the 21 days before the label (`MATCH_DAYS`); several -> listed, never guessed;
+    labels already on an order, voided labels and labels older than every known order are summed up.
+  - app.js `applyShipments`: works on the loaded orders (step 4 message) and on History alone (step 1 message:
+    drop that day's CSV for the import file). Transactions or other spreadsheets get an explanation.
+  - Dry run on the user's real export vs the History copy (throwaway browser, counts only): 22 labels -> 15
+    already there (phone scans), 6 older than Ship Desk, 1 non-TCGplayer buyer, 0 wrong matches.
+- Tests 158 -> 164: batch reload/clear/14 days (ui), .xlsx reading + matching rules (data), dropping the export
+  with and without orders loaded (e2e); invented `app/samples/pirateship-shipments-sample.xlsx` made by
+  `tools/make_pirate_sample.py`. One phone test assumed a reload empties the page (fixed). Passed twice. Cache
+  `shipdesk-v19`; no restart needed (serve.py unchanged).
+- Next: the user's real-iPhone checks and a real packing-slip PDF; backup of `Saved\` (needs a place chosen);
+  photo storage; phone "to do" list.
+
 ### 2026-10-25: security audit and its fixes
 - A full /security-audit (security-auditor subagent, report-only, nothing changed during it) of the week's new parts:
   report `D:\ClaudeProjects\Security_Agent_Audit\reports\2026-10-25-Shipping.md` (proofs in `reports\proofs\`).

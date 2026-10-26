@@ -73,7 +73,7 @@
           <strong>Drop your TCGplayer shipping CSV</strong>
           <span>anywhere on this page, or tap here to choose the file</span>
         </button>
-        <input type="file" id="file-input" class="sr" accept=".csv,text/csv,.txt,.pdf,application/pdf" multiple tabindex="-1" aria-hidden="true">
+        <input type="file" id="file-input" class="sr" accept=".csv,text/csv,.txt,.pdf,application/pdf,.xlsx" multiple tabindex="-1" aria-hidden="true">
         <div class="row">
           <button type="button" id="btn-sample" class="btn secondary">Try the sample</button>
           <span class="muted small">See how it works with 10 made-up orders.</span>
@@ -99,6 +99,10 @@
         </div>
       </div>
 
+      <div id="batch-row" class="row" hidden>
+        <span id="batch-info" class="muted small"></span>
+        <button type="button" id="btn-clear-batch" class="btn secondary">Clear these orders</button>
+      </div>
       <div id="load-msg" class="msg" role="status" aria-live="polite" hidden></div>
     </section>
 
@@ -262,6 +266,7 @@
           <p class="muted small" id="track-help">One per line. Either just the numbers, in the same order as your labels, or the order number then the tracking number.</p>
           <textarea id="track-text" rows="5" aria-describedby="track-help" spellcheck="false" placeholder="9400 1000 0000 0000 0000 00&#10;or: SAMPLE-0005 9400 1000 0000 0000 0000 00"></textarea>
           <button type="button" id="btn-match" class="btn secondary">Match to orders</button>
+          <p class="muted small" id="pirate-help">Bought the labels on Pirate Ship? Drop its Shipments export (.xlsx: Reports → View All Shipments → Export) anywhere on this page and the tracking numbers go on the right orders, by buyer name.</p>
           <div id="match-msg" class="msg" role="status" aria-live="polite" hidden></div>
         </div>
         <div>
@@ -336,7 +341,7 @@
   <p>Ship Desk runs in your browser. Order files are read on this PC and never uploaded. Settings are saved in this browser only.</p>
 </footer>
 
-<div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true"><div><strong>Drop to load</strong><span>CSV for orders, PDF for packing slips</span></div></div>
+<div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true"><div><strong>Drop to load</strong><span>CSV for orders, PDF for packing slips, Pirate Ship export for tracking</span></div></div>
 <dialog id="phone-dialog" class="dlg" aria-labelledby="phone-h">
   <div class="dlg-head"><h2 id="phone-h">Phone photos</h2><button type="button" class="dlg-x" data-close aria-label="Close">&times;</button></div>
   <p class="muted dlg-intro">Use your phone to photograph each order: what's inside, the packed mail, and the post office drop-off. The photos are saved on this PC in <code>Saved\Photos</code>, one folder per order, and show in History.</p>

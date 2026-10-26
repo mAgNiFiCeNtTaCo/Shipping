@@ -14,7 +14,14 @@ explain in plain words and finish jobs end to end.
 ## Layout
 - `app/index.html`, `app/css/app.css`, `app/js/app.js` + `store.js`: the page and its saved settings (localStorage).
 - `app/js/csv.js`, `plan.js`, `tracking.js`, `paste.js`: reading files, shipping plan + stamps, tracking/import files, pasted addresses.
+- `app/js/pirate.js`: Pirate Ship's Shipments export (Reports -> View All Shipments -> Export, an .xlsx; .csv works too)
+  -> tracking numbers. `readXlsx` unzips with the browser's DecompressionStream (no library), `readShipments`,
+  `matchShipments` (by buyer name: the one open order from `MATCH_DAYS` = 21 before the label; never guesses between
+  several). app.js `applyShipments` / `shipmentCandidates` (batch orders + History). The real export has no order #
+  or ZIP (checked 2026-10-25); Order ID / ZIP columns are used if present. The Transactions export has no tracking.
 - `app/js/render.js` (all PDF formats, `FORMATS`), `app/js/slips.js` (reads TCGplayer's packing-slip PDF).
+- Loaded batch kept across reloads: `KEYS.batch` holds the CSV/pasted text + ticks (app.js `keepBatch` / `restoreBatch` /
+  `clearBatch`, "Clear these orders" in step 1, 14 days at most; full addresses, this browser only; slips not kept).
 - `app/js/history.js`: the History page's records (`shipdesk.history` in localStorage: name/city/ZIP only, no street).
 - `app/phone.html` + `js/phone.js` + `css/phone.css` + `phone-sw.js` (scope `./phone`, network-first): the iPhone page for
   order photos (contents / packed / post office). Photos wait in the phone's IndexedDB (`shipdesk-phone`) until
@@ -60,7 +67,8 @@ explain in plain words and finish jobs end to end.
   `NAME_OK` must keep allowing what it produces (any-language letters, `,'&+()`).
 - `app/sw.js` offline cache (bump `VERSION` whenever app files change), `app/manifest.webmanifest`, `app/icon.svg`.
 - `app/vendor/` jsPDF 2.5.2, pdf.js 3.11.174, qrcode-generator 1.4.4, @zxing/library 0.21.3, zxing-wasm 3.1.6 reader (MIT) (no CDN: the app works offline).
-- `app/samples/tcgplayer-sample.csv` invented sample orders. `app/tests/` browser test suites.
+- `app/samples/tcgplayer-sample.csv` invented sample orders; `pirateship-shipments-sample.xlsx` invented Pirate Ship
+  labels for those buyers (made by `tools/make_pirate_sample.py`, same columns as the real export). `app/tests/` browser test suites.
 - `Saved/` (gitignored, real buyer addresses): files the app makes, written by `serve.py` (`POST /api/save`,
   `/api/open-folder`; only Ship Desk's own page may call them: Host + Origin + `X-Ship-Desk` header). Tests write to a temp folder.
   `Saved/Phone/pairing-code.txt` is a secret (the phone's key): never print or commit it.

@@ -851,8 +851,9 @@ Object.assign(tests, {
     eq((await send({ ...body, carrier: "Pony Express" })).status, 400, "unknown carrier");
     ok((await (await send(body)).json()).ok, "saved");
     ok((await (await send(body)).json()).again, "sent twice, kept once");
-    const { app } = await openApp(); // a fresh page: no batch loaded, SAMPLE-0009 not in History
-    await waitFor(() => app.state.history["SAMPLE-0009"], "History to get the order");
+    remove(KEYS.batch); // the earlier tests' orders would come back on a fresh page
+    const { app } = await openApp(); // a fresh page: no batch loaded
+    await waitFor(() => app.state.history["SAMPLE-0009"] && app.state.history["SAMPLE-0009"].tracking, "History to get the order");
     const r = app.state.history["SAMPLE-0009"];
     ok(r.name && r.city && r.zip && r.tracking === "9400111899223344550009" && r.shipped, "name, place and tracking from the phone list: " + JSON.stringify(r));
     eq(app.state.shipped["SAMPLE-0009"].tracking, "9400111899223344550009");
