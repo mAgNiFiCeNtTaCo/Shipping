@@ -8,7 +8,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
 - **Windows installer** for other people: `python tools/build_installer.py` -> `dist\ShipDesk-Setup-1.0.0.exe` (13 MB,
-  own Python, per-user, no admin). MIT licence. GitHub release v1.0.0 not published yet (see the log).
+  own Python, per-user, no admin). MIT licence. Published 2026-10-26: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases/tag/v1.0.0
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
 - Tests: `python tools/test.py` = **169 passed, 0 failed** (2026-10-26).
