@@ -326,6 +326,48 @@
    "lessons": [
     "When a site's help pages can't be read, let the real upload's error screen decide the format."
    ]
+  },
+  {
+   "title": "Security audit and fixes",
+   "date": "2026-10-25",
+   "summary": "A security-auditor subagent audited the week's new parts (0 critical/high/medium, 3 low); the orchestrator fixed all three lows the same day (158 tests).",
+   "stages": [
+    {
+     "name": "Audit",
+     "kind": "review",
+     "sessions": [
+      {
+       "id": "a86fe280",
+       "role": "security-auditor (subagent)",
+       "start": "2026-10-25T20:25",
+       "end": "2026-10-25T20:50",
+       "did": "full audit, offline proofs p1-p5, report 2026-10-25-Shipping.md: __proto__ key, CSV formulas, missing headers; 4 info",
+       "outcome": "done",
+       "files": 0
+      }
+     ]
+    },
+    {
+     "name": "Fixes",
+     "kind": "solo",
+     "sessions": [
+      {
+       "id": "bce15ced",
+       "role": "Orchestrator",
+       "start": "2026-10-25T20:55",
+       "end": "2026-10-25T22:05",
+       "did": "valid_order_key + own() lookups, spreadsheetSafe CSV, CSP and headers, README wording; 3 new tests; restart",
+       "outcome": "done",
+       "files": 10
+      }
+     ]
+    }
+   ],
+   "events": [],
+   "lessons": [
+    "Objects keyed by data from outside (order keys) need own-property lookups and a key whitelist on the server: __proto__ reached every record.",
+    "After adding a Content-Security-Policy, test that features with fallbacks (WebAssembly reader) still use the main path, not just that tests pass."
+   ]
   }
  ]
 }

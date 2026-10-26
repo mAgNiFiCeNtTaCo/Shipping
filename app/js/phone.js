@@ -341,7 +341,8 @@ export function parseScan(text) {
   if (!raw) return null;
   if (raw.toUpperCase().startsWith(QR_PREFIX)) {
     const key = raw.slice(QR_PREFIX.length).trim();
-    return key ? { type: "order", key } : null;
+    // ("__proto__" & co. aren't order keys: the PC would read them as every order. Audit 2026-10-25.)
+    return key && !["__proto__", "constructor", "prototype"].includes(key) ? { type: "order", key } : null;
   }
   const t = compact(raw.replace(/^\]C1/, "")); // "]C1" = some readers' GS1-128 marker
   const usps = /^420(?:\d{5}|\d{9})(9\d{19,21})$/.exec(t);
@@ -515,7 +516,8 @@ const WASM_JS = new URL("../vendor/zxing-wasm-3.1.6/reader.js", import.meta.url)
 const WASM_BIN = new URL("../vendor/zxing-wasm-3.1.6/zxing_reader.wasm", import.meta.url).href;
 const FRAME_SIDE = 1920;  // longest side of the picture the main reader looks at
 let wasmLoad = null;
-export const readers = { wasm: true }; // tests switch the main reader off to check the JavaScript one
+// wasm: tests switch the main reader off to check the JavaScript one. used: which one read the last picture.
+export const readers = { wasm: true, used: "" };
 
 function loadWasm() {
   if (!readers.wasm || typeof WebAssembly !== "object") return Promise.resolve(null);
@@ -551,6 +553,7 @@ async function readAll(src, w, h) {
 /** The code in one picture (a video frame, photo or canvas of w x h): a tracking barcode or a QR code, or "". */
 export async function decodeFrame(src, w, h) {
   const all = await readAll(src, w, h);
+  readers.used = all ? "wasm" : "js";
   if (all) return all.find(useful) || all[0] || "";
   const Z = await loadZxing();
   for (const across of [true, false]) {

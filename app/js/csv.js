@@ -43,9 +43,15 @@ export function parseCsv(text) {
 }
 
 /** toCsv(rows) -> CSV text with CRLF line ends; cells quoted only when needed. */
-export function toCsv(rows) {
+/**
+ * Rows -> CSV text. spreadsheetSafe: a cell starting with = + - @ (or a tab / line break) gets a ' in front, so
+ * Excel shows it as text instead of running it as a formula. Only for files meant for a spreadsheet (History):
+ * TCGplayer's and Pirate Ship's files must stay exact. (Security audit 2026-10-25, SHIP-20261025-02.)
+ */
+export function toCsv(rows, { spreadsheetSafe = false } = {}) {
   const cell = (v) => {
-    const s = v == null ? "" : String(v);
+    let s = v == null ? "" : String(v);
+    if (spreadsheetSafe && /^[=+\-@\t\r\n]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = "'" + s;
     return /[",\r\n]/.test(s) || /^\s|\s$/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   return rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";

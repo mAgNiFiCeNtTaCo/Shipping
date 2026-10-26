@@ -9,7 +9,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on a real TCGplayer import.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **155 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 14, e2e 10, phone 22).
+- Tests: `python tools/test.py` = **158 passed, 0 failed** (harness 2, data 39, render 55, ui 13, history 15, e2e 10, phone 24).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -22,6 +22,32 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-25: security audit and its fixes
+- A full /security-audit (security-auditor subagent, report-only, nothing changed during it) of the week's new parts:
+  report `D:\ClaudeProjects\Security_Agent_Audit\reports\2026-10-25-Shipping.md` (proofs in `reports\proofs\`).
+  0 critical / high / medium, 3 low, 4 info. Checked and fine: other websites can't reach PC-only routes (62 raw
+  attempts refused, DNS rebinding included), the phone side only gets its files + `/api/phone/*` (path tricks 404,
+  `Saved/` never served), pairing code ~2^60 with `hmac.compare_digest`, fixed shutdown/autostart/shipdesk://
+  commands, no innerHTML/eval anywhere, the public repo's history has no secrets or buyer data.
+- Fixed at the user's request (same day):
+  - **01 `__proto__` order key** (a forged link/post office note for it marked every order shipped): serve.py
+    `valid_order_key()` on photo/link/rekey/order list; app.js `own()`/`safeKey()` in `takePhoneLinks`; phone.js
+    `parseScan` refuses such keys.
+  - **02 CSV formulas**: `toCsv(rows, { spreadsheetSafe })` puts `'` before `= + - @` cells; History CSV only
+    (TCGplayer / Pirate Ship files stay exact).
+  - **03 headers**: nosniff, no-referrer, X-Frame-Options SAMEORIGIN and a Content-Security-Policy (self only,
+    'wasm-unsafe-eval' for the barcode reader, data:/blob: images; not on /tests/).
+  - Info 07: README's opening now says what the phone receives.
+  - Not changed (info): jsPDF 2.5.2 / pdf.js 3.11.174 advisories not reachable (pdf.js runs with isEvalSupported
+    false); the Tailscale address in this log grants nothing; any local program can use the PC routes (as designed,
+    one-account PC).
+- Tests 155 -> 158 (headers + labels and a slip PDF read inside the page with no policy violations; `__proto__`
+  refused and harmless; formula-safe History CSV); the live camera test now checks the WebAssembly reader really ran
+  (`readers.used`). Passed twice. Caches `shipdesk-v17` / `shipdesk-phone-v8`. Ship Desk restarted at the user's OK;
+  page and phone address serve the new headers. Fixes noted at the end of the audit report.
+- Open questions from the audit for the user: who else is on the tailnet (a Tailscale rule could limit port 5091 to
+  the iPhone); if the phone is lost, remove it from Tailscale and press New pairing code.
+
 ### 2026-10-25: first real TCGplayer upload; untracked rows need carrier USPS
 - The user's first real import file (1 envelope order, Tracking `Shipped`, Carrier empty) came back from TCGplayer's
   Import Tracking page as "0 rows imported ... Carrier is unrecognized". TCGplayer's help article is 403 to fetchers,

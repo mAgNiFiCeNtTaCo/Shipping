@@ -111,6 +111,12 @@ TYPES = {
 
 lock = threading.Lock()  # photos.json, orders.json, links.json and the pairing code
 
+# The pages' content policy: everything from Ship Desk itself; pictures may also be data:/blob: (logos, photos,
+# thumbnails); WebAssembly for the barcode reader; inline style attributes allowed (no inline scripts anywhere).
+CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+       "img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; media-src 'self' blob:; "
+       "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'")
+
 
 def unique_path(folder, name):
     """folder/name, or folder/'name (2).ext' etc. when that file already exists."""
@@ -152,6 +158,23 @@ def write_json(path, data):
             if i == RETRIES - 1:
                 raise
             time.sleep(0.025)
+
+
+# What an order key may look like (the PC page's history keys): a TCGplayer order number, "paste:<name>|<ZIP>" or
+# "mailer:<tracking>". Anything else (e.g. "__proto__", which the page's lists would treat as every order at once)
+# is refused. (Security audit 2026-10-25, SHIP-20261025-01.)
+ORDER_ID_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+BAD_KEYS = {"__proto__", "constructor", "prototype"}
+
+
+def valid_order_key(key):
+    if not key or len(key) > 200 or key in BAD_KEYS or re.search(r"[\x00-\x1f\x7f]", key):
+        return False
+    if key.startswith("paste:"):
+        return "|" in key
+    if key.startswith("mailer:"):
+        return bool(TRACKING_OK.match(key[7:]))
+    return bool(ORDER_ID_OK.match(key))
 
 
 def clean_code(code):
@@ -214,6 +237,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         # Always fresh files: the service worker does the offline caching.
         self.send_header("Cache-Control", "no-cache")
+        # A second wall around the pages (security audit 2026-10-25, SHIP-20261025-03): no framing by other sites,
+        # no guessing file types, no referrer, and scripts/data only from Ship Desk itself (the test pages under
+        # /tests/ use inline scripts, so they skip the content policy).
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        if not urllib.parse.urlsplit(self.path).path.startswith("/tests/"):
+            self.send_header("Content-Security-Policy", CSP)
         super().end_headers()
 
     def log_message(self, fmt, *args):
@@ -543,7 +574,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         clean = []
         for o in orders:
-            if not isinstance(o, dict) or not str(o.get("key", "")).strip():
+            if not isinstance(o, dict) or not valid_order_key(str(o.get("key", "")).strip()):
                 continue
             row = {k: o.get(k) for k in ORDER_FIELDS}
             for k, v in row.items():
@@ -620,7 +651,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def save_photo(self, arg):
         key, name, kind, pid, taken = self.current_key(arg("order").strip()), arg("name").strip()[:100], arg("kind"), arg("id"), arg("taken")
-        if not key or len(key) > 200 or kind not in PHOTO_KINDS or not PHOTO_ID_OK.match(pid):
+        if not valid_order_key(key) or kind not in PHOTO_KINDS or not PHOTO_ID_OK.match(pid):
             self.reply(400, {"ok": False, "error": "Bad photo details."})
             return
         data = self.body(MAX_PHOTO_BYTES)
@@ -686,7 +717,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         tracking = re.sub(r"[^0-9A-Za-z]", "", str(d.get("tracking", ""))).upper()
         carrier = str(d.get("carrier", ""))
         taken = str(d.get("taken", ""))
-        if not PHOTO_ID_OK.match(lid) or not key or len(key) > 200 or not TRACKING_OK.match(tracking) or carrier not in CARRIERS:
+        if not PHOTO_ID_OK.match(lid) or not valid_order_key(key) or not TRACKING_OK.match(tracking) or carrier not in CARRIERS:
             self.reply(400, {"ok": False, "error": "Bad tracking details."})
             return
         if not TAKEN_OK.match(taken):
@@ -737,7 +768,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def rekey_photos(self):
         d = self.read_json_body(4096) or {}
         old, new, name = str(d.get("from", "")).strip(), str(d.get("to", "")).strip(), str(d.get("name", "")).strip()[:100]
-        if not old or not new or old == new or len(old) > 200 or len(new) > 200:
+        if not valid_order_key(old) or not valid_order_key(new) or old == new:
             self.reply(400, {"ok": False, "error": "Bad order numbers."})
             return
         moved = 0

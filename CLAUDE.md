@@ -81,6 +81,11 @@ explain in plain words and finish jobs end to end.
 - Order files contain buyers' names and addresses: never save them into the project or commit them; the app keeps everything in the browser.
 - Don't copy tcgspeedshipper.com's code, text, images or name; it is the feature reference only.
 - Adding a print format: add it to `FORMATS` in render.js, update the format list in `app/tests/render.test.js`, bump `VERSION` in `sw.js`, add a README row.
+- Security (audit 2026-10-25, report in `D:\ClaudeProjects\Security_Agent_Audit\reports\2026-10-25-Shipping.md`):
+  order keys from the phone go through serve.py `valid_order_key()`; app.js looks keyed lists up with `own()` (never
+  `state.history[key]` for a key from outside); CSVs meant for Excel use `toCsv(..., { spreadsheetSafe: true })`;
+  pages are served with a Content-Security-Policy (`CSP` in serve.py): no inline scripts, new script/wasm/worker
+  sources must be allowed there. No innerHTML anywhere: keep building DOM with `el()` / textContent.
 
 ## Gotchas
 - No Node on this PC: JS tests only run through `tools/test.py` (headless Edge).

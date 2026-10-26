@@ -170,5 +170,5 @@ export function historyCsv(records, tagLabels = {}) {
     r.id || (r.source === "mailer" ? "(not added yet)" : "(pasted)"), r.name, r.city, r.state, r.zip, (Number(r.value) || 0).toFixed(2), String(r.items || ""),
     tagLabels[r.tag] || r.tag || "", r.printedAt, r.lastPrintedAt, String(r.printCount || 0), formatName(r.format),
     r.shipped ? "Yes" : "No", r.shippedAt, r.tracking, r.carrier, r.source === "paste" ? "Pasted addresses" : r.source === "mailer" ? "Mailer scanned on the phone" : "TCGplayer file",
-  ])]);
+  ])], { spreadsheetSafe: true }); // opened in Excel: a buyer name like "=..." must stay text
 }

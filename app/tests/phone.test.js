@@ -114,6 +114,52 @@ const tests = {
     eq((await fetch("/api/phone-link")).status, 403, "PC page needs the X-Ship-Desk header too");
   },
 
+  "security: protective headers, and the pages still work under their content policy": async () => {
+    const page = await fetch("/index.html");
+    const csp = page.headers.get("Content-Security-Policy") || "";
+    ok(csp.includes("default-src 'self'") && csp.includes("frame-ancestors 'self'") && csp.includes("'wasm-unsafe-eval'"), "content policy: " + csp);
+    eq([page.headers.get("X-Content-Type-Options"), page.headers.get("X-Frame-Options"), page.headers.get("Referrer-Policy")],
+      ["nosniff", "SAMEORIGIN", "no-referrer"]);
+    ok((await fetch("/phone.html")).headers.get("Content-Security-Policy"), "the phone page too");
+    ok(!(await fetch("/tests/run.html")).headers.get("Content-Security-Policy"), "not the test pages");
+    // Inside the real page: labels (jsPDF) and reading a slip PDF (pdf.js and its worker), watching for blocks.
+    const { win, doc, app } = await openApp();
+    const blocked = [];
+    doc.addEventListener("securitypolicyviolation", (e) => blocked.push(`${e.violatedDirective} ${e.blockedURI}`));
+    app.loadCsvText(await sampleText(), "sample.csv");
+    const pdfDoc = app.buildPdf();
+    await app.loadSlipFile(new win.File([pdfDoc.output("arraybuffer")], "slips.pdf", { type: "application/pdf" }));
+    await waitFor(() => app.state.slips && Object.keys(app.state.slips.byOrder || {}).length >= 5, "the slip PDF to be read under the policy");
+    eq(blocked, [], "nothing blocked by the content policy");
+    dropFrames();
+  },
+
+  "security: an order named __proto__ is refused, and can't mark every order shipped": async () => {
+    const key = (await link()).code;
+    const H = { "X-Ship-Desk-Key": key };
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+    for (const bad of ["__proto__", "constructor", "prototype", "has space", "a/b"]) {
+      eq((await fetch("/api/phone/photo?" + new URLSearchParams({ order: bad, name: "x", kind: "postoffice", id: "bad12345", taken: "2026-10-25T10:00:00" }),
+        { method: "POST", headers: H, body: jpeg })).status, 400, "photo for " + bad);
+      eq((await fetch("/api/phone/link", { method: "POST", headers: { ...H, "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "badlink01", order: bad, tracking: "9400111899223344550099", carrier: "USPS", taken: "2026-10-25T10:00:00" }) })).status, 400, "link for " + bad);
+    }
+    // Even if such a note reached the PC page, it's skipped.
+    clearAll();
+    const { win, app } = await openApp();
+    app.loadCsvText(await sampleText(), "sample.csv");
+    const realFetch = win.fetch.bind(win);
+    win.fetch = (u, o) => (/api\/links(\?|$)/.test(String(u)) && !/links-done/.test(String(u))
+      ? Promise.resolve(new Response(JSON.stringify({ ok: true, links: [{ id: "x1", order: "__proto__", orderId: "__proto__", tracking: "9400111899223344550099", carrier: "USPS", taken: "2026-10-25T10:00:00", source: "csv" }] })))
+      : realFetch(u, o));
+    await app.takePhoneLinks();
+    ok(!("shipped" in {}) && !("tracking" in {}), "nothing written onto every object");
+    eq(app.printOrders().length, 10, "no order turned shipped");
+    eq(app.importFile().count, 0, "nothing in the import file");
+    win.fetch = realFetch;
+    dropFrames();
+  },
+
   "PC: the header switch turns Ship Desk off (after asking) and on again": async () => {
     eq((await fetch("/api/shutdown", { method: "POST" })).status, 403, "other websites can't turn it off");
     eq((await fetch("/api/shutdown", { method: "POST", headers: { ...PC, ...VIA_TAILSCALE } })).status, 403, "nor the phone");
@@ -524,6 +570,7 @@ Object.assign(tests, {
       ok(!doc.querySelector("#scanner").hidden, "scanner open");
       await waitFor(() => phone.scan.found.includes("SAMPLE-0007"), "the camera to read the label", 15000);
       ok(doc.querySelector("#scan-found").textContent.includes("SAMPLE-0007"), "shows what it found");
+      eq(phone.readers.used, "wasm", "the main (WebAssembly) reader ran inside the page, content policy and all");
       ok(doc.querySelector("#scan-msg").textContent.includes("Got SAMPLE-0007"), doc.querySelector("#scan-msg").textContent);
       eq(doc.querySelector("#scan-done").textContent, "Done (1)");
       doc.querySelector("#scan-done").click();

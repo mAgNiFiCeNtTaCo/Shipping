@@ -4,7 +4,10 @@ Ship Desk turns your TCGplayer orders into print-ready **address labels, packing
 **how to ship each order** (stamped envelope, tracking, or signature), estimates the **weight and stamps**, and makes
 the **file that marks the orders shipped** on TCGplayer.
 
-It runs on this PC in your web browser. Your buyers' names and addresses never leave the computer.
+It runs on this PC in your web browser. Your buyers' addresses stay on this PC and are never put on the internet.
+The only exception is your own phone (see "Phone photos"): through your private Tailscale network it gets each
+order's buyer name, city, state and ZIP (no street) to pick from, and the photos you take of labels go back to
+this PC.
 
 ## Start it
 

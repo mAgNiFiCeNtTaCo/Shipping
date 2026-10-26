@@ -272,6 +272,19 @@ tests["saved folder: the server refuses other websites and bad file names"] = as
   eq((await post("/api/open-folder?kind=..")).status, 400, "unknown folder");
 };
 
+tests["security: the History CSV keeps buyer names that look like formulas as text (other files stay exact)"] = async () => {
+  const h = {};
+  recordPrinted(h, [order("F-1", { name: "=HYPERLINK(\"http://x\",\"hi\")" }), order("F-2", { name: "+1 Plus" }), order("F-3", { name: "@Pat" }),
+    order("F-4", { name: "-Dash" }), order("F-5", { name: "Normal Name" })], { when: "2026-10-25 10:00" });
+  const rows = parseCsv(historyCsv(historyList(h)));
+  const names = Object.fromEntries(rows.slice(1).map((r) => [r[0], r[1]]));
+  eq(names["F-1"], "'=HYPERLINK(\"http://x\",\"hi\")", "formula kept as text");
+  eq([names["F-2"], names["F-3"], names["F-4"], names["F-5"]], ["'+1 Plus", "'@Pat", "'-Dash", "Normal Name"]);
+  ok(rows.slice(1).every((r) => r[5] === "12.50"), "numbers untouched");
+  const { toCsv } = await import("../js/csv.js");
+  eq(toCsv([["=SUM(A1)", "-5", "x"]]), "=SUM(A1),-5,x\r\n", "files for TCGplayer / Pirate Ship stay exact");
+};
+
 tests["copy on the PC: a cleared browser is offered the saved History; a linked browser keeps the copy current"] = async () => {
   const PC = { "X-Ship-Desk": "1" };
   const copy = async () => (await fetch("/api/history-copy", { headers: PC })).json();

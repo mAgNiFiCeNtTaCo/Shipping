@@ -33,6 +33,11 @@ function el(tag, props = {}, ...kids) {
 
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 const money = (v) => "$" + (Number(v) || 0).toFixed(2);
+// Lists keyed by order (History, shipped): look up only the list's own entries. A key such as "__proto__" would
+// otherwise give every record's shared base object (security audit 2026-10-25, SHIP-20261025-01).
+const BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const safeKey = (k) => typeof k === "string" && k !== "" && !BAD_KEYS.has(k);
+const own = (obj, k) => (safeKey(k) && Object.prototype.hasOwnProperty.call(obj, k) ? obj[k] : undefined);
 const oz = (v) => (v == null ? "" : Number(v).toFixed(2) + " oz");
 
 /** Today's date on this PC as YYYY-MM-DD. */
@@ -1179,11 +1184,13 @@ export async function takePhoneLinks() {
   if (!links.length) return 0;
   let tracked = 0, shipped = 0;
   for (const ln of links) {
+    // A note for "__proto__" & co. would reach every record at once: skip anything that isn't an order key.
+    if (!safeKey(ln.order) || (ln.orderId && !safeKey(ln.orderId))) continue;
     const o = state.orders.find((x) => historyKey(x, state.source) === ln.order);
     const source = o ? state.source : ["paste", "mailer"].includes(ln.source) ? ln.source : "csv";
     const order = o || { id: ln.orderId || "", name: ln.name, city: ln.city, state: ln.state, zip: ln.zip, tracking: ln.tracking };
-    const r = state.history[ln.order];
-    const now = (source === "csv" && order.id && state.shipped[order.id]) || {};
+    const r = own(state.history, ln.order);
+    const now = (source === "csv" && order.id && own(state.shipped, order.id)) || {};
     let entry;
     if (ln.tracking) {
       entry = { tracking: ln.tracking, carrier: ln.carrier || detectCarrier(ln.tracking) || "USPS", shipped: true };
