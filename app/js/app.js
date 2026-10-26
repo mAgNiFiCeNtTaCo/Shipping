@@ -367,9 +367,10 @@ async function loadSample(jump = true) {
     const r = await fetch("samples/tcgplayer-sample.csv");
     if (!r.ok) throw new Error("status " + r.status);
     loadCsvText(await r.text(), "the sample file");
+    setWelcome({ sample: true });
     if (jump) jumpTo("#step2");
   } catch {
-    showMsg($("#load-msg"), "error", "The sample file couldn't be opened.", ["Start Ship Desk with \"Start Ship Desk.bat\" and try again."]);
+    showMsg($("#load-msg"), "error", "The sample file couldn't be opened.", ["Turn Ship Desk on (the switch at the top, or Ship Desk in the Start menu) and try again."]);
   }
 }
 
@@ -1219,6 +1220,7 @@ export async function backupNow() {
 }
 
 function renderBackup() {
+  renderWelcome();
   const s = backup.status;
   $("#backup-row").hidden = !s;
   if (!s) return;
@@ -1243,6 +1245,114 @@ function bindBackup() {
   $("#backup-to").addEventListener("change", (e) => setBackupPlace(e.target.value));
   $("#btn-backup-now").addEventListener("click", backupNow);
   $("#btn-backup-open").addEventListener("click", () => backupCall("open=1"));
+}
+
+// ---------- update notice ----------
+// Once a day (while switched on) Ship Desk asks GitHub whether a newer release is out (serve.py /api/update; nothing
+// about orders is sent). A newer one shows a note at the top until it's downloaded or "Not now".
+
+export const update = { status: null };
+
+/** How the update check stands; checks GitHub when a day has passed. */
+export async function checkUpdates() {
+  try {
+    let st = await (await shipdeskFetch("api/update")).json();
+    if (st.on && st.due) st = await (await shipdeskFetch("api/update?now=1", { method: "POST" })).json();
+    update.status = st && "current" in st ? st : null;
+  } catch { update.status = null; }
+  renderUpdate();
+  renderWelcome();
+  return update.status;
+}
+
+/** Switch the daily check on (it checks right away) or off. */
+export async function setUpdates(on) {
+  try {
+    update.status = await (await shipdeskFetch(`api/update?on=${on ? 1 : 0}${on ? "&now=1" : ""}`, { method: "POST" })).json();
+  } catch { toast("Ship Desk isn't running, so that can't be changed now."); }
+  renderUpdate();
+  renderWelcome();
+  return update.status;
+}
+
+function renderUpdate() {
+  const st = update.status;
+  const show = !!(st && st.on && st.newer && st.latest !== load(KEYS.updateSkip, ""));
+  $("#update-note").hidden = !show;
+  if (show) {
+    $("#update-text").textContent = `Ship Desk ${st.latest} is out (you have ${st.current}).`;
+    $("#update-link").href = st.url;
+  }
+  $("#update-row").hidden = !st;
+  if (!st) return;
+  $("#update-on").checked = !!st.on;
+  $("#update-row-text").textContent = !st.on ? `Off. This is version ${st.current}.`
+    : st.error ? st.error
+      : st.newer ? `Version ${st.latest} is out (you have ${st.current}).`
+        : `This is version ${st.current}${st.checked ? `, the newest (checked ${st.checked})` : ""}.`;
+}
+
+function bindUpdates() {
+  $("#update-later").addEventListener("click", () => { if (update.status) save(KEYS.updateSkip, update.status.latest); renderUpdate(); });
+  $("#update-on").addEventListener("change", (e) => setUpdates(e.target.checked));
+}
+
+// ---------- the first-run checklist ----------
+// What someone new sets up once: the must-haves (return address, what they print on, a try with the sample) and the
+// extras (phone photos with Tailscale, backup, start with Windows, update notice). Ticks come from the real settings.
+
+const welcomeState = () => { const w = load(KEYS.welcome, {}); return w && typeof w === "object" ? w : {}; };
+
+export function setWelcome(changes) {
+  save(KEYS.welcome, { ...welcomeState(), ...changes });
+  renderWelcome();
+}
+
+export function welcomeItems() {
+  const w = welcomeState();
+  return [
+    { id: "address", title: "Your return address", text: "Printed on every label and envelope.", done: hasReturnAddress(), action: "Fill it in" },
+    { id: "format", title: "What you print on", text: "Thermal 4x6 labels, letter sheets, Avery 5160 or #10 envelopes.", done: !!w.format, action: "Choose" },
+    { id: "sample", title: "Try it with the sample", text: "10 made-up orders: see the shipping plan and make a test PDF.", done: !!w.sample, action: "Try the sample" },
+    { id: "phone", optional: true, title: "Phone photos and label scanning", text: "Sets up Tailscale (free) so your phone can reach this PC privately, then shows a QR code for the phone.", done: !!w.phone, action: "Set up" },
+    { id: "backup", optional: true, title: "Back up your files", text: "Copies them to Dropbox or OneDrive every hour (History page).", done: !!(backup.status && backup.status.on), action: "Set up" },
+    { id: "autostart", optional: true, title: "Start with Windows", text: "Ship Desk runs in the background whenever you sign in.", done: power.autostart === true, action: "Switch on" },
+    { id: "updates", optional: true, title: "Tell me about new versions", text: "Checks GitHub once a day; nothing about your orders is sent.", done: !!(update.status && update.status.on), action: "Switch on" },
+  ];
+}
+
+export function renderWelcome() {
+  const card = $("#welcome");
+  if (!card) return;
+  const hidden = !!welcomeState().hidden;
+  card.hidden = hidden;
+  $("#btn-setup").hidden = !hidden;
+  if (hidden) return;
+  $("#welcome-list").replaceChildren(...welcomeItems().map((it) => el("li", { class: it.done ? "done" : "" },
+    el("span", { class: "tick", "aria-hidden": "true", text: it.done ? "✓" : "" }),
+    el("span", { class: "w-title" }, it.title, it.optional ? el("span", { class: "w-opt", text: " (optional)" }) : null,
+      el("span", { class: "sr", text: it.done ? " (done)" : "" })),
+    el("span", { class: "w-text", text: it.text }),
+    el("button", { type: "button", class: "btn secondary small", "data-welcome": it.id, text: it.done && it.id !== "sample" ? "Change" : it.action }))));
+}
+
+async function welcomeAction(id) {
+  if (id === "address") { jumpTo("#return-form"); const f = $("#return-form").elements.name; if (f) f.focus({ preventScroll: true }); }
+  else if (id === "format") { jumpTo("#format"); $("#format").focus({ preventScroll: true }); }
+  else if (id === "sample") await loadSample();
+  else if (id === "phone") await openPhone();
+  else if (id === "backup") { location.hash = "#history"; await loadBackup(); const b = $("#backup-on"); if (b) b.focus(); }
+  else if (id === "autostart") await setAutostart(true);
+  else if (id === "updates") await setUpdates(true);
+  renderWelcome();
+}
+
+function bindWelcome() {
+  bindUpdates();
+  $("#welcome-list").addEventListener("click", (e) => { const b = e.target.closest("button[data-welcome]"); if (b) welcomeAction(b.dataset.welcome); });
+  $("#welcome-hide").addEventListener("click", () => setWelcome({ hidden: true }));
+  $("#btn-setup").addEventListener("click", () => { setWelcome({ hidden: false }); jumpTo("#welcome"); });
+  renderWelcome();
 }
 
 // ---------- turning Ship Desk off and on ----------
@@ -1280,6 +1390,7 @@ export async function setAutostart(on) {
     const r = await shipdeskFetch(`api/autostart?on=${on ? 1 : 0}`, { method: "POST" });
     const data = await r.json();
     power.autostart = !!data.autostart;
+    renderWelcome();
     toast(data.ok ? (power.autostart ? "Ship Desk now starts with Windows (in the background)." : "Ship Desk won't start with Windows any more.")
       : "Windows didn't accept that change.");
   } catch {
@@ -1463,9 +1574,27 @@ async function loadPhoneLink(method = "GET", path = "api/phone-link") {
     state.phone = data;
     return data;
   } catch {
-    state.phone = { ok: false, error: "Ship Desk isn't running. Turn it on with the switch at the top (or \"Start Ship Desk.bat\")." };
+    state.phone = { ok: false, error: "Ship Desk isn't running. Turn it on with the switch at the top (or Ship Desk in the Start menu)." };
     return state.phone;
   }
+}
+
+// Tailscale's own pages (the phone app is installed from the store and signed in with the same account).
+const TS_DOWNLOAD = "https://tailscale.com/download";
+const TS_IPHONE = "https://apps.apple.com/app/tailscale/id1470499037";
+const TS_ANDROID = "https://play.google.com/store/apps/details?id=com.tailscale.ipn";
+const outLink = (href, text, cls = "") => el("a", { href, target: "_blank", rel: "noopener", class: cls, text });
+const phoneExtra = { loginLink: "", enableLink: "", timer: 0 }; // links Tailscale handed out while the window is open
+
+/** While Tailscale is being installed or signed in to, look again every few seconds. */
+function pollPhone(on) {
+  clearTimeout(phoneExtra.timer);
+  if (!on) return;
+  phoneExtra.timer = setTimeout(async () => {
+    if (!$("#phone-dialog").open) return;
+    await loadPhoneLink();
+    renderPhone();
+  }, 3000);
 }
 
 function renderPhone() {
@@ -1474,37 +1603,71 @@ function renderPhone() {
   const p = state.phone;
   if (!p) { body.replaceChildren(el("p", { class: "muted", text: "Checking…" })); return; }
   const ts = p.tailscale || {};
+  const setup = ts.setup || {};
   const err = p.error ? el("div", { class: "msg error" }, el("p", { class: "msg-title", text: "That didn't work." }), el("p", { text: p.error })) : null;
   const again = el("button", { type: "button", class: "btn secondary", "data-phone": "check", text: "Check again" });
+  const step = (n, text) => el("p", { class: "phone-step" }, el("strong", { text: `Step ${n} of 4: ` }), text);
+  pollPhone(false);
   if (!p.tailscale) { body.replaceChildren(err || el("p", { text: "Ship Desk's window isn't running." }), el("div", { class: "row" }, again)); return; }
   if (!ts.installed) {
-    body.replaceChildren(el("p", { text: "Your phone reaches this PC through Tailscale, and Tailscale isn't installed here." }),
-      el("p", { class: "muted", text: "Install Tailscale on this PC and on your phone, log in to the same account on both, then click Check again." }),
-      el("div", { class: "row" }, again));
+    const busy = setup.state === "downloading" || setup.state === "started";
+    pollPhone(busy);
+    body.replaceChildren(
+      step(1, "Install Tailscale on this PC."),
+      el("p", { text: "Your phone reaches this PC through Tailscale, a free private network between your own devices (nothing is opened to the internet)." }),
+      setup.state === "downloading" ? el("p", { class: "msg info", text: "Downloading Tailscale's installer…" }) : null,
+      setup.state === "started" ? el("div", { class: "msg info" },
+        el("p", { class: "msg-title", text: "Tailscale's installer is open." }),
+        el("p", { text: "Click through it (Windows asks for permission). This window moves on by itself when it's installed." })) : null,
+      setup.state === "failed" ? el("div", { class: "msg error" }, el("p", { text: setup.error || "That didn't work." }),
+        el("p", {}, "You can get it from ", outLink(TS_DOWNLOAD, "tailscale.com/download"), " instead.")) : null,
+      err,
+      el("div", { class: "row" },
+        busy ? null : el("button", { type: "button", class: "btn primary", "data-phone": "install", text: "Install Tailscale on this PC" }),
+        again),
+      busy ? null : el("p", { class: "muted small" }, "Ship Desk downloads Tailscale's own installer and checks it is signed by Tailscale before starting it. Or get it yourself: ",
+        outLink(TS_DOWNLOAD, "tailscale.com/download"), "."));
     return;
   }
   if (!ts.running) {
-    body.replaceChildren(el("p", { text: "Tailscale isn't connected on this PC." }),
-      el("p", { class: "muted", text: "Click the Tailscale icon by the clock and choose Connect (log in if it asks), then click Check again." }),
-      err, el("div", { class: "row" }, again));
+    const login = !ts.stopped;
+    if (phoneExtra.loginLink) pollPhone(true);
+    body.replaceChildren(
+      step(2, login ? "Sign in to Tailscale on this PC." : "Connect Tailscale on this PC."),
+      el("p", { text: login ? "Tailscale is free for personal use. Sign in with Google, Microsoft, Apple or GitHub, and use the same account on your phone later."
+        : "Tailscale is installed and signed in, but switched off." }),
+      phoneExtra.loginLink ? el("div", { class: "msg info" },
+        el("p", { class: "msg-title", text: "Sign in on Tailscale's page:" }),
+        el("p", {}, outLink(phoneExtra.loginLink, "Open Tailscale's sign-in page", "btn primary")),
+        el("p", { class: "muted small", text: "This window moves on by itself once you've signed in (and connected the device, if Tailscale asks)." })) : null,
+      err,
+      el("div", { class: "row" },
+        phoneExtra.loginLink ? null : el("button", { type: "button", class: "btn primary", "data-phone": "login", text: login ? "Sign in to Tailscale" : "Connect Tailscale" }),
+        again));
     return;
   }
   if (!p.ready) {
     body.replaceChildren(
-      el("p", { text: "Phone access is off." }),
-      el("p", { class: "muted" }, "Switching it on gives Ship Desk's phone page an address that only your own Tailscale devices can open (not the internet): ",
+      step(3, "Switch on phone access."),
+      el("p", { class: "muted" }, "This gives Ship Desk's phone page an address that only your own Tailscale devices can open (not the internet): ",
         el("code", { text: p.address || "" }), ". The rest of Ship Desk stays on this PC only."),
-      err,
+      phoneExtra.enableLink ? el("div", { class: "msg info" },
+        el("p", { class: "msg-title", text: "One more thing: switch on secure addresses for your Tailscale network." }),
+        el("p", { text: "Tailscale asks once per network. Open its page, click Enable, then come back and click Switch on phone access again." }),
+        el("p", {}, outLink(phoneExtra.enableLink, "Open Tailscale's page", "btn secondary"))) : err,
       el("div", { class: "row" }, el("button", { type: "button", class: "btn primary", "data-phone": "on", text: "Switch on phone access" })));
     return;
   }
+  setWelcome({ phone: true });
   body.replaceChildren(
+    step(4, "Set up your phone."),
     el("div", { class: "phone-grid" },
       el("div", { class: "qr-box" }, qrSvg(p.link)),
       el("ol", { class: "phone-steps" },
-        el("li", {}, "On your iPhone, open the ", el("strong", { text: "Tailscale" }), " app and check it says Connected."),
+        el("li", {}, "Install the ", el("strong", { text: "Tailscale" }), " app on your phone (", outLink(TS_IPHONE, "iPhone"), " or ",
+          outLink(TS_ANDROID, "Android"), "), sign in with the same account as on this PC, and check it says Connected."),
         el("li", {}, "Open the ", el("strong", { text: "Camera" }), " app, point it at this code and tap the link that pops up."),
-        el("li", {}, "In Safari tap ", el("strong", { text: "Share → Add to Home Screen" }), ". Next time it's one tap, and it opens even with no signal."))),
+        el("li", {}, "On an iPhone, in Safari tap ", el("strong", { text: "Share → Add to Home Screen" }), " (on Android: Chrome's menu → Add to Home screen). Next time it's one tap, and it opens even with no signal."))),
     el("dl", { class: "phone-facts" },
       el("dt", { text: "Address" }), el("dd", {}, el("code", { text: p.address })),
       el("dt", { text: "Pairing code" }), el("dd", {}, el("code", { class: "pair-code", text: p.code }), el("span", { class: "muted small", text: " (type it on the phone if the QR code doesn't work)" }))),
@@ -1519,6 +1682,7 @@ function renderPhone() {
 export async function openPhone() {
   const dlg = $("#phone-dialog");
   state.phone = null;
+  Object.assign(phoneExtra, { loginLink: "", enableLink: "" });
   renderPhone();
   if (!dlg.open) dlg.showModal();
   await loadPhoneLink();
@@ -1529,11 +1693,16 @@ export async function openPhone() {
 
 async function phoneAction(what) {
   if (what === "check") { state.phone = null; renderPhone(); await loadPhoneLink(); }
-  else if (what === "on" || what === "off") {
+  else if (what === "install") { await loadPhoneLink("POST", "api/tailscale-install"); }
+  else if (what === "login") {
+    const data = await loadPhoneLink("POST", "api/tailscale-login");
+    phoneExtra.loginLink = (data && data.loginLink) || "";
+  } else if (what === "on" || what === "off") {
     if (what === "off" && !window.confirm("Switch off phone access? The phone can't send photos until you switch it on again (photos it takes meanwhile wait on the phone).")) return;
     state.phone = null;
     renderPhone();
-    await loadPhoneLink("POST", `api/phone-access?on=${what === "on" ? 1 : 0}`);
+    const data = await loadPhoneLink("POST", `api/phone-access?on=${what === "on" ? 1 : 0}`);
+    phoneExtra.enableLink = (data && data.enableLink) || "";
   } else if (what === "newcode") {
     if (!window.confirm("Make a new pairing code? Phones that were set up must scan the new QR code (their waiting photos are kept).")) return;
     await loadPhoneLink("POST", "api/phone-key");
@@ -1748,7 +1917,7 @@ function bindPhone() {
   for (const dlg of [$("#phone-dialog"), $("#photos-dialog")]) {
     dlg.addEventListener("click", (e) => { if (e.target === dlg || e.target.closest("[data-close]")) dlg.close(); });
   }
-  $("#phone-dialog").addEventListener("close", () => { state.phone = null; refreshPhotos(); });
+  $("#phone-dialog").addEventListener("close", () => { state.phone = null; pollPhone(false); refreshPhotos(); });
   $("#photos-dialog").addEventListener("close", closePhotos);
   // Pick up tracking numbers the phone scans, and (while History is on screen) the photos it sends.
   setInterval(() => {
@@ -1812,6 +1981,7 @@ function renderBatchRow() {
 
 export function renderAll() {
   renderSteps();
+  renderWelcome();
   renderBatchRow();
   renderProfiles();
   renderTable();
@@ -1880,6 +2050,7 @@ function bindReturn() {
     p[k] = k === "state" ? e.target.value.toUpperCase() : e.target.value;
     if (k === "state" && e.target.value !== p[k]) e.target.value = p[k];
     const stored = save(KEYS.profiles, state.profiles);
+    renderWelcome();
     if (k === "label" || k === "name") {
       const opt = $("#profile-pick").selectedOptions[0];
       if (opt) opt.textContent = p.label || p.name || "Unnamed address";
@@ -1982,6 +2153,7 @@ function bindOutput() {
     if (!k) return;
     state.output[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     save(KEYS.output, state.output);
+    if (k === "format") setWelcome({ format: true });
     if (k === "slips") replan();
     renderAll();
   });
@@ -2112,7 +2284,12 @@ export function init() {
   renderAll();
   registerWorker();
   checkHistoryCopy();
+  bindWelcome();
+  loadBackup();
+  checkUpdates();
   window.shipdesk = api;
+  // The installer's "set up phone photos" opens the page at #phone.
+  if (location.hash === "#phone") { window.history.replaceState(null, "", location.pathname + location.search); openPhone(); }
   // index.html?sample opens with the sample loaded (handy for a quick look and for screenshots).
   if (new URLSearchParams(location.search).has("sample")) loadSample(false);
   else restoreBatch();
@@ -2126,6 +2303,7 @@ export const api = {
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
   power, checkPower, turnOff, setAutostart, loadBackup, setBackup, setBackupPlace, backupNow,
+  renderWelcome, welcomeItems, setWelcome, checkUpdates, setUpdates, update,
   copyHistory, checkHistoryCopy, restoreHistoryCopy, keepThisHistory, proofPack,
 };
 

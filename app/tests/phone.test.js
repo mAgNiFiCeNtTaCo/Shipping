@@ -221,6 +221,52 @@ const tests = {
     dropFrames();
   },
 
+  "PC: phone setup from scratch: install Tailscale, sign in, switch on secure addresses, then the QR code": async () => {
+    clearAll();
+    const tail = (body) => fetch("/__tailnet", { method: "POST", body: JSON.stringify(body) }).then((r) => r.json());
+    await tail({ reset: true, installed: false, running: false, needsLogin: true, needEnable: true });
+    try {
+      const { doc, app } = await openApp();
+      const text = () => doc.querySelector("#phone-body").textContent;
+      doc.querySelector("#btn-phone").click();
+      const install = await waitFor(() => doc.querySelector('#phone-body button[data-phone="install"]'), "Install Tailscale button");
+      ok(/Step 1 of 4/.test(text()) && /signed by Tailscale/.test(text()), text());
+      install.click();
+      await waitFor(() => /installer is open/.test(text()), "says the installer is open");
+      ok(!doc.querySelector('#phone-body button[data-phone="install"]'), "no second install while it runs");
+      // Installed (the window looks again by itself): sign in next.
+      await tail({ installed: true, setup: "" });
+      const login = await waitFor(() => doc.querySelector('#phone-body button[data-phone="login"]'), "Sign in button", 8000);
+      ok(/Step 2 of 4/.test(text()) && /free for personal use/.test(text()), text());
+      login.click();
+      const signIn = await waitFor(() => doc.querySelector('#phone-body a[href="https://login.tailscale.com/a/test-sign-in"]'), "Tailscale's sign-in link");
+      eq([signIn.target, signIn.rel], ["_blank", "noopener"]);
+      await tail({ running: true, needsLogin: false });
+      const on = await waitFor(() => doc.querySelector('#phone-body button[data-phone="on"]'), "Switch on button", 8000);
+      ok(/Step 3 of 4/.test(text()), text());
+      on.click();
+      await waitFor(() => doc.querySelector('#phone-body a[href="https://login.tailscale.com/f/serve?node=test"]'), "Tailscale's enable link");
+      ok(/switch on secure addresses/.test(text()), text());
+      await tail({ needEnable: false });
+      doc.querySelector('#phone-body button[data-phone="on"]').click();
+      await waitFor(() => doc.querySelector("#phone-body svg.qr"), "QR code");
+      ok(/Step 4 of 4/.test(text()) && doc.querySelector('#phone-body a[href^="https://apps.apple.com/"]') && doc.querySelector('#phone-body a[href^="https://play.google.com/"]'),
+        "says to put Tailscale on the phone: " + text());
+      ok(app.welcomeItems().find((i) => i.id === "phone").done, "ticked on the setup checklist");
+      // A PC that's signed in but switched off just connects.
+      doc.querySelector("#phone-dialog [data-close]").click();
+      await tail({ serving: false, running: false, stopped: true });
+      app.openPhone();
+      const connect = await waitFor(() => doc.querySelector('#phone-body button[data-phone="login"]'), "Connect button");
+      ok(/Connect Tailscale/.test(connect.textContent));
+      connect.click();
+      await waitFor(() => doc.querySelector('#phone-body button[data-phone="on"]'), "connected: step 3");
+    } finally {
+      await tail({ reset: true });
+      dropFrames();
+    }
+  },
+
   "PC: the Phone photos window switches phone access on and shows the QR code and pairing code": async () => {
     clearAll();
     const { win, doc } = await openApp();

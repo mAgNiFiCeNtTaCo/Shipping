@@ -32,7 +32,12 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
               POST /api/backup?on=1|0&to=dropbox|onedrive | ?now=1 | ?open=1   switch it / pick the place (backs up
                                               right away when on), back up now, open the folder
               GET  /api/phone-link            QR link, code, Tailscale state
-              POST /api/phone-access?on=1|0   switch the Tailscale address on/off
+              POST /api/phone-access?on=1|0   switch the Tailscale address on/off (a tailnet without Serve/HTTPS gives
+                                              Tailscale's enable link)
+              POST /api/tailscale-install     download Tailscale's signed installer and start it (setup for new PCs)
+              POST /api/tailscale-login       sign in / connect Tailscale (gives the sign-in link)
+              GET  /api/update                this version, the newest release, whether to check (Saved/update.json)
+              POST /api/update?now=1 | ?on=1|0   check GitHub now (once a day from the page), or switch checking
               POST /api/phone-key             make a new pairing code (old phones must scan again)
               POST /api/phone-orders          the order list the phone picks from (name, city, ZIP; no street)
               GET  /api/photos                photos per order;  GET /api/photo?id=&order=  one photo
@@ -70,7 +75,7 @@ import time
 import urllib.parse
 import webbrowser
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "app")
 
@@ -391,6 +396,124 @@ def run_tailscale(*args, timeout=15):
         return None
 
 
+TS_LINK = re.compile(r"https://login\.tailscale\.com/\S+")
+
+
+def tailscale_with_link(args, wait=15, keep=False):
+    """Run tailscale until it finishes or prints one of its login.tailscale.com links (sign in, enable Serve).
+    Returns (exit code or None, output, link). With keep, a command still waiting after its link carries on (a sign-in
+    finishes by itself once the person signs in); otherwise it is stopped."""
+    exe = find_tailscale()
+    if not exe:
+        return None, "Tailscale isn't installed on this PC.", ""
+    try:
+        p = subprocess.Popen([exe, *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as e:
+        return None, str(e), ""
+    lines = []
+    reader = threading.Thread(target=lambda: lines.extend(iter(p.stdout.readline, "")), daemon=True)
+    reader.start()
+    end = time.time() + wait
+    link = ""
+    while time.time() < end:
+        m = TS_LINK.search("".join(lines))
+        if m:
+            link = m.group(0).rstrip(".,)")
+            break
+        if p.poll() is not None:
+            reader.join(1)
+            m = TS_LINK.search("".join(lines))
+            link = m.group(0).rstrip(".,)") if m else ""
+            break
+        time.sleep(0.1)
+    code = p.poll()
+    if code is None and not (keep and link):
+        p.kill()
+    return code, "".join(lines).strip(), link
+
+
+# Setting Tailscale up on a new PC: its own installer, downloaded from Tailscale and checked to be signed by them.
+TAILSCALE_SETUP_URL = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+TAILSCALE_SIGNER = "O=Tailscale Inc."
+ts_setup = {"state": "", "error": ""}  # state: "" | downloading | started | failed
+
+
+def signed_by(path, org):
+    """Is this file's Windows signature valid and from org? (PowerShell's Get-AuthenticodeSignature)"""
+    cmd = ("$s = Get-AuthenticodeSignature -LiteralPath $env:SHIPDESK_CHECK; "
+           "if ($s.Status -eq 'Valid') { $s.SignerCertificate.Subject }")
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True, text=True,
+                           timeout=60, env={**os.environ, "SHIPDESK_CHECK": path},
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0 and org in r.stdout
+
+
+def install_tailscale():
+    """Download Tailscale's installer, check its signature, start it (Windows asks for permission)."""
+    import tempfile
+    import urllib.request
+    ts_setup.update(state="downloading", error="")
+    try:
+        path = os.path.join(tempfile.mkdtemp(prefix="shipdesk-tailscale-"), "tailscale-setup.exe")
+        req = urllib.request.Request(TAILSCALE_SETUP_URL, headers={"User-Agent": f"ShipDesk/{APP_VERSION}"})
+        with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
+            shutil.copyfileobj(r, f)
+        if not signed_by(path, TAILSCALE_SIGNER):
+            ts_setup.update(state="failed", error="The downloaded file isn't signed by Tailscale, so it wasn't run.")
+            return
+        os.startfile(path)
+        ts_setup.update(state="started")
+    except OSError as e:
+        ts_setup.update(state="failed", error=f"Tailscale's installer couldn't be downloaded ({e}).")
+
+
+# Update notice: once a day the page asks whether GitHub has a newer Ship Desk release (nothing else is sent).
+UPDATE_REPO = "mAgNiFiCeNtTaCo/Shipping"
+UPDATE_SETTINGS = "update.json"
+UPDATE_EVERY = 24 * 3600
+
+
+def version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:3]) or (0,)
+
+
+def fetch_latest_release():
+    """(version, page) of the newest release on GitHub."""
+    import urllib.request
+    req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest",
+                                 headers={"User-Agent": f"ShipDesk/{APP_VERSION}", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    page = str(data.get("html_url") or "")
+    if not page.startswith(f"https://github.com/{UPDATE_REPO}/"):
+        page = f"https://github.com/{UPDATE_REPO}/releases/latest"
+    return str(data.get("tag_name") or "").lstrip("vV"), page
+
+
+def update_status(save_root):
+    s = read_json(os.path.join(save_root, UPDATE_SETTINGS), {})
+    s = s if isinstance(s, dict) else {}
+    latest = str(s.get("latest") or "")
+    checked = float(s.get("checkedAt") or 0)
+    return {"on": s.get("on", True) is not False, "current": APP_VERSION, "latest": latest, "url": str(s.get("url") or ""),
+            "newer": bool(latest) and version_tuple(latest) > version_tuple(APP_VERSION),
+            "checked": time.strftime("%Y-%m-%d %H:%M", time.localtime(checked)) if checked else "",
+            "due": time.time() - checked > UPDATE_EVERY, "error": str(s.get("error") or "")}
+
+
+def save_update(save_root, **changes):
+    path = os.path.join(save_root, UPDATE_SETTINGS)
+    s = read_json(path, {})
+    s = s if isinstance(s, dict) else {}
+    s.update(changes)
+    os.makedirs(save_root, exist_ok=True)
+    write_json(path, s)
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, **TYPES}
     save_root = SAVE_ROOT
@@ -516,6 +639,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.reply(200, {"ok": True, **self.history_copy()})
         elif path == "/api/backup":
             self.reply(200, {"ok": True, **backup_status(self.save_root, self.backup_folder_for)})
+        elif path == "/api/update":
+            self.reply(200, {"ok": True, **update_status(self.save_root)})
         else:
             self.send_error(404)
 
@@ -537,7 +662,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if url.path not in ("/api/save", "/api/open-folder", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
                             "/api/links-done", "/api/photos-rekey", "/api/photo-rotate", "/api/shutdown",
-                            "/api/autostart", "/api/history-copy", "/api/backup"):
+                            "/api/autostart", "/api/history-copy", "/api/backup", "/api/update",
+                            "/api/tailscale-install", "/api/tailscale-login"):
             self.send_error(404)
             return
         if not self.from_ship_desk():
@@ -591,8 +717,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.reply(200, {"ok": True, **self.phone_link()})
             return
         if url.path == "/api/phone-access":
-            ok, msg = self.tailscale_switch(arg("on") == "1")
-            self.reply(200 if ok else 500, {"ok": ok, "error": msg, **self.phone_link()})
+            res = self.tailscale_switch(arg("on") == "1")
+            ok, msg, link = res[0], res[1], (res[2] if len(res) > 2 else "")
+            self.reply(200 if ok else 500, {"ok": ok, "error": msg, "enableLink": link, **self.phone_link()})
+            return
+        if url.path == "/api/tailscale-install":
+            err = self.tailscale_install()
+            self.reply(200 if not err else 500, {"ok": not err, "error": err, **self.phone_link()})
+            return
+        if url.path == "/api/tailscale-login":
+            ok, msg, link = self.tailscale_login()
+            self.reply(200 if ok else 500, {"ok": ok, "error": msg, "loginLink": link, **self.phone_link()})
+            return
+        if url.path == "/api/update":
+            if arg("on") in ("0", "1"):
+                save_update(self.save_root, on=arg("on") == "1")
+            if arg("now") == "1" and update_status(self.save_root)["on"]:
+                try:
+                    latest, page = self.fetch_latest()
+                    save_update(self.save_root, latest=latest, url=page, checkedAt=time.time(), error="")
+                except (OSError, ValueError) as e:
+                    save_update(self.save_root, checkedAt=time.time(), error=f"Couldn't reach GitHub ({e.__class__.__name__}).")
+            self.reply(200, {"ok": True, **update_status(self.save_root)})
             return
         kind = arg("kind")
         if kind and kind not in FOLDERS:
@@ -628,6 +774,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def stop_server(self):
         self.server.shutdown()
+
+    def fetch_latest(self):
+        """The newest release (version, page); tests stand in for GitHub."""
+        return fetch_latest_release()
+
+    def tailscale_install(self):
+        if ts_setup["state"] != "downloading":
+            threading.Thread(target=install_tailscale, daemon=True).start()
+            time.sleep(0.2)
+        return ""
+
+    def tailscale_login(self):
+        """Sign in (a new PC) or connect (signed in, switched off). Returns (ok, message, link to open)."""
+        st = run_tailscale("status", "--json")
+        try:
+            state = json.loads(st.stdout).get("BackendState") if st and st.stdout.strip() else ""
+        except ValueError:
+            state = ""
+        if state == "Stopped":
+            r = run_tailscale("up", timeout=30)
+            return (bool(r) and r.returncode == 0), ("" if r and r.returncode == 0 else "Tailscale didn't connect."), ""
+        code, out, link = tailscale_with_link(["login"], wait=20, keep=True)
+        if link:
+            return True, "", link
+        return code == 0, ("" if code == 0 else (out or "Tailscale didn't answer.")[:300]), ""
 
     def backup_folder_for(self, place):
         """The backup folder for "dropbox" / "onedrive" (tests use a temporary one)."""
@@ -701,7 +872,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def tailscale_status(self):
         """{installed, running, dns, serving}: is https://<dns>:<port> passed on to this server?"""
         port = self.server.server_address[1]
-        info = {"installed": bool(find_tailscale()), "running": False, "dns": "", "serving": False}
+        info = {"installed": bool(find_tailscale()), "running": False, "dns": "", "serving": False,
+                "needsLogin": False, "stopped": False, "setup": dict(ts_setup)}
         st = run_tailscale("status", "--json")
         if not st or st.returncode != 0:
             return info
@@ -710,6 +882,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except ValueError:
             return info
         info["running"] = data.get("BackendState") == "Running"
+        info["needsLogin"] = data.get("BackendState") in ("NeedsLogin", "NeedsMachineAuth", "NoState")
+        info["stopped"] = data.get("BackendState") == "Stopped"
         info["dns"] = ((data.get("Self") or {}).get("DNSName") or "").rstrip(".")
         sv = run_tailscale("serve", "status", "--json")
         try:
@@ -726,11 +900,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not find_tailscale():
             return False, "Tailscale isn't installed on this PC."
         args = ["serve", "--bg", f"--https={port}", f"http://127.0.0.1:{port}"] if on else ["serve", f"--https={port}", "off"]
-        r = run_tailscale(*args, timeout=30)
-        if not r:
+        # A tailnet that never used Serve prints a link to switch it (and HTTPS addresses) on, then waits.
+        code, out, link = tailscale_with_link(args, wait=30)
+        if link:
+            return False, "Tailscale needs secure addresses (Serve / HTTPS) switched on for your network first.", link
+        if code is None:
             return False, "Tailscale didn't answer."
-        if r.returncode != 0:
-            return False, (r.stderr or r.stdout or "Tailscale refused.").strip()[:300]
+        if code != 0:
+            return False, (out or "Tailscale refused.").strip()[:300]
         return True, ""
 
     def phone_link(self):
@@ -1224,6 +1401,7 @@ def main():
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--stop", action="store_true", help="turn off this copy of Ship Desk if it is the one running")
+    ap.add_argument("--open", default="", choices=["", "phone", "history"], help="open the page at this part (installer)")
     ap.add_argument("--stop-any", action="store_true", help="turn off whichever Ship Desk runs on the port")
     a = ap.parse_args()
     hidden = sys.stdout is None  # started with pythonw: no window
@@ -1235,6 +1413,7 @@ def main():
     if hidden:
         start_log()
     url = f"http://127.0.0.1:{a.port}/"
+    page = url + (f"#{a.open}" if a.open else "")  # the browser opens this (url stays the plain address)
     try:
         srv = make_server(a.port)
     except OSError:
@@ -1242,7 +1421,7 @@ def main():
             # Started twice: the first one keeps running; just show the page.
             print("Ship Desk is already running.")
             if not a.no_browser:
-                webbrowser.open(url)
+                webbrowser.open(page)
             return
         tell(f"Ship Desk couldn't start: another program is using port {a.port}.", hidden)
         sys.exit(1)
@@ -1263,7 +1442,7 @@ def main():
         if st["on"]:
             print(f"Backs up the Saved folder to {st['folder'] or st['name'] + ' (not found)'} every hour.")
     if not a.no_browser:
-        threading.Timer(0.5, webbrowser.open, [url]).start()
+        threading.Timer(0.5, webbrowser.open, [page]).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

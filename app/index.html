@@ -38,11 +38,12 @@
       <span id="power-text" class="power-text" role="status" aria-live="polite">Checking…</span>
       <button type="button" id="btn-power-off" class="power-btn" hidden>Turn off</button>
       <a id="btn-power-on" class="power-btn on" href="shipdesk://start" hidden
-        title="If nothing happens, double-click &quot;Start Ship Desk&quot; in the Shipping folder">Turn on</a>
+        title="If nothing happens, open Ship Desk from the Start menu">Turn on</a>
       <label id="power-auto-wrap" class="power-auto" title="Start Ship Desk in the background when you log in to Windows" hidden>
         <input type="checkbox" id="power-auto"> Start with Windows</label>
     </div>
     <p class="private"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z"/></svg> Your orders stay on this PC</p>
+    <button type="button" id="btn-setup" class="link setup-link" hidden>Setup checklist</button>
   </div>
 </header>
 
@@ -57,6 +58,25 @@
 
 <main id="main" class="wrap" data-shipdesk>
   <h1 class="sr">Ship Desk</h1>
+
+  <div id="update-note" class="msg info update-note" role="status" hidden>
+    <p class="msg-title" id="update-text"></p>
+    <p>Download it and run it: it updates this copy and keeps your files and settings.</p>
+    <div class="row">
+      <a id="update-link" class="btn primary" href="#" target="_blank" rel="noopener">Download it</a>
+      <button type="button" id="update-later" class="btn ghost">Not now</button>
+    </div>
+  </div>
+
+  <section id="welcome" class="card welcome" aria-labelledby="welcome-h" hidden>
+    <h2 id="welcome-h">Welcome to Ship Desk</h2>
+    <p class="muted">A few things to set up once. Each gets a tick when it's done; the extras can wait.</p>
+    <ol id="welcome-list" class="welcome-list"></ol>
+    <div class="row">
+      <button type="button" id="welcome-hide" class="btn secondary">Hide this checklist</button>
+      <span class="muted small">"Setup checklist" at the top brings it back.</span>
+    </div>
+  </section>
 
   <div class="top-grid">
     <!-- 1. Orders in -->
@@ -300,6 +320,10 @@
         <button type="button" id="btn-history-restore" class="btn primary">Restore the saved copy</button>
         <button type="button" id="btn-history-keep" class="btn ghost">Keep this browser's History</button>
       </div>
+    </div>
+    <div id="update-row" class="backup-row small" hidden>
+      <label class="check"><input type="checkbox" id="update-on"> Tell me when a new version of Ship Desk is out</label>
+      <span id="update-row-text" class="muted"></span>
     </div>
     <div id="backup-row" class="backup-row small" hidden>
       <label class="check"><input type="checkbox" id="backup-on"> Back up the <code>Saved</code> folder every hour to</label>

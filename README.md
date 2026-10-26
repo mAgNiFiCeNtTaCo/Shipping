@@ -17,10 +17,15 @@ Setup asks:
 - **where Ship Desk keeps your files** (labels, packing slips, import files, phone photos): `Documents\Ship Desk`
   unless you pick another folder;
 - whether to put an icon on the desktop, and whether Ship Desk should **start in the background when you sign in
-  to Windows** (you can change that later at the top of the Ship Desk page).
+  to Windows** (you can change that later at the top of the Ship Desk page);
+- whether to **set up phone photos** straight away (Ship Desk then opens on its phone setup, which installs Tailscale
+  for you: see "Phone photos").
 
 Then open **Ship Desk** from the Start menu (or the desktop icon). Ship Desk starts in the background (no window
-stays open) and your browser opens it (http://127.0.0.1:5091/). The Start menu also has **Turn off Ship Desk**,
+stays open) and your browser opens it (http://127.0.0.1:5091/). The first time, a **Welcome** checklist at the top
+walks you through the setup: your return address, what you print on, a try with the sample orders, and the extras
+(phone photos, backup, start with Windows, update notice). Each gets a tick when it's done; **Hide this checklist**
+puts it away and **Setup checklist** at the top brings it back. The Start menu also has **Turn off Ship Desk**,
 **Ship Desk files** (the folder with everything it made) and this guide. Windows may warn that the installer is from
 an unknown publisher (it isn't signed): click **More info → Run anyway** if you trust where you got it.
 To remove it: **Settings → Apps → Installed apps → Ship Desk → Uninstall**; it asks whether to delete the files it
@@ -206,12 +211,18 @@ Take photos of each order with your iPhone: **what's inside** (the cards), the *
 **post office** drop-off or receipt. They're saved on this PC in `Saved\Photos\<order # and buyer>\`, named
 like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
 
-**Set it up once:**
-1. Your phone reaches this PC through **Tailscale**, a free private network: install it on this PC and on your iPhone
-   (tailscale.com) and sign in to both with the same account. The Tailscale app on the iPhone must say Connected.
-2. In Ship Desk click **Phone photos** (top right), then **Switch on phone access**. That gives the phone page an
-   address only your own Tailscale devices can open (not the internet). The rest of Ship Desk stays on this PC.
-3. Point the iPhone's **Camera** at the QR code and tap the link. In Safari tap **Share → Add to Home Screen**:
+**Set it up once:** click **Phone photos** (top right). The window takes you through four steps and moves on by
+itself as each is done:
+1. **Install Tailscale on this PC.** Your phone reaches this PC through Tailscale, a free private network between
+   your own devices (nothing is opened to the internet). **Install Tailscale on this PC** downloads Tailscale's own
+   installer, checks it is signed by Tailscale, and starts it: click through it (Windows asks for permission).
+2. **Sign in to Tailscale** (free for personal use: Google, Microsoft, Apple or GitHub). The button opens Tailscale's
+   sign-in page.
+3. **Switch on phone access.** That gives the phone page an address only your own Tailscale devices can open. The
+   first time, Tailscale may ask to switch on secure addresses (HTTPS) for your network: the window shows the link,
+   click Enable there, then Switch on again. The rest of Ship Desk stays on this PC.
+4. **Set up the phone:** install the Tailscale app (iPhone or Android), sign in with the same account, then point
+   the phone's **Camera** at the QR code and tap the link. On an iPhone tap **Share → Add to Home Screen** in Safari:
    next time it's one tap.
 
 **Taking photos:** **Scan labels** (or **Take photo** after ticking orders) opens Ship Desk's camera screen:
@@ -278,7 +289,10 @@ turned). Orders of the loaded file that get photos, and orders given a tracking 
 
 Only in this browser on this PC: your return addresses, design and settings, which orders you marked shipped,
 the History list, and the orders you last loaded (with their addresses, until you clear them or 14 days pass).
-Order files are read in the browser and never uploaded. Once a phone is set up, Ship Desk keeps the list
+Order files are read in the browser and never uploaded. Ship Desk goes on the internet only for the
+**update notice** (once a day it asks GitHub for the newest version number; nothing about your orders is sent;
+switch it off on the History page or in the setup checklist) and, when you ask for it, to download Tailscale's
+installer. Once a phone is set up, Ship Desk keeps the list
 the phone picks from (order #, buyer name, city, state, ZIP; no street) in `Saved\Phone`. Photos are in
 `Saved\Photos`. Both stay on this PC (unless you switch on the Dropbox / OneDrive backup). A different browser (or
 another PC) starts empty.

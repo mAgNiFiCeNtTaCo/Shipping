@@ -28,7 +28,11 @@ EDGE_PATHS = [
 result = {}
 done = threading.Event()
 opened = []  # folders the app asked to open (never really opened during tests)
-tailnet = {"serving": False}  # stands in for Tailscale: tests never change the real one
+# Stands in for Tailscale and GitHub: tests never change the real Tailscale or reach the internet.
+# POST /__tailnet {...} changes it (installed, running, needsLogin, stopped, needEnable, latest, offline).
+TAILNET = {"serving": False, "installed": True, "running": True, "needsLogin": False, "stopped": False, "needEnable": False,
+           "setup": "", "latest": "1.0.0", "offline": False}
+tailnet = dict(TAILNET)
 
 
 class Handler(serve.Handler):
@@ -56,9 +60,28 @@ class Handler(serve.Handler):
         return True
 
     def tailscale_status(self):
-        return {"installed": True, "running": True, "dns": "test-pc.example.ts.net", "serving": tailnet["serving"]}
+        t = tailnet
+        return {"installed": t["installed"], "running": t["installed"] and t["running"], "dns": "test-pc.example.ts.net" if t["running"] else "",
+                "serving": t["serving"], "needsLogin": t["needsLogin"], "stopped": t["stopped"], "setup": {"state": t["setup"], "error": ""}}
+
+    def tailscale_install(self):
+        tailnet["setup"] = "started"
+        return ""
+
+    def tailscale_login(self):
+        if tailnet["stopped"]:
+            tailnet.update(stopped=False, running=True)
+            return True, "", ""
+        return True, "", "https://login.tailscale.com/a/test-sign-in"
+
+    def fetch_latest(self):
+        if tailnet["offline"]:
+            raise OSError("offline")
+        return tailnet["latest"], f"https://github.com/{serve.UPDATE_REPO}/releases/tag/v{tailnet['latest']}"
 
     def tailscale_switch(self, on):
+        if on and tailnet["needEnable"]:
+            return False, "Tailscale needs secure addresses (Serve / HTTPS) switched on for your network first.", "https://login.tailscale.com/f/serve?node=test"
         tailnet["serving"] = on
         return True, ""
 
@@ -90,6 +113,15 @@ class Handler(serve.Handler):
         super().do_GET()
 
     def do_POST(self):
+        if self.path == "/__tailnet":
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n).decode("utf-8") or "{}") if n > 0 else {}
+            if body.get("reset"):
+                tailnet.clear()
+                tailnet.update(TAILNET)
+            tailnet.update({k: v for k, v in body.items() if k in TAILNET})
+            self.reply(200, dict(tailnet))
+            return
         if self.path != "/__test-result":
             super().do_POST()
             return

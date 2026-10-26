@@ -49,6 +49,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Put a Ship Desk icon on the desktop"; GroupDescription: "Shortcuts:"
 Name: "autostart"; Description: "Start Ship Desk in the background when I sign in to Windows (it can be changed later at the top of the Ship Desk page)"; GroupDescription: "Starting:"
+Name: "phonesetup"; Description: "Help me set up phone photos and label scanning when setup finishes (installs Tailscale, free)"; GroupDescription: "Phone:"; Flags: unchecked
 
 [Files]
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -65,7 +66,8 @@ Name: "{autodesktop}\Ship Desk"; Filename: "{#Pyw}"; Parameters: """{app}\serve.
 Root: HKCU; Subkey: "{#RunKey}"; ValueType: string; ValueName: "Ship Desk"; ValueData: """{#Pyw}"" ""{app}\serve.py"" --no-browser"; Tasks: autostart
 
 [Run]
-Filename: "{#Pyw}"; Parameters: """{app}\serve.py"""; WorkingDir: "{app}"; Description: "Open Ship Desk now"; Flags: postinstall nowait skipifsilent
+Filename: "{#Pyw}"; Parameters: """{app}\serve.py"""; WorkingDir: "{app}"; Description: "Open Ship Desk now"; Flags: postinstall nowait skipifsilent; Tasks: not phonesetup
+Filename: "{#Pyw}"; Parameters: """{app}\serve.py"" --open phone"; WorkingDir: "{app}"; Description: "Open Ship Desk and set up the phone now"; Flags: postinstall nowait skipifsilent; Tasks: phonesetup
 Filename: "{app}\Ship Desk guide.html"; Description: "Read the Ship Desk guide"; Flags: postinstall shellexec nowait skipifsilent unchecked
 
 [UninstallDelete]
@@ -180,6 +182,7 @@ begin
   for I := 0 to GetArrayLength(Folders) - 1 do
     DelTree(AddBackslash(Dir) + Folders[I], True, True, True);
   DeleteFile(AddBackslash(Dir) + 'backup.json');
+  DeleteFile(AddBackslash(Dir) + 'update.json');
   DeleteFile(AddBackslash(Dir) + 'ship-desk.log');
   DeleteFile(AddBackslash(Dir) + 'ship-desk.log.old');
   RemoveDir(Dir); { only goes when nothing else is left in it }

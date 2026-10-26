@@ -102,6 +102,18 @@ explain in plain words and finish jobs end to end.
   with Windows (same Run value as `launcher_command()`). Uninstall removes the Run value / shipdesk:// key only when
   they point into {app}, and asks before deleting only Ship Desk's own subfolders in the files folder.
   `serve.py --stop` turns off only the copy whose `/api/ping` "home" is this folder (`--stop-any` for any).
+- 1.1.0 (2026-10-26): first-run checklist (`#welcome`, app.js `welcomeItems` / `renderWelcome` / `setWelcome`,
+  `KEYS.welcome` {hidden, format, sample, phone}; ticks come from real settings; "Setup checklist" `#btn-setup` brings
+  it back). Update notice: serve.py `/api/update` (GET status; POST `now=1` asks GitHub `releases/latest` of
+  `UPDATE_REPO`, `on=1|0`; `Saved/update.json`, daily from the page via `checkUpdates`), `#update-note` banner,
+  `#update-row` switch on the History page, "Not now" = `KEYS.updateSkip`. Phone setup from scratch (`renderPhone`
+  steps 1-4): `POST /api/tailscale-install` (downloads `TAILSCALE_SETUP_URL`, `signed_by()` checks the Windows signature
+  is "O=Tailscale Inc." via PowerShell, then starts it; `ts_setup` state), `POST /api/tailscale-login` (`tailscale up`
+  when Stopped, else `tailscale login` -> `loginLink`), `/api/phone-access` returns Tailscale's Serve/HTTPS
+  `enableLink` (`tailscale_with_link` reads the login.tailscale.com link and stops the waiting command). The window
+  polls every 3 s while installing / signing in. `serve.py --open phone` opens the page at `#phone` (installer task
+  "phonesetup"). tools/test.py fakes all of it: `tailnet` dict, `POST /__tailnet {...}` (reset, installed, running,
+  needsLogin, stopped, needEnable, latest, offline); tests never reach GitHub or Tailscale.
 - `specs/` the build briefs of 2026-10-20.
 
 ## Commands

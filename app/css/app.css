@@ -160,6 +160,19 @@ textarea { width: 100%; resize: vertical; min-height: 96px; padding: 10px 12px; 
 .msg.error { background: var(--err-bg); color: var(--err-text); border-color: var(--err-line); }
 .msg.info { background: var(--info-bg); color: var(--info-text); border-color: var(--info-line); }
 .msg-title { font-weight: 700; }
+.welcome { margin-bottom: 18px; }
+.welcome-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.welcome-list li { display: grid; grid-template-columns: 28px 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.welcome-list li.done { opacity: .72; }
+.welcome-list .tick { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 800; font-size: .85rem; }
+.welcome-list li.done .tick { background: var(--brand, #136f63); border-color: transparent; color: #fff; }
+.welcome-list .w-title { font-weight: 700; }
+.welcome-list .w-opt { font-weight: 500; color: var(--muted, #667); font-size: .85rem; }
+.welcome-list .w-text { grid-column: 2; font-size: .9rem; color: var(--muted, #667); }
+.welcome-list button { grid-column: 3; grid-row: 1 / span 2; }
+@media (max-width: 560px) { .welcome-list li { grid-template-columns: 28px 1fr; } .welcome-list button { grid-column: 2; grid-row: auto; justify-self: start; } }
+.setup-link { font-size: .85rem; }
+.update-note { margin-bottom: 14px; }
 .backup-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 4px 0 14px; }
 .msg ul.plain { margin: 0; padding-left: 18px; }
 .msg code { background: rgb(127 127 127 / .14); padding: 1px 6px; border-radius: 5px; margin: 2px 4px 2px 0; display: inline-block; word-break: break-all; }

@@ -190,6 +190,69 @@ export const tests = {
     clearStore();
   },
 
+  "app: the setup checklist greets a new person, ticks what's done, and can be hidden": async () => {
+    clearStore();
+    const tail = (body) => fetch("/__tailnet", { method: "POST", body: JSON.stringify(body) }).then((r) => r.json());
+    await tail({ reset: true });
+    let { frame, win, doc, app } = await openApp();
+    const card = doc.querySelector("#welcome");
+    ok(!card.hidden && doc.querySelector("#btn-setup").hidden, "shown at first");
+    const item = (id) => doc.querySelector(`#welcome-list button[data-welcome="${id}"]`).closest("li");
+    eq(doc.querySelectorAll("#welcome-list li").length, 7);
+    ok(!item("address").classList.contains("done"), "address not done yet");
+    const f = doc.querySelector("#return-form");
+    for (const [k, v] of [["name", "Card Corner"], ["street", "9 Test Lane"], ["city", "Dayton"], ["state", "OH"], ["zip", "45402"]]) setField(win, f.elements[k], v);
+    await waitFor(() => item("address").classList.contains("done"), "address ticked");
+    item("sample").querySelector("button").click();
+    await waitFor(() => app.state.orders.length === 10 && item("sample").classList.contains("done"), "sample ticked");
+    const fmt = doc.querySelector("#format");
+    fmt.value = fmt.options[1].value;
+    fmt.dispatchEvent(new win.Event("change", { bubbles: true }));
+    ok(item("format").classList.contains("done"), "format ticked");
+    item("autostart").querySelector("button").click();
+    await waitFor(() => item("autostart").classList.contains("done"), "start with Windows ticked");
+    ok(/optional/.test(item("phone").textContent), "the extras say they're optional");
+    doc.querySelector("#welcome-hide").click();
+    ok(card.hidden && !doc.querySelector("#btn-setup").hidden, "hidden, Setup checklist link shown");
+    ({ win, doc, app } = await reload(frame));
+    ok(doc.querySelector("#welcome").hidden, "stays hidden after a reload");
+    doc.querySelector("#btn-setup").click();
+    ok(!doc.querySelector("#welcome").hidden, "the link brings it back");
+    await tail({ reset: true });
+    clearStore();
+  },
+
+  "app: a newer release shows an update note; Not now and switching it off hide it": async () => {
+    clearStore();
+    const tail = (body) => fetch("/__tailnet", { method: "POST", body: JSON.stringify(body) }).then((r) => r.json());
+    const H = { "X-Ship-Desk": "1" };
+    await tail({ reset: true, latest: "9.9.9" });
+    await fetch("/api/update?on=1&now=1", { method: "POST", headers: H });
+    let { frame, doc, win, app } = await openApp();
+    const note = await waitFor(() => !doc.querySelector("#update-note").hidden && doc.querySelector("#update-note"), "the update note");
+    ok(/Ship Desk 9\.9\.9 is out \(you have \d+\.\d+\.\d+\)/.test(note.textContent), note.textContent);
+    ok(doc.querySelector("#update-link").href.includes("/releases/tag/v9.9.9"), "links to the release");
+    doc.querySelector("#update-later").click();
+    ok(doc.querySelector("#update-note").hidden, "Not now hides it");
+    ({ doc, win, app } = await reload(frame));
+    await app.checkUpdates();
+    ok(doc.querySelector("#update-note").hidden, "...for this version");
+    app.showView("history");
+    const box = await waitFor(() => !doc.querySelector("#update-row").hidden && doc.querySelector("#update-on"), "the switch on the History page");
+    ok(box.checked && /9\.9\.9 is out/.test(doc.querySelector("#update-row-text").textContent), doc.querySelector("#update-row-text").textContent);
+    box.checked = false;
+    box.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await waitFor(() => /^Off/.test(doc.querySelector("#update-row-text").textContent), "says it's off");
+    eq((await (await fetch("/api/update", { headers: H })).json()).on, false, "switched off on the PC");
+    // No internet: no note, a plain message.
+    await tail({ offline: true });
+    const st = await (await fetch("/api/update?on=1&now=1", { method: "POST", headers: H })).json();
+    ok(st.on && /Couldn't reach GitHub/.test(st.error) && st.checked, JSON.stringify(st));
+    await tail({ reset: true });
+    await fetch("/api/update?on=1&now=1", { method: "POST", headers: H });
+    clearStore();
+  },
+
   "app: the loaded orders survive a reload until cleared": async () => {
     clearStore();
     let { frame, win, doc, app } = await openApp();
