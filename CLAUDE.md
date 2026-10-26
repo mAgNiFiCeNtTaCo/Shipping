@@ -115,7 +115,8 @@ explain in plain words and finish jobs end to end.
 - No Node on this PC: JS tests only run through `tools/test.py` (headless Edge).
 - TCGplayer's help pages are behind a Cloudflare check (403 to fetchers). Confirmed on a real upload 2026-10-25: an
   untracked row = Tracking `Shipped` + Carrier `USPS` (an empty carrier is refused: "Carrier is unrecognized").
-  The slip item reader is still unconfirmed until a real batch.
+  Slip reader checked on a real slip 2026-10-26: items read "Game - Set - Name - #Number - Rarity - Condition" and wrap
+  onto a second line (slips.js `describeItem`, `itemsFromRows` joins indented rows without a price).
 - Windows reads a running .bat from disk line by line: editing `Start Ship Desk.bat` while an old window still runs
   it made that window start a second copy when Ship Desk stopped (2026-10-21). Close old windows first.
 - Browsers keep the old app until the service worker's `VERSION` changes: reload once or twice after an update.

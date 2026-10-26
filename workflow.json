@@ -493,6 +493,31 @@
       "lessons": [
         "Headless Edge: don't await a camera start in tests, and keep repainting a canvas used as a fake camera (captureStream only sends frames on change)."
       ]
+    },
+    {
+      "title": "Real packing slip; item reader fixed",
+      "date": "2026-10-26",
+      "summary": "The user's first real TCGplayer slip printed right but showed the item reader took the game as the card name and lost the wrapped line; fixed and checked on the real slip; 169 tests.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T01:50",
+              "end": "2026-10-26T02:20",
+              "did": "Read the real slip layout (item lines only), describeItem + wrapped-line joining in slips.js, real-slip dry run, 2 tests",
+              "outcome": "done",
+              "files": 4
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "Headless Edge --dump-dom returns before async work (a pdf.js worker) finishes: have the page POST its result to a small local server instead."
+      ]
     }
   ]
 }

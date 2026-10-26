@@ -5,11 +5,11 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 stamps, and the TCGplayer import file that marks the batch shipped.
 
 ## Where it stands (2026-10-26)
-- Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; not yet tried
-  on a real TCGplayer import.
+- Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
+  import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **167 passed, 0 failed** (2026-10-26).
+- Tests: `python tools/test.py` = **169 passed, 0 failed** (2026-10-26).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -25,6 +25,20 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: first real TCGplayer packing slip; item reader fixed
+- The user ran a real slip PDF (1 order, `TCGplayer_PackingSlips_...pdf` in D:\Downloads): the page matched its order
+  and the printed label + slip used TCGplayer's own page, so the printout was right.
+- But the item reader was wrong for the real layout: items read "YuGiOh - Beyond the Brave - Elemental Saga Doriado -
+  #BETB-EN028 - Secret Rare - Near Mint 1st Edition", wrapped onto a second line, with Price and Total Price columns.
+  Ship Desk took "YuGiOh" as the card name and dropped the wrapped part (only Ship Desk's own slip layout shows it).
+- slips.js: `describeItem` (name = the part before "#Number"; without a number the third part when the first is a
+  game; the game name is left out of the detail; plain "Name - detail" lines as before), `pageRows` (lines with their
+  x), `itemsFromRows` (joins the indented rows under an item that have no price and aren't totals). `parseItemLine`
+  keeps its old shape.
+- Checked on the real slip in a throwaway browser (copy deleted after): 3 x "Elemental Saga Doriado", "Beyond the
+  Brave - #BETB-EN028 - Secret Rare - Near Mint 1st Edition", $3.00. Tests 167 -> 169 (describeItem cases; a
+  made-up slip laid out like the real one, two items, both wrapped). Cache `shipdesk-v22`.
+
 ### 2026-10-26: one post office photo per order; step through the pile
 - User asked whether a post office photo went to every scanned order: it did (every shutter press went to all orders
   on the camera screen). Their wish: one post office photo for each scanned order. Now, with Post office selected,

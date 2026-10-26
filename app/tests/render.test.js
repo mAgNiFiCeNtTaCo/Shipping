@@ -2,7 +2,7 @@
 // Orders are built by hand here so this suite doesn't depend on the Data station's modules.
 import { ok, eq, near, throws } from "./runner.js";
 import { FORMATS, renderPdf, slipsInLabelOrderPdf } from "../js/render.js";
-import { readSlipPdf, attachSlips, slipPagesFor, parseItemLine } from "../js/slips.js";
+import { readSlipPdf, attachSlips, slipPagesFor, parseItemLine, describeItem } from "../js/slips.js";
 
 const pdfjs = window.pdfjsLib;
 if (!pdfjs.GlobalWorkerOptions.workerSrc) pdfjs.GlobalWorkerOptions.workerSrc = "../vendor/pdf.worker.min.js";
@@ -372,6 +372,41 @@ Object.assign(tests, {
     eq(parseItemLine("Subtotal: $9.98"), null);
     eq(parseItemLine("45 Example St"), null);
     eq(parseItemLine("90012 Los Angeles"), null);
+  },
+
+  "describeItem: TCGplayer's Game - Set - Name - #Number - Rarity - Condition, and plain lines": async () => {
+    eq(describeItem("YuGiOh - Beyond the Brave - Elemental Saga Doriado - #BETB-EN028 - Secret Rare - Near Mint 1st Edition"),
+      { name: "Elemental Saga Doriado", detail: "Beyond the Brave - #BETB-EN028 - Secret Rare - Near Mint 1st Edition" });
+    eq(describeItem("Magic: The Gathering - Bloomburrow - Mabel, Heir to Cragflame - #224 - Rare - Near Mint Foil"),
+      { name: "Mabel, Heir to Cragflame", detail: "Bloomburrow - #224 - Rare - Near Mint Foil" });
+    eq(describeItem("Pokemon - Scarlet & Violet 151 - Booster Pack"), { name: "Booster Pack", detail: "Scarlet & Violet 151" }, "no number: game - set - product");
+    eq(describeItem("Dark Magician - LOB - Near Mint"), { name: "Dark Magician", detail: "LOB - Near Mint" }, "plain: name first");
+    eq(describeItem("Lightning Bolt"), { name: "Lightning Bolt", detail: "" });
+    eq(describeItem("YuGiOh - Beyond the Brave - Elemental Saga Doriado - #BETB-EN028 -").name, "Elemental Saga Doriado", "cut off at the wrap");
+  },
+
+  "readSlipPdf: a real-shaped TCGplayer slip (description wrapped onto a second line)": async () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    doc.setFontSize(9);
+    doc.text("Shipping Address:", 40, 100); doc.text("Order Date:", 330, 100); doc.text("10/24/2026", 400, 100);
+    doc.text("Ash Example", 40, 112); doc.text("Order Number:", 330, 124); doc.text("T-2000", 400, 124);
+    doc.text("45 Example St", 40, 124);
+    doc.text("Quantity", 42, 318); doc.text("Description", 97, 318); doc.text("Price", 430, 318); doc.text("Total Price", 500, 318);
+    doc.text("3", 60, 336); doc.text("YuGiOh - Beyond the Brave - Elemental Saga Doriado - #BETB-EN028 -", 97, 336);
+    doc.text("$3.00", 430, 336); doc.text("$9.00", 500, 336);
+    doc.text("Secret Rare - Near Mint 1st Edition", 97, 347);
+    doc.text("1", 60, 360); doc.text("YuGiOh - Quarter Century Bonanza - Dark Magician - #RA03-EN001 - Quarter", 97, 360);
+    doc.text("$12.50", 430, 360); doc.text("$12.50", 500, 360);
+    doc.text("Century Secret Rare - Lightly Played 1st Edition", 97, 371);
+    doc.text("4", 60, 390); doc.text("Total", 97, 390); doc.text("$21.50", 500, 390);
+    doc.text("For Any Questions About Your Order:", 39, 425);
+    doc.text("Please contact the seller directly by logging into your account", 39, 437);
+    const res = await readSlipPdf(doc.output("arraybuffer"), ["T-2000"]);
+    eq(res.byOrder["T-2000"].items, [
+      { qty: 3, name: "Elemental Saga Doriado", detail: "Beyond the Brave - #BETB-EN028 - Secret Rare - Near Mint 1st Edition", price: 3 },
+      { qty: 1, name: "Dark Magician", detail: "Quarter Century Bonanza - #RA03-EN001 - Quarter Century Secret Rare - Lightly Played 1st Edition", price: 12.5 },
+    ]);
   },
 
   "readSlipPdf: matches pages to orders, follows a 2-page slip, extracts items, keeps page images": async () => {

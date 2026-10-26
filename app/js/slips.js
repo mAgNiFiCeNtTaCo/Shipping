@@ -21,6 +21,11 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Rebuild text lines from pdf.js items: group by baseline, sort left to right, and put two spaces
 // where there is a visible gap between items (separate table columns).
 export function pageLines(items) {
+  return pageRows(items).map((r) => r.text);
+}
+
+/** The same lines with where each one starts: [{ text, x }] (x = left edge of its first piece). */
+export function pageRows(items) {
   const parts = items
     .filter((it) => it.str && it.str.trim())
     .map((it) => ({ s: it.str, x: it.transform[4], y: it.transform[5], w: it.width || 0, h: Math.abs(it.transform[3]) || it.height || 10 }));
@@ -42,12 +47,31 @@ export function pageLines(items) {
       out += p.s;
       end = p.x + p.w;
     }
-    return out.replace(/\s+$/, "");
+    return { text: out.replace(/\s+$/, ""), x: r.parts[0].x };
   });
 }
 
-// "1  Dark Magician - LOB - Near Mint  $4.99" (or with more columns) -> { qty, name, detail, price }.
-export function parseItemLine(line) {
+// TCGplayer's slip describes an item as "Game - Set - Card Name - #Number - Rarity - Condition" (seen on a real slip
+// 2026-10-26: "YuGiOh - Beyond the Brave - Elemental Saga Doriado - #BETB-EN028 - Secret Rare - Near Mint 1st
+// Edition", wrapped onto a second line). The card name is the part before "#Number"; without a number, the third part
+// when the first one names a game. Anything else: the first part is the name, the rest the detail.
+const GAMES = /^(yu-?gi-?oh!?|magic(: the gathering)?|mtg|pok[eé]mon|one piece( card game)?|(disney )?lorcana|flesh (and|&) blood|digimon( card game)?|dragon ball( super)?( card game)?|weiss schwarz|star wars:? unlimited|metazoo|final fantasy|sorcery|union arena|cardfight!* ?vanguard|grand archive|alpha clash)$/i;
+
+/** "Game - Set - Name - #No - Rarity - Condition" (or plain "Name - detail") -> { name, detail }. */
+export function describeItem(text) {
+  const bits = String(text || "").replace(/\s+/g, " ").replace(/\s*-\s*$/, "").split(/\s+-\s+/).map((b) => b.trim()).filter(Boolean);
+  if (!bits.length) return { name: "", detail: "" };
+  const num = bits.findIndex((b, i) => i > 0 && /^#\S/.test(b));
+  let at = 0;
+  if (num > 0) at = num - 1;
+  else if (bits.length >= 3 && GAMES.test(bits[0])) at = 2;
+  const game = at >= 2 && GAMES.test(bits[0]) ? 1 : 0;   // the game's name isn't worth repeating on the slip
+  const detail = [...bits.slice(game, at), ...bits.slice(at + 1)];
+  return { name: bits[at], detail: detail.join(" - ") };
+}
+
+// One item line -> { qty, name, detail, price, text } (text = the description as printed, for wrapped lines).
+function parseItem(line) {
   const m = /^\s*(\d{1,3})\s*[xX]?\s+(.+)$/.exec(line);
   if (!m) return null;
   let rest = m[2];
@@ -62,8 +86,38 @@ export function parseItemLine(line) {
   if (!rest || NOT_ITEM.test(rest) || !/[A-Za-z]/.test(rest)) return null;
   const qty = parseInt(m[1], 10);
   if (!qty) return null;
-  const bits = rest.split(/\s+-\s+/);
-  return { qty, name: bits[0].trim(), detail: bits.slice(1).join(" - ").trim(), price: prices[0] };
+  return { qty, ...describeItem(rest), price: prices[0], text: rest };
+}
+
+// "1  Dark Magician - LOB - Near Mint  $4.99" (or with more columns) -> { qty, name, detail, price }.
+export function parseItemLine(line) {
+  const it = parseItem(line);
+  if (!it) return null;
+  const { text, ...item } = it;
+  return item;
+}
+
+/**
+ * The items on one page's rows: item lines, each with the lines under it that carry on its description (indented
+ * past the quantity, no price, nothing like "Total": a long description wraps onto them).
+ */
+export function itemsFromRows(rows) {
+  const items = [];
+  let open = null; // { item, x } while the next rows may carry on its description
+  for (const r of rows) {
+    const it = parseItem(r.text);
+    if (it) {
+      items.push(it);
+      open = { item: it, x: r.x };
+      continue;
+    }
+    const t = r.text.trim();
+    if (open && t && r.x > open.x + 4 && !PRICE.test(t) && !NOT_ITEM.test(t) && /[A-Za-z]/.test(t)) {
+      open.item.text = `${open.item.text} ${t}`;
+      Object.assign(open.item, describeItem(open.item.text));
+    } else open = null;
+  }
+  return items.map(({ text, ...it }) => it);
 }
 
 function findOrder(text, ids) {
@@ -115,8 +169,8 @@ export async function readSlipPdf(arrayBuffer, orderIds = []) {
     for (let n = 1; n <= pdf.numPages; n++) {
       const page = await pdf.getPage(n);
       const content = await page.getTextContent();
-      const lines = pageLines(content.items);
-      const text = lines.join("\n");
+      const rows = pageRows(content.items);
+      const text = rows.map((r) => r.text).join("\n");
       let id = ids.length ? findOrder(text, ids) : null;
       const label = ORDER_LABEL.exec(text);
       if (!id && !ids.length && label) id = label[1];
@@ -132,10 +186,7 @@ export async function readSlipPdf(arrayBuffer, orderIds = []) {
         continue;
       }
       const entry = byOrder[id] || (byOrder[id] = { items: [], pageImages: [] });
-      for (const l of lines) {
-        const it = parseItemLine(l);
-        if (it) entry.items.push(it);
-      }
+      entry.items.push(...itemsFromRows(rows));
       entry.pageImages.push(await pageImage(page));
       page.cleanup();
     }
