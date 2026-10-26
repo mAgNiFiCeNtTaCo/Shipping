@@ -518,6 +518,42 @@
       "lessons": [
         "Headless Edge --dump-dom returns before async work (a pdf.js worker) finishes: have the page POST its result to a small local server instead."
       ]
+    },
+    {
+      "title": "Windows installer 1.0.0 and MIT licence",
+      "date": "2026-10-26",
+      "summary": "The same session built a per-user Windows installer with its own Python (Inno Setup), tested install/run/uninstall without touching the user's copy (after one accidental stop, fixed), added the MIT licence and prepared the GitHub release.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-26T02:30",
+              "end": "2026-10-26T03:30",
+              "did": "build_installer.py, ShipDesk.iss, serve.py data_root/--stop, notices, guide converter, install tests, LICENSE, release notes",
+              "outcome": "done",
+              "files": 9
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "time": "2026-10-26T03:00",
+          "text": "Install test's --stop turned off the user's Ship Desk for about a minute; restarted and fixed"
+        },
+        {
+          "time": "2026-10-26T03:25",
+          "text": "gh release create blocked by auto mode; left for the user to run"
+        }
+      ],
+      "lessons": [
+        "A stop command for 'this copy only' must refuse when the running copy can't say where it runs from.",
+        "Silent Inno installs take the default-ticked tasks: name them off (/MERGETASKS) when testing on a real PC."
+      ]
     }
   ]
 }

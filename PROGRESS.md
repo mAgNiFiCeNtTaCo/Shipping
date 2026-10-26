@@ -7,6 +7,8 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-10-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
+- **Windows installer** for other people: `python tools/build_installer.py` -> `dist\ShipDesk-Setup-1.0.0.exe` (13 MB,
+  own Python, per-user, no admin). MIT licence. GitHub release v1.0.0 not published yet (see the log).
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
 - Tests: `python tools/test.py` = **169 passed, 0 failed** (2026-10-26).
@@ -25,6 +27,35 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: Windows installer (Ship Desk 1.0.0), MIT licence
+- User asked to package Ship Desk as a Windows installer others can set up their own way. Inno Setup 6.7.3 installed
+  with winget at the user's OK (build tool only).
+- `tools/build_installer.py`: stages serve.py + app/ (no tests) + Python 3.14.7 embeddable (sha256 checked against
+  python.org's release-file API) + `shipdesk.ico` (icon.svg drawn by headless Edge, Pillow, 9 sizes) + "Ship Desk
+  guide.html" (README without the developer notes, through a small Markdown converter: wrapped lines joined first
+  so bold across a wrap works; list paragraphs by indent) + LICENSE + `installer/THIRD-PARTY-NOTICES.txt` (jsPDF MIT,
+  pdf.js Apache-2.0, qrcode-generator MIT, @zxing/library Apache-2.0, zxing-wasm MIT + zxing-cpp Apache-2.0,
+  Python PSF), then ISCC -> `dist\ShipDesk-Setup-1.0.0.exe` (13.0 MB).
+- `installer/ShipDesk.iss`: per-user (no admin, %LOCALAPPDATA%\Programs\Ship Desk), files folder page (default
+  Documents\Ship Desk, user's choice; `/DATADIR=`), tasks desktop icon + start with Windows; Start menu: Ship Desk,
+  Turn off Ship Desk, Ship Desk files, guide. Writes `install.json`. Updates stop the running copy first. Uninstall
+  removes the Run value / shipdesk:// key only if they start this copy, and asks before deleting only Ship Desk's own
+  subfolders (a broad folder like Documents is never wiped).
+- serve.py: `APP_VERSION` 1.0.0, `data_root()` (install.json "dataDir", else Saved next to it: this folder unchanged),
+  `--stop` / `--stop-any`, `/api/ping` reports version + home.
+- Problem on the way: the first install test's `--stop` turned off the user's running copy (its older process didn't
+  report "home", and the check let "unknown" through). Turned it straight back on (about a minute off; backup still on,
+  Dropbox) and fixed: only a copy that says it is this folder is stopped. Also: a plain silent install would have
+  ticked "start with Windows" (both tasks default on); tests use `/MERGETASKS="!desktopicon,!autostart"`.
+- Tested: silent install to a temp folder, ran it on port 5099, page served, a saved label landed in the chosen
+  files folder, its `--stop` left the user's copy on, uninstall cleaned up, the user's Run value and shipdesk:// key
+  identical before/after (twice, the second time on the final file). 169 tests pass.
+- Recommended to the user and agreed: MIT licence (LICENSE, copyright mAgNiFiCeNtTaCo), a GitHub release, no code
+  signing for now (the SmartScreen "More info -> Run anyway" step is in the guide and notes), try the wizard on another
+  Windows account. Code pushed (271e59f). Creating the release was blocked by Claude Code's auto-mode check
+  (public surface): the user runs `gh release create v1.0.0 "dist/ShipDesk-Setup-1.0.0.exe" --title "Ship Desk 1.0.0"
+  --notes-file "dist/release-notes-1.0.0.md" --target main` (notes kept in dist\, gitignored).
+
 ### 2026-10-26: first real TCGplayer packing slip; item reader fixed
 - The user ran a real slip PDF (1 order, `TCGplayer_PackingSlips_...pdf` in D:\Downloads): the page matched its order
   and the printed label + slip used TCGplayer's own page, so the printout was right.
