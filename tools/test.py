@@ -34,6 +34,11 @@ tailnet = {"serving": False}  # stands in for Tailscale: tests never change the 
 class Handler(serve.Handler):
     # Files the app saves during tests land in a throwaway folder, never in the real Saved folder.
     save_root = tempfile.mkdtemp(prefix="shipdesk-saved-")
+    # ...and the backup goes to another throwaway folder, never the real OneDrive.
+    backup_root = tempfile.mkdtemp(prefix="shipdesk-backup-")
+
+    def backup_target(self):
+        return self.backup_root
 
     def open_folder(self, folder):
         opened.append(folder)
@@ -75,6 +80,12 @@ class Handler(serve.Handler):
             return
         if self.path == "/__opened":
             self.reply(200, {"opened": opened})
+            return
+        if self.path == "/__backup":
+            # Test-only: the files in the backup folder (paths relative to it, with /).
+            files = [os.path.relpath(os.path.join(d, n), self.backup_root).replace(os.sep, "/")
+                     for d, _, names in os.walk(self.backup_root) for n in names]
+            self.reply(200, {"files": sorted(files), "folder": self.backup_root})
             return
         super().do_GET()
 
@@ -127,6 +138,7 @@ def main():
         srv.shutdown()
         shutil.rmtree(profile, ignore_errors=True)
         shutil.rmtree(Handler.save_root, ignore_errors=True)
+        shutil.rmtree(Handler.backup_root, ignore_errors=True)
     for line in result.get("lines", []):
         print(line)
     print(f"RESULT: {result.get('passed', 0)} passed, {result.get('failed', 0)} failed")

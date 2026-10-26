@@ -9,13 +9,14 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on a real TCGplayer import.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **164 passed, 0 failed** (two full runs 2026-10-25).
+- Tests: `python tools/test.py` = **165 passed, 0 failed** (2026-10-25).
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
   named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`). The loaded orders stay through
   reloads and restarts (until cleared, a new file, or 14 days). Pirate Ship's Shipments export (.xlsx) dropped on
-  the page puts the tracking numbers on their orders. History has a copy in
+  the page puts the tracking numbers on their orders. `Saved\` is backed up to OneDrive every hour
+  (`OneDrive\Ship Desk backup`, switch on the History page; on since 2026-10-25). History has a copy in
   `Saved\History` (+ daily backups); import files only carry what's new ("Sent to TCGplayer"); proof pack PDF per order.
 - Phone page (`/phone.html`, iPhone through Tailscale serve, pairing code): photos per order (contents / packed /
   post office) into `Saved\Photos`, offline queue. Its camera screen scans order QR codes and mailer tracking
@@ -24,6 +25,25 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-25: hourly backup of the Saved folder to OneDrive
+- User asked "what's next"; suggested a backup of `Saved\` first (photos lived on D: only). Offered E:/G: (other
+  drives) or OneDrive; **the user chose OneDrive** (told: buyers' names, addresses and photos go to their Microsoft
+  account).
+- serve.py: `onedrive_folder()` (`%OneDrive%\Ship Desk backup`), `copy_new_files` / `run_backup` (new or changed
+  files only, by size + time; `.part` then rename), `backup_loop` thread (60 s after start, then hourly, port 5091
+  only) while `Saved/backup.json` says on. Never deletes in the backup. Not copied: `Phone/pairing-code.txt` (the
+  phone's key stays on the PC), `ship-desk.log*`, `*.tmp`/`*.part`. Refuses a backup folder inside `Saved` (or the
+  reverse). `GET /api/backup`, `POST /api/backup?on=1|0|now=1|open=1` (PC page only).
+- History page: "Back up the Saved folder to OneDrive every hour" box, last backup line, Back up now, Open the backup
+  folder (app.js `loadBackup` / `setBackup` / `backupNow`). Cache `shipdesk-v20`.
+- Tests 164 -> 165 (tools/test.py sends the backup to a temp folder, `GET /__backup` lists it); direct checks of the
+  skip list, changed files, deleted files kept, the inside-Saved refusal. README "Backup to OneDrive", CLAUDE.md.
+- Restarted Ship Desk at the user's OK (shutdown API + `launcher_command()`), switched the backup on: first run
+  copied 218 files / 171 MB, pairing code not among them. Note: `tailscaled` also listens on port 5091 (tailnet
+  addresses), so "is the port free" checks must look at 127.0.0.1 only.
+- Next: real-iPhone checks and a real packing-slip PDF (user); phone "to do" list; photo storage (OneDrive is on
+  C:, 43 GB free; ~5 MB/order).
+
 ### 2026-10-25: loaded orders survive a reload; tracking numbers from Pirate Ship's export
 - **Batch kept across reloads** (the agreed next step): the loaded CSV / pasted text, ticks, filter and label order
   are kept in the browser (`shipdesk.batch`, app.js `keepBatch` / `restoreBatch` / `clearBatch`) and come back on

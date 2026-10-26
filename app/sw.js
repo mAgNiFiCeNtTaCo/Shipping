@@ -1,7 +1,7 @@
 // Ship Desk offline support: cache-first for the app shell, scripts, styles, vendored libraries and
 // the sample file. Change VERSION whenever app files change so every browser picks up the new copy.
 
-const VERSION = "shipdesk-v19";
+const VERSION = "shipdesk-v20";
 
 const FILES = [
   "./",

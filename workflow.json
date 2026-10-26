@@ -393,6 +393,31 @@
       "lessons": [
         "Pirate Ship has two exports: Transactions (money, no tracking) and Shipments (tracking, but no order # or ZIP), so matching is by name and date."
       ]
+    },
+    {
+      "title": "Hourly backup of Saved to OneDrive",
+      "date": "2026-10-25",
+      "summary": "The same session added an hourly OneDrive backup of the Saved folder (user's choice of place), restarted Ship Desk at the user's OK and ran the first backup (218 files); 165 tests.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-25T23:07",
+              "end": "2026-10-25T23:25",
+              "did": "serve.py backup (copy new/changed, skip pairing code + log, hourly thread), History page switch, test folder fake, first real backup",
+              "outcome": "done",
+              "files": 9
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "tailscale serve listens on the same port number on the tailnet addresses: check 127.0.0.1 when waiting for the local server to stop."
+      ]
     }
   ]
 }

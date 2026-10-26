@@ -1136,7 +1136,7 @@ export function showView(name) {
   for (const [id, on] of [["#view-ship", !hist], ["#view-history", hist]]) {
     if (on) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
   }
-  if (hist) { renderHistory(); refreshPhotos(); }
+  if (hist) { renderHistory(); refreshPhotos(); loadBackup(); }
 }
 
 function bindViews() {
@@ -1163,6 +1163,75 @@ export const PHOTO_KINDS = [
 ];
 
 const shipdeskFetch = (path, opts = {}) => fetch(path, { ...opts, headers: { ...(opts.headers || {}), "X-Ship-Desk": "1" } });
+
+// ---------- backup of the Saved folder ----------
+// serve.py copies what's new in Saved\ to OneDrive\Ship Desk backup every hour while it's switched on; the History
+// page shows the switch, the last backup and "Back up now".
+
+const backup = { status: null, busy: false };
+
+/** How the backup stands, from Ship Desk ({ on, available, folder, at, copied, files, error }; null when it's off). */
+export async function loadBackup() {
+  try {
+    const r = await shipdeskFetch("api/backup");
+    backup.status = r.ok ? await r.json() : null;
+  } catch { backup.status = null; }
+  renderBackup();
+  return backup.status;
+}
+
+async function backupCall(query) {
+  backup.busy = true;
+  renderBackup();
+  try {
+    const data = await (await shipdeskFetch(`api/backup?${query}`, { method: "POST" })).json();
+    if (data && "on" in data) backup.status = data;
+    return data;
+  } catch {
+    toast("Ship Desk isn't running, so the backup can't be changed now.");
+    return null;
+  } finally {
+    backup.busy = false;
+    renderBackup();
+  }
+}
+
+const backupWhat = (s) => (s.copied ? `${plural(s.copied, "new or changed file")} copied` : "nothing new to copy");
+
+/** Switch the hourly backup on (it backs up right away) or off (what's in OneDrive stays). */
+export async function setBackup(on) {
+  const d = await backupCall(`on=${on ? 1 : 0}`);
+  if (d) toast(d.error || (on ? `Backed up to OneDrive: ${backupWhat(d)}. From now on every hour.` : "Backup switched off. What's in OneDrive stays there."));
+  return d;
+}
+
+export async function backupNow() {
+  const d = await backupCall("now=1");
+  if (d) toast(d.error || `Backed up to OneDrive: ${backupWhat(d)}.`);
+  return d;
+}
+
+function renderBackup() {
+  const s = backup.status;
+  $("#backup-row").hidden = !s;
+  if (!s) return;
+  const can = s.available && !backup.busy;
+  $("#backup-on").checked = !!s.on;
+  $("#backup-on").disabled = !can;
+  $("#btn-backup-now").hidden = $("#btn-backup-open").hidden = !s.available;
+  $("#btn-backup-now").disabled = !can;
+  $("#backup-text").textContent = !s.available ? "OneDrive isn't set up on this PC."
+    : backup.busy ? "Backing up…"
+    : s.error ? s.error
+    : s.at ? `Last backup ${s.at}: ${plural(s.files, "file")}${s.copied ? `, ${s.copied} new or changed` : ", nothing new"}.`
+    : s.on ? "The first backup runs soon." : "Off.";
+}
+
+function bindBackup() {
+  $("#backup-on").addEventListener("change", (e) => setBackup(e.target.checked));
+  $("#btn-backup-now").addEventListener("click", backupNow);
+  $("#btn-backup-open").addEventListener("click", () => backupCall("open=1"));
+}
 
 // ---------- turning Ship Desk off and on ----------
 // Off: the page asks serve.py (running in the background) to stop. On: the shipdesk://start link, which serve.py
@@ -2024,6 +2093,7 @@ export function init() {
   bindHistory();
   bindPhone();
   bindPower();
+  bindBackup();
   bindViews();
   renderPlanForm();
   renderDesign();
@@ -2043,7 +2113,7 @@ export const api = {
   clearShipped, renderAll, handleFiles, loadSlipFile, today, restoreBatch, clearBatch, applyShipments,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
-  power, checkPower, turnOff, setAutostart,
+  power, checkPower, turnOff, setAutostart, loadBackup, setBackup, backupNow,
   copyHistory, checkHistoryCopy, restoreHistoryCopy, keepThisHistory, proofPack,
 };
 

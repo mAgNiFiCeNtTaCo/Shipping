@@ -54,6 +54,11 @@ explain in plain words and finish jobs end to end.
   `set_autostart` / `autostart_enabled`, `POST /api/autostart?on=1|0`, `#power-auto` in the header; refreshed on each
   start). Switched on for the user on 2026-10-21. tools/test.py stands in for it (never touches the registry).
   tools/test.py fakes `stop_server` (records "STOP" in `/__opened`).
+- Backup (user chose OneDrive 2026-10-25): serve.py copies new/changed files in `Saved\` to `%OneDrive%\Ship Desk backup`
+  (`onedrive_folder`, `run_backup`, `backup_loop` thread: 60 s after start, then hourly, port 5091 only) while
+  `Saved/backup.json` says on; never deletes in the backup; skips `Phone/pairing-code.txt`, `ship-desk.log*`, `*.tmp`.
+  `GET /api/backup`, `POST /api/backup?on=1|0|now=1|open=1`; History page `#backup-row` (app.js `loadBackup` /
+  `setBackup` / `backupNow`). tools/test.py points `backup_target()` at a temp folder (`GET /__backup` lists it).
 - History copy: `GET/POST /api/history-copy` -> `Saved/History/ship-desk-history.json` (+ `Backups/history-<date>.json`,
   30 days). A browser writes it only once linked (`KEYS.historyCopy` = "on"); unlinked + different -> `#history-copy`
   offer (`restoreHistoryCopy` merges, rebuilds `state.shipped`; `keepThisHistory`). `copyHistory` runs 0.8 s after

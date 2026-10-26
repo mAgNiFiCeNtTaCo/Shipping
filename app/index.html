@@ -301,6 +301,12 @@
         <button type="button" id="btn-history-keep" class="btn ghost">Keep this browser's History</button>
       </div>
     </div>
+    <div id="backup-row" class="backup-row small" hidden>
+      <label class="check"><input type="checkbox" id="backup-on"> Back up the <code>Saved</code> folder to OneDrive every hour</label>
+      <span id="backup-text" class="muted" aria-live="polite"></span>
+      <button type="button" id="btn-backup-now" class="link">Back up now</button>
+      <button type="button" id="btn-backup-open" class="link">Open the backup folder</button>
+    </div>
     <p id="history-empty" class="empty-note">Nothing here yet. Orders show up here after you download labels (step 3) or mark them shipped (step 4).</p>
     <div id="history-area" hidden>
       <div class="history-bar">

@@ -23,6 +23,8 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
               POST /api/shutdown              the page's Turn off (shipdesk://start turns it on again)
               POST /api/autostart?on=1|0      start with Windows (this user's startup list) or not
               GET/POST /api/history-copy      the History list's copy in Saved/History (+ a dated copy per day)
+              GET  /api/backup                backup of Saved to OneDrive: on/off, last run, folder
+              POST /api/backup?on=1|0 | ?now=1 | ?open=1   switch it (on = back up now), back up now, open the folder
               GET  /api/phone-link            QR link, code, Tailscale state
               POST /api/phone-access?on=1|0   switch the Tailscale address on/off
               POST /api/phone-key             make a new pairing code (old phones must scan again)
@@ -158,6 +160,113 @@ def write_json(path, data):
             if i == RETRIES - 1:
                 raise
             time.sleep(0.025)
+
+
+# ---------- backup of the Saved folder ----------
+# What's new or changed in Saved is copied to "<OneDrive>\Ship Desk backup" (the user's choice 2026-10-25): a
+# minute after Ship Desk starts and then every hour, while switched on (Saved/backup.json). Nothing is ever
+# deleted from the backup, so a file removed by mistake is still there. Not copied: the phone's pairing code (its
+# key stays on this PC), the log and half-written files.
+BACKUP_NAME = "Ship Desk backup"
+BACKUP_SETTINGS = "backup.json"
+BACKUP_EVERY = 3600
+BACKUP_SKIP = {os.path.normcase(os.path.join("Phone", "pairing-code.txt")), BACKUP_SETTINGS}
+backup_lock = threading.Lock()
+
+
+def onedrive_folder():
+    """Where the backup goes: "<OneDrive>\\Ship Desk backup", or "" when OneDrive isn't set up on this PC."""
+    for var in ("OneDrive", "OneDriveConsumer"):
+        base = os.environ.get(var, "")
+        if base and os.path.isdir(base):
+            return os.path.join(base, BACKUP_NAME)
+    return ""
+
+
+def backup_skipped(rel):
+    name = os.path.basename(rel)
+    return (os.path.normcase(rel) in BACKUP_SKIP or name.startswith("ship-desk.log")
+            or name.endswith((".tmp", ".part")))
+
+
+def copy_new_files(src, dest):
+    """Copy the files under src that dest doesn't have yet or has an older copy of. -> (copied, files, failed)"""
+    copied = files = failed = 0
+    for folder, _dirs, names in os.walk(src):
+        for name in names:
+            path = os.path.join(folder, name)
+            rel = os.path.relpath(path, src)
+            if backup_skipped(rel):
+                continue
+            files += 1
+            target = os.path.join(dest, rel)
+            try:
+                st = os.stat(path)
+                if os.path.exists(target):
+                    old = os.stat(target)
+                    if old.st_size == st.st_size and old.st_mtime >= st.st_mtime - 2:
+                        continue
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy2(path, target + ".part")
+                os.replace(target + ".part", target)
+                copied += 1
+            except OSError:
+                failed += 1
+    return copied, files, failed
+
+
+def backup_status(save_root, dest):
+    s = read_json(os.path.join(save_root, BACKUP_SETTINGS), {})
+    s = s if isinstance(s, dict) else {}
+    return {"on": bool(s.get("on")), "available": bool(dest), "folder": dest, "at": str(s.get("at", "")),
+            "copied": int(s.get("copied") or 0), "files": int(s.get("files") or 0), "error": str(s.get("error", ""))}
+
+
+def save_backup_status(save_root, status):
+    keep = {k: status[k] for k in ("on", "at", "copied", "files", "error")}
+    write_json(os.path.join(save_root, BACKUP_SETTINGS), keep)
+
+
+def run_backup(save_root, dest):
+    """Back up now (whether switched on or not). Returns the new status."""
+    with backup_lock:
+        st = backup_status(save_root, dest)
+        here, there = os.path.normcase(os.path.abspath(save_root)), os.path.normcase(os.path.abspath(dest or "."))
+        if not dest:
+            st["error"] = "OneDrive isn't set up on this PC."
+        elif there == here or there.startswith(here + os.sep) or here.startswith(there + os.sep):
+            st["error"] = "The backup folder can't be inside the Saved folder (or the other way round)."
+        else:
+            copied, files, failed = copy_new_files(save_root, dest)
+            st.update(at=time.strftime("%Y-%m-%d %H:%M"), copied=copied, files=files,
+                      error=f"{failed} file{'s' if failed != 1 else ''} couldn't be copied (in use?): tried again next time." if failed else "")
+        os.makedirs(save_root, exist_ok=True)
+        save_backup_status(save_root, st)
+        return st
+
+
+def set_backup(save_root, dest, on):
+    """Switch the hourly backup on (and back up now) or off."""
+    with backup_lock:
+        st = backup_status(save_root, dest)
+        st["on"] = bool(on)
+        os.makedirs(save_root, exist_ok=True)
+        save_backup_status(save_root, st)
+    return run_backup(save_root, dest) if on else backup_status(save_root, dest)
+
+
+def backup_loop(save_root, first=60, every=BACKUP_EVERY):
+    """Ship Desk's own timer: back up while switched on (checked each time, so the page's switch counts at once)."""
+    time.sleep(first)
+    while True:
+        try:
+            if backup_status(save_root, onedrive_folder())["on"]:
+                st = run_backup(save_root, onedrive_folder())
+                print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Backup to OneDrive: {st['copied']} new or changed of "
+                      f"{st['files']} files{' - ' + st['error'] if st['error'] else ''}")
+        except Exception as e:  # noqa: BLE001 - the timer must keep going
+            print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Backup failed: {e}")
+        time.sleep(every)
 
 
 # What an order key may look like (the PC page's history keys): a TCGplayer order number, "paste:<name>|<ZIP>" or
@@ -353,6 +462,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.reply(200, {"ok": True, "links": [ln for ln in self.links() if not ln.get("applied")]})
         elif path == "/api/history-copy":
             self.reply(200, {"ok": True, **self.history_copy()})
+        elif path == "/api/backup":
+            self.reply(200, {"ok": True, **backup_status(self.save_root, self.backup_target())})
         else:
             self.send_error(404)
 
@@ -374,7 +485,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if url.path not in ("/api/save", "/api/open-folder", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
                             "/api/links-done", "/api/photos-rekey", "/api/photo-rotate", "/api/shutdown",
-                            "/api/autostart", "/api/history-copy"):
+                            "/api/autostart", "/api/history-copy", "/api/backup"):
             self.send_error(404)
             return
         if not self.from_ship_desk():
@@ -387,6 +498,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if url.path == "/api/history-copy":
             self.save_history_copy()
+            return
+        if url.path == "/api/backup":
+            dest = self.backup_target()
+            if arg("open") == "1":
+                if not dest:
+                    self.reply(400, {"ok": False, "error": "OneDrive isn't set up on this PC."})
+                    return
+                os.makedirs(dest, exist_ok=True)
+                self.open_folder(dest)
+                st = backup_status(self.save_root, dest)
+            elif arg("on") in ("0", "1"):
+                st = set_backup(self.save_root, dest, arg("on") == "1")
+            elif arg("now") == "1":
+                st = run_backup(self.save_root, dest)
+            else:
+                self.reply(400, {"ok": False, "error": "Say on, now or open."})
+                return
+            self.reply(200, {"ok": not st["error"], **st})
             return
         if url.path == "/api/autostart":
             ok = self.set_autostart(arg("on") == "1")
@@ -447,6 +576,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def stop_server(self):
         self.server.shutdown()
+
+    def backup_target(self):
+        """The backup folder (tests use a temporary one)."""
+        return onedrive_folder()
 
     # ---------- the History list's copy on this PC ----------
     # The PC page keeps History in the browser; this keeps a copy in Saved/History so a cleared browser (or another
@@ -1036,6 +1169,10 @@ def main():
     if a.port == DEFAULT_PORT and autostart_enabled():
         set_autostart(True)  # keeps the startup entry pointing at this copy of Ship Desk
         print("Starts with Windows (untick \"Start with Windows\" at the top of the page to stop that).")
+    if a.port == DEFAULT_PORT:
+        threading.Thread(target=backup_loop, args=(SAVE_ROOT,), daemon=True).start()
+        if backup_status(SAVE_ROOT, onedrive_folder())["on"]:
+            print(f"Backs up the Saved folder to {onedrive_folder()} every hour.")
     if not a.no_browser:
         threading.Timer(0.5, webbrowser.open, [url]).start()
     try:

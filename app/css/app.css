@@ -160,6 +160,7 @@ textarea { width: 100%; resize: vertical; min-height: 96px; padding: 10px 12px; 
 .msg.error { background: var(--err-bg); color: var(--err-text); border-color: var(--err-line); }
 .msg.info { background: var(--info-bg); color: var(--info-text); border-color: var(--info-line); }
 .msg-title { font-weight: 700; }
+.backup-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 4px 0 14px; }
 .msg ul.plain { margin: 0; padding-left: 18px; }
 .msg code { background: rgb(127 127 127 / .14); padding: 1px 6px; border-radius: 5px; margin: 2px 4px 2px 0; display: inline-block; word-break: break-all; }
 .found { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
