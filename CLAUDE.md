@@ -54,11 +54,13 @@ explain in plain words and finish jobs end to end.
   `set_autostart` / `autostart_enabled`, `POST /api/autostart?on=1|0`, `#power-auto` in the header; refreshed on each
   start). Switched on for the user on 2026-10-21. tools/test.py stands in for it (never touches the registry).
   tools/test.py fakes `stop_server` (records "STOP" in `/__opened`).
-- Backup (user chose OneDrive 2026-10-25): serve.py copies new/changed files in `Saved\` to `%OneDrive%\Ship Desk backup`
-  (`onedrive_folder`, `run_backup`, `backup_loop` thread: 60 s after start, then hourly, port 5091 only) while
-  `Saved/backup.json` says on; never deletes in the backup; skips `Phone/pairing-code.txt`, `ship-desk.log*`, `*.tmp`.
-  `GET /api/backup`, `POST /api/backup?on=1|0|now=1|open=1`; History page `#backup-row` (app.js `loadBackup` /
-  `setBackup` / `backupNow`). tools/test.py points `backup_target()` at a temp folder (`GET /__backup` lists it).
+- Backup (user chose Dropbox 2026-10-25, OneDrive before): serve.py copies new/changed files in `Saved\` to
+  `<Dropbox or OneDrive>\Ship Desk backup` (`backup_folder(place)`: Dropbox's path from `%LOCALAPPDATA%\Dropbox\info.json`,
+  OneDrive from `%OneDrive%`; `run_backup` / `set_backup` / `backup_into`; `backup_loop` thread: 60 s after start, then
+  hourly, port 5091 only) while `Saved/backup.json` (`on`, `to`) says on; no `to` = onedrive. Never deletes in the backup;
+  skips `Phone/pairing-code.txt`, `ship-desk.log*`, `*.tmp`. `GET /api/backup`, `POST /api/backup?on=1|0&to=dropbox|onedrive
+  |now=1|open=1`; History page `#backup-row` + `#backup-to` (app.js `loadBackup` / `setBackup` / `setBackupPlace` /
+  `backupNow`). tools/test.py points `backup_folder_for()` at a temp folder (`GET /__backup` lists it).
 - History copy: `GET/POST /api/history-copy` -> `Saved/History/ship-desk-history.json` (+ `Backups/history-<date>.json`,
   30 days). A browser writes it only once linked (`KEYS.historyCopy` = "on"); unlinked + different -> `#history-copy`
   offer (`restoreHistoryCopy` merges, rebuilds `state.shipped`; `keepThisHistory`). `copyHistory` runs 0.8 s after

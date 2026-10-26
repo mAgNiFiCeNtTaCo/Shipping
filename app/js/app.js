@@ -1165,12 +1165,12 @@ export const PHOTO_KINDS = [
 const shipdeskFetch = (path, opts = {}) => fetch(path, { ...opts, headers: { ...(opts.headers || {}), "X-Ship-Desk": "1" } });
 
 // ---------- backup of the Saved folder ----------
-// serve.py copies what's new in Saved\ to OneDrive\Ship Desk backup every hour while it's switched on; the History
-// page shows the switch, the last backup and "Back up now".
+// serve.py copies what's new in Saved\ to <Dropbox or OneDrive>\Ship Desk backup every hour while it's switched on;
+// the History page shows the switch, where it goes, the last backup and "Back up now".
 
 const backup = { status: null, busy: false };
 
-/** How the backup stands, from Ship Desk ({ on, available, folder, at, copied, files, error }; null when it's off). */
+/** How the backup stands, from Ship Desk ({ on, to, name, available, places, folder, at, copied, files, error }; null when it's off). */
 export async function loadBackup() {
   try {
     const r = await shipdeskFetch("api/backup");
@@ -1198,16 +1198,23 @@ async function backupCall(query) {
 
 const backupWhat = (s) => (s.copied ? `${plural(s.copied, "new or changed file")} copied` : "nothing new to copy");
 
-/** Switch the hourly backup on (it backs up right away) or off (what's in OneDrive stays). */
+/** Switch the hourly backup on (it backs up right away) or off (what's already backed up stays). */
 export async function setBackup(on) {
   const d = await backupCall(`on=${on ? 1 : 0}`);
-  if (d) toast(d.error || (on ? `Backed up to OneDrive: ${backupWhat(d)}. From now on every hour.` : "Backup switched off. What's in OneDrive stays there."));
+  if (d) toast(d.error || (on ? `Backed up to ${d.name}: ${backupWhat(d)}. From now on every hour.` : `Backup switched off. What's in ${d.name} stays there.`));
+  return d;
+}
+
+/** Back up to "dropbox" or "onedrive" from now on (right away when it's on). The old place keeps its copy. */
+export async function setBackupPlace(to) {
+  const d = await backupCall(`to=${encodeURIComponent(to)}`);
+  if (d) toast(d.error || (d.on ? `Backed up to ${d.name}: ${backupWhat(d)}. From now on every hour.` : `The backup will go to ${d.name}.`));
   return d;
 }
 
 export async function backupNow() {
   const d = await backupCall("now=1");
-  if (d) toast(d.error || `Backed up to OneDrive: ${backupWhat(d)}.`);
+  if (d) toast(d.error || `Backed up to ${d.name}: ${backupWhat(d)}.`);
   return d;
 }
 
@@ -1218,9 +1225,13 @@ function renderBackup() {
   const can = s.available && !backup.busy;
   $("#backup-on").checked = !!s.on;
   $("#backup-on").disabled = !can;
+  const to = $("#backup-to");
+  for (const o of to.options) o.disabled = !(s.places && s.places[o.value]);
+  to.value = s.to;
+  to.disabled = backup.busy;
   $("#btn-backup-now").hidden = $("#btn-backup-open").hidden = !s.available;
   $("#btn-backup-now").disabled = !can;
-  $("#backup-text").textContent = !s.available ? "OneDrive isn't set up on this PC."
+  $("#backup-text").textContent = !s.available ? `${s.name} isn't set up on this PC.`
     : backup.busy ? "Backing up…"
     : s.error ? s.error
     : s.at ? `Last backup ${s.at}: ${plural(s.files, "file")}${s.copied ? `, ${s.copied} new or changed` : ", nothing new"}.`
@@ -1229,6 +1240,7 @@ function renderBackup() {
 
 function bindBackup() {
   $("#backup-on").addEventListener("change", (e) => setBackup(e.target.checked));
+  $("#backup-to").addEventListener("change", (e) => setBackupPlace(e.target.value));
   $("#btn-backup-now").addEventListener("click", backupNow);
   $("#btn-backup-open").addEventListener("click", () => backupCall("open=1"));
 }
@@ -2113,7 +2125,7 @@ export const api = {
   clearShipped, renderAll, handleFiles, loadSlipFile, today, restoreBatch, clearBatch, applyShipments,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
-  power, checkPower, turnOff, setAutostart, loadBackup, setBackup, backupNow,
+  power, checkPower, turnOff, setAutostart, loadBackup, setBackup, setBackupPlace, backupNow,
   copyHistory, checkHistoryCopy, restoreHistoryCopy, keepThisHistory, proofPack,
 };
 

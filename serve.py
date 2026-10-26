@@ -23,8 +23,9 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
               POST /api/shutdown              the page's Turn off (shipdesk://start turns it on again)
               POST /api/autostart?on=1|0      start with Windows (this user's startup list) or not
               GET/POST /api/history-copy      the History list's copy in Saved/History (+ a dated copy per day)
-              GET  /api/backup                backup of Saved to OneDrive: on/off, last run, folder
-              POST /api/backup?on=1|0 | ?now=1 | ?open=1   switch it (on = back up now), back up now, open the folder
+              GET  /api/backup                backup of Saved to Dropbox or OneDrive: on/off, where, last run
+              POST /api/backup?on=1|0&to=dropbox|onedrive | ?now=1 | ?open=1   switch it / pick the place (backs up
+                                              right away when on), back up now, open the folder
               GET  /api/phone-link            QR link, code, Tailscale state
               POST /api/phone-access?on=1|0   switch the Tailscale address on/off
               POST /api/phone-key             make a new pairing code (old phones must scan again)
@@ -163,24 +164,41 @@ def write_json(path, data):
 
 
 # ---------- backup of the Saved folder ----------
-# What's new or changed in Saved is copied to "<OneDrive>\Ship Desk backup" (the user's choice 2026-10-25): a
-# minute after Ship Desk starts and then every hour, while switched on (Saved/backup.json). Nothing is ever
-# deleted from the backup, so a file removed by mistake is still there. Not copied: the phone's pairing code (its
-# key stays on this PC), the log and half-written files.
+# What's new or changed in Saved is copied to "<Dropbox or OneDrive>\Ship Desk backup" (the user chose OneDrive,
+# then Dropbox, 2026-10-25): a minute after Ship Desk starts and then every hour, while switched on
+# (Saved/backup.json: on, to). Nothing is ever deleted from the backup, so a file removed by mistake is still there.
+# Not copied: the phone's pairing code (its key stays on this PC), the log and half-written files.
 BACKUP_NAME = "Ship Desk backup"
 BACKUP_SETTINGS = "backup.json"
 BACKUP_EVERY = 3600
+BACKUP_PLACES = {"dropbox": "Dropbox", "onedrive": "OneDrive"}
 BACKUP_SKIP = {os.path.normcase(os.path.join("Phone", "pairing-code.txt")), BACKUP_SETTINGS}
 backup_lock = threading.Lock()
 
 
-def onedrive_folder():
-    """Where the backup goes: "<OneDrive>\\Ship Desk backup", or "" when OneDrive isn't set up on this PC."""
-    for var in ("OneDrive", "OneDriveConsumer"):
-        base = os.environ.get(var, "")
-        if base and os.path.isdir(base):
-            return os.path.join(base, BACKUP_NAME)
+def dropbox_base():
+    """This PC's Dropbox folder (from Dropbox's own info.json), or ""."""
+    for var in ("LOCALAPPDATA", "APPDATA"):
+        info = read_json(os.path.join(os.environ.get(var, ""), "Dropbox", "info.json"), {})
+        for kind in ("personal", "business"):
+            path = info.get(kind, {}).get("path", "") if isinstance(info, dict) and isinstance(info.get(kind), dict) else ""
+            if path and os.path.isdir(path):
+                return path
     return ""
+
+
+def onedrive_base():
+    for var in ("OneDrive", "OneDriveConsumer"):
+        path = os.environ.get(var, "")
+        if path and os.path.isdir(path):
+            return path
+    return ""
+
+
+def backup_folder(place):
+    """Where the backup goes for "dropbox" / "onedrive": "<that folder>\\Ship Desk backup", or "" when it isn't set up."""
+    base = {"dropbox": dropbox_base, "onedrive": onedrive_base}.get(place, lambda: "")()
+    return os.path.join(base, BACKUP_NAME) if base else ""
 
 
 def backup_skipped(rel):
@@ -215,44 +233,57 @@ def copy_new_files(src, dest):
     return copied, files, failed
 
 
-def backup_status(save_root, dest):
+def backup_status(save_root, folder_for=backup_folder):
     s = read_json(os.path.join(save_root, BACKUP_SETTINGS), {})
     s = s if isinstance(s, dict) else {}
-    return {"on": bool(s.get("on")), "available": bool(dest), "folder": dest, "at": str(s.get("at", "")),
+    to = s.get("to") if s.get("to") in BACKUP_PLACES else "onedrive"  # backups made before Dropbox went to OneDrive
+    dest = folder_for(to)
+    return {"on": bool(s.get("on")), "to": to, "name": BACKUP_PLACES[to], "available": bool(dest), "folder": dest,
+            "places": {p: bool(folder_for(p)) for p in BACKUP_PLACES}, "at": str(s.get("at", "")),
             "copied": int(s.get("copied") or 0), "files": int(s.get("files") or 0), "error": str(s.get("error", ""))}
 
 
 def save_backup_status(save_root, status):
-    keep = {k: status[k] for k in ("on", "at", "copied", "files", "error")}
-    write_json(os.path.join(save_root, BACKUP_SETTINGS), keep)
+    os.makedirs(save_root, exist_ok=True)
+    write_json(os.path.join(save_root, BACKUP_SETTINGS), {k: status[k] for k in ("on", "to", "at", "copied", "files", "error")})
 
 
-def run_backup(save_root, dest):
+def backup_into(save_root, st):
+    """Copy what's new into st["folder"] and save the result (the caller holds backup_lock). Returns st."""
+    dest = st["folder"]
+    here, there = os.path.normcase(os.path.abspath(save_root)), os.path.normcase(os.path.abspath(dest or "."))
+    if not dest:
+        st["error"] = f"{st['name']} isn't set up on this PC."
+    elif there == here or there.startswith(here + os.sep) or here.startswith(there + os.sep):
+        st["error"] = "The backup folder can't be inside the Saved folder (or the other way round)."
+    else:
+        copied, files, failed = copy_new_files(save_root, dest)
+        st.update(at=time.strftime("%Y-%m-%d %H:%M"), copied=copied, files=files,
+                  error=f"{failed} file{'s' if failed != 1 else ''} couldn't be copied (in use?): tried again next time." if failed else "")
+    save_backup_status(save_root, st)
+    return st
+
+
+def run_backup(save_root, folder_for=backup_folder):
     """Back up now (whether switched on or not). Returns the new status."""
     with backup_lock:
-        st = backup_status(save_root, dest)
-        here, there = os.path.normcase(os.path.abspath(save_root)), os.path.normcase(os.path.abspath(dest or "."))
-        if not dest:
-            st["error"] = "OneDrive isn't set up on this PC."
-        elif there == here or there.startswith(here + os.sep) or here.startswith(there + os.sep):
-            st["error"] = "The backup folder can't be inside the Saved folder (or the other way round)."
-        else:
-            copied, files, failed = copy_new_files(save_root, dest)
-            st.update(at=time.strftime("%Y-%m-%d %H:%M"), copied=copied, files=files,
-                      error=f"{failed} file{'s' if failed != 1 else ''} couldn't be copied (in use?): tried again next time." if failed else "")
-        os.makedirs(save_root, exist_ok=True)
+        return backup_into(save_root, backup_status(save_root, folder_for))
+
+
+def set_backup(save_root, on=None, to=None, folder_for=backup_folder):
+    """Switch the hourly backup on/off and/or pick where it goes; backs up right away when it ends up on (in one
+    step, so nobody sees the new place with no backup yet)."""
+    with backup_lock:
+        st = backup_status(save_root, folder_for)
+        if to in BACKUP_PLACES and to != st["to"]:
+            dest = folder_for(to)
+            st.update(to=to, name=BACKUP_PLACES[to], folder=dest, available=bool(dest), at="", copied=0, files=0, error="")
+        if on is not None:
+            st["on"] = bool(on)
+        if st["on"]:
+            return backup_into(save_root, st)
         save_backup_status(save_root, st)
         return st
-
-
-def set_backup(save_root, dest, on):
-    """Switch the hourly backup on (and back up now) or off."""
-    with backup_lock:
-        st = backup_status(save_root, dest)
-        st["on"] = bool(on)
-        os.makedirs(save_root, exist_ok=True)
-        save_backup_status(save_root, st)
-    return run_backup(save_root, dest) if on else backup_status(save_root, dest)
 
 
 def backup_loop(save_root, first=60, every=BACKUP_EVERY):
@@ -260,9 +291,9 @@ def backup_loop(save_root, first=60, every=BACKUP_EVERY):
     time.sleep(first)
     while True:
         try:
-            if backup_status(save_root, onedrive_folder())["on"]:
-                st = run_backup(save_root, onedrive_folder())
-                print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Backup to OneDrive: {st['copied']} new or changed of "
+            if backup_status(save_root)["on"]:
+                st = run_backup(save_root)
+                print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Backup to {st['name']}: {st['copied']} new or changed of "
                       f"{st['files']} files{' - ' + st['error'] if st['error'] else ''}")
         except Exception as e:  # noqa: BLE001 - the timer must keep going
             print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Backup failed: {e}")
@@ -463,7 +494,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/history-copy":
             self.reply(200, {"ok": True, **self.history_copy()})
         elif path == "/api/backup":
-            self.reply(200, {"ok": True, **backup_status(self.save_root, self.backup_target())})
+            self.reply(200, {"ok": True, **backup_status(self.save_root, self.backup_folder_for)})
         else:
             self.send_error(404)
 
@@ -500,20 +531,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.save_history_copy()
             return
         if url.path == "/api/backup":
-            dest = self.backup_target()
             if arg("open") == "1":
-                if not dest:
-                    self.reply(400, {"ok": False, "error": "OneDrive isn't set up on this PC."})
+                st = backup_status(self.save_root, self.backup_folder_for)
+                if not st["folder"]:
+                    self.reply(400, {"ok": False, "error": f"{st['name']} isn't set up on this PC."})
                     return
-                os.makedirs(dest, exist_ok=True)
-                self.open_folder(dest)
-                st = backup_status(self.save_root, dest)
-            elif arg("on") in ("0", "1"):
-                st = set_backup(self.save_root, dest, arg("on") == "1")
+                os.makedirs(st["folder"], exist_ok=True)
+                self.open_folder(st["folder"])
+            elif arg("on") in ("0", "1") or arg("to") in BACKUP_PLACES:
+                on = {"0": False, "1": True}.get(arg("on"))
+                st = set_backup(self.save_root, on, arg("to") or None, self.backup_folder_for)
             elif arg("now") == "1":
-                st = run_backup(self.save_root, dest)
+                st = run_backup(self.save_root, self.backup_folder_for)
             else:
-                self.reply(400, {"ok": False, "error": "Say on, now or open."})
+                self.reply(400, {"ok": False, "error": "Say on, to, now or open."})
                 return
             self.reply(200, {"ok": not st["error"], **st})
             return
@@ -577,9 +608,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def stop_server(self):
         self.server.shutdown()
 
-    def backup_target(self):
-        """The backup folder (tests use a temporary one)."""
-        return onedrive_folder()
+    def backup_folder_for(self, place):
+        """The backup folder for "dropbox" / "onedrive" (tests use a temporary one)."""
+        return backup_folder(place)
 
     # ---------- the History list's copy on this PC ----------
     # The PC page keeps History in the browser; this keeps a copy in Saved/History so a cleared browser (or another
@@ -1171,8 +1202,9 @@ def main():
         print("Starts with Windows (untick \"Start with Windows\" at the top of the page to stop that).")
     if a.port == DEFAULT_PORT:
         threading.Thread(target=backup_loop, args=(SAVE_ROOT,), daemon=True).start()
-        if backup_status(SAVE_ROOT, onedrive_folder())["on"]:
-            print(f"Backs up the Saved folder to {onedrive_folder()} every hour.")
+        st = backup_status(SAVE_ROOT)
+        if st["on"]:
+            print(f"Backs up the Saved folder to {st['folder'] or st['name'] + ' (not found)'} every hour.")
     if not a.no_browser:
         threading.Timer(0.5, webbrowser.open, [url]).start()
     try:

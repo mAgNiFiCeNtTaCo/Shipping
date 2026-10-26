@@ -37,7 +37,7 @@ class Handler(serve.Handler):
     # ...and the backup goes to another throwaway folder, never the real OneDrive.
     backup_root = tempfile.mkdtemp(prefix="shipdesk-backup-")
 
-    def backup_target(self):
+    def backup_folder_for(self, place):
         return self.backup_root
 
     def open_folder(self, folder):

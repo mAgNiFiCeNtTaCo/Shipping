@@ -4,7 +4,7 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-10-25)
+## Where it stands (2026-10-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; not yet tried
   on a real TCGplayer import.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
@@ -15,8 +15,8 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
   named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`). The loaded orders stay through
   reloads and restarts (until cleared, a new file, or 14 days). Pirate Ship's Shipments export (.xlsx) dropped on
-  the page puts the tracking numbers on their orders. `Saved\` is backed up to OneDrive every hour
-  (`OneDrive\Ship Desk backup`, switch on the History page; on since 2026-10-25). History has a copy in
+  the page puts the tracking numbers on their orders. `Saved\` is backed up to Dropbox every hour
+  (`Dropbox\Ship Desk backup`; switch + Dropbox/OneDrive menu on the History page; on since 2026-10-25). History has a copy in
   `Saved\History` (+ daily backups); import files only carry what's new ("Sent to TCGplayer"); proof pack PDF per order.
 - Phone page (`/phone.html`, iPhone through Tailscale serve, pairing code): photos per order (contents / packed /
   post office) into `Saved\Photos`, offline queue. Its camera screen scans order QR codes and mailer tracking
@@ -25,6 +25,20 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-26: backup moved from OneDrive to Dropbox
+- Right after the OneDrive backup (late 2026-10-25) the user asked to move it to Dropbox. Dropbox runs on this PC
+  (`C:\Users\RubenNoodle\Dropbox`, path read from `%LOCALAPPDATA%\Dropbox\info.json`).
+- serve.py: the place is a setting (`backup.json` `to`: dropbox | onedrive; none = onedrive, for backups made before):
+  `dropbox_base()` / `onedrive_base()` / `backup_folder(place)`; `POST /api/backup?to=...` (backs up right away when
+  on). `set_backup` switches and backs up in one locked step (`backup_into`): the test saw the new place with no
+  backup yet in between. History page: a Dropbox / OneDrive menu next to the switch (`#backup-to`,
+  `setBackupPlace`); messages name the place. Cache `shipdesk-v21`.
+- Test: the backup test now picks Dropbox from the menu; its async waits use `waitForServer` (the suite's `waitFor`
+  treats a promise as done at once). 165 pass.
+- Restarted at the user's OK; first Dropbox backup 2026-10-25 23:39: 218 files / 171 MB, compared file by file with
+  the OneDrive copy (identical), then the OneDrive copy was deleted at the user's request (OneDrive's online recycle
+  bin keeps it ~30 days).
+
 ### 2026-10-25: hourly backup of the Saved folder to OneDrive
 - User asked "what's next"; suggested a backup of `Saved\` first (photos lived on D: only). Offered E:/G: (other
   drives) or OneDrive; **the user chose OneDrive** (told: buyers' names, addresses and photos go to their Microsoft

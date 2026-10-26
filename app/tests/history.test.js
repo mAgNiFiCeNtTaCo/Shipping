@@ -339,7 +339,16 @@ tests["copy on the PC: a cleared browser is offered the saved History; a linked 
   clearStore();
 };
 
-tests["backup: the Saved folder is copied to the backup folder (OneDrive), only what's new, never the pairing code"] = async () => {
+// waitFor checks right away; this one waits for checks that have to ask the server.
+async function waitForServer(fn, what, ms = 8000) {
+  const end = Date.now() + ms;
+  while (!(await fn())) {
+    if (Date.now() > end) throw new Error("timed out waiting for " + what);
+    await sleep(50);
+  }
+}
+
+tests["backup: the Saved folder is copied to the backup folder (Dropbox or OneDrive), only what's new, never the pairing code"] = async () => {
   clearStore();
   const H = { "X-Ship-Desk": "1" };
   eq((await fetch("/api/backup?on=1", { method: "POST" })).status, 403, "only Ship Desk's own page");
@@ -369,14 +378,24 @@ tests["backup: the Saved folder is copied to the backup folder (OneDrive), only 
   const again = await app.backupNow();
   eq(again.copied, 0, "only new or changed files are copied");
   ok(/nothing new/.test(doc.querySelector("#backup-text").textContent));
+  // Where it goes: OneDrive at first (backups from before Dropbox), then Dropbox from the menu (backs up right away).
+  eq([on.to, on.name, on.places], ["onedrive", "OneDrive", { dropbox: true, onedrive: true }]);
+  const place = doc.querySelector("#backup-to");
+  eq(place.value, "onedrive", "the menu shows it");
+  place.value = "dropbox";
+  place.dispatchEvent(new win.Event("change", { bubbles: true }));
+  await waitForServer(async () => (await (await fetch("/api/backup", { headers: H })).json()).to === "dropbox", "Dropbox picked");
+  const db = await (await fetch("/api/backup", { headers: H })).json();
+  ok(db.on && db.name === "Dropbox" && /^\d{4}-/.test(db.at), "still on, backed up right away: " + JSON.stringify(db));
+  await waitFor(() => /Last backup/.test(doc.querySelector("#backup-text").textContent) && place.value === "dropbox" && !place.disabled, "the page shows it");
   // A changed file is copied again; a deleted one stays in the backup.
   await fetch("/api/history-copy", { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ history: { "X-1": { key: "X-1", id: "X-1", name: "A" } } }) });
   eq((await app.backupNow()).copied >= 1, true, "the new History copy is backed up");
   doc.querySelector("#btn-backup-open").click();
-  await waitFor(async () => (await (await fetch("/__opened")).json()).opened.some((p) => /shipdesk-backup-/.test(p)), "the backup folder to open");
+  await waitForServer(async () => (await (await fetch("/__opened")).json()).opened.some((p) => /shipdesk-backup-/.test(p)), "the backup folder to open");
   box.checked = false;
   box.dispatchEvent(new win.Event("change", { bubbles: true }));
-  await waitFor(async () => !(await (await fetch("/api/backup", { headers: H })).json()).on, "switched off");
+  await waitForServer(async () => !(await (await fetch("/api/backup", { headers: H })).json()).on, "switched off");
   ok((await (await fetch("/__backup")).json()).files.includes("Labels/" + pdf.name), "switching off keeps what's backed up");
   clearStore();
   document.getElementById("history-frame").remove();

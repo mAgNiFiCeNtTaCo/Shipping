@@ -145,15 +145,16 @@ Everything Ship Desk makes is saved straight into the **`Saved`** folder inside 
 - Ship Desk running in the background does the saving. If it's off, files fall back to your Downloads folder and the
   message says so.
 - These files contain your buyers' names and addresses: they stay on this PC (the folder is never put in git or on GitHub),
-  except for the OneDrive backup below if you switch it on.
+  except for the Dropbox / OneDrive backup below if you switch it on.
 
-### Backup to OneDrive
+### Backup to Dropbox (or OneDrive)
 
-On the **History** page, tick **Back up the Saved folder to OneDrive every hour**. Ship Desk then copies everything new
-or changed in `Saved` to `OneDrive\Ship Desk backup` right away, a minute after each start, and every hour while it
-runs. OneDrive puts that copy in your Microsoft account, so it survives a broken drive (it does hold buyers' names,
-addresses and photos). The line next to it shows the last backup; **Back up now** and **Open the backup folder** are
-there too.
+On the **History** page, tick **Back up the Saved folder every hour to** and pick **Dropbox** or **OneDrive**. Ship Desk
+then copies everything new or changed in `Saved` to `Dropbox\Ship Desk backup` (or `OneDrive\Ship Desk backup`) right
+away, a minute after each start, and every hour while it runs. Dropbox / OneDrive puts that copy in your account
+online, so it survives a broken drive (it does hold buyers' names, addresses and photos). The line next to it shows the
+last backup; **Back up now** and **Open the backup folder** are there too. Picking the other place backs up there from
+then on; the old place keeps what it has until you delete it.
 - Nothing is ever deleted from the backup: a file you delete in `Saved` stays in OneDrive.
 - Left out: the phone's pairing code (the phone's key stays on this PC), Ship Desk's log, half-written files.
 - Getting files back: open the backup folder and copy what you need into `Saved`.

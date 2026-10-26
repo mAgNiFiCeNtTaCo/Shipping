@@ -418,6 +418,31 @@
       "lessons": [
         "tailscale serve listens on the same port number on the tailnet addresses: check 127.0.0.1 when waiting for the local server to stop."
       ]
+    },
+    {
+      "title": "Backup moved to Dropbox",
+      "date": "2026-10-26",
+      "summary": "The same session made the backup place a choice (Dropbox or OneDrive), moved it to Dropbox at the user's request, checked the copy and deleted the OneDrive one; 165 tests.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "eb1b9c80",
+              "role": "Builder",
+              "start": "2026-10-25T23:27",
+              "end": "2026-10-25T23:42",
+              "did": "Dropbox/OneDrive place setting + menu, one-step switch, restart, first Dropbox backup (218 files), old OneDrive copy deleted",
+              "outcome": "done",
+              "files": 8
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "A test wait helper that treats any truthy value as done returns at once for an async check (a promise): poll with await."
+      ]
     }
   ]
 }

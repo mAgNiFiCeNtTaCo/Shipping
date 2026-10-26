@@ -302,7 +302,9 @@
       </div>
     </div>
     <div id="backup-row" class="backup-row small" hidden>
-      <label class="check"><input type="checkbox" id="backup-on"> Back up the <code>Saved</code> folder to OneDrive every hour</label>
+      <label class="check"><input type="checkbox" id="backup-on"> Back up the <code>Saved</code> folder every hour to</label>
+      <label class="sr" for="backup-to">Where the backup goes</label>
+      <select id="backup-to"><option value="dropbox">Dropbox</option><option value="onedrive">OneDrive</option></select>
       <span id="backup-text" class="muted" aria-live="polite"></span>
       <button type="button" id="btn-backup-now" class="link">Back up now</button>
       <button type="button" id="btn-backup-open" class="link">Open the backup folder</button>
