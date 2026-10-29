@@ -7,14 +7,14 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-10-29)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.2** (built 2026-10-29, not published yet; 1.1.1 published 2026-10-26), Windows installer for other people:
+- **Version 1.1.3** (built 2026-10-29, not published yet; 1.1.1 published 2026-10-26), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1 = latest). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **188 passed, 0 failed** (2026-10-29: 181 in the browser + 7 server checks);
+- Tests: `python tools/test.py` = **189 passed, 0 failed** (2026-10-29: 182 in the browser + 7 server checks);
   `tools/test_installer.py` 17 checks.
 - TCGplayer's own Order List export dropped on the page is checked against Ship Desk (forgotten uploads go back in the
   import file, missed and canceled orders listed); History has a "Not sent to TCGplayer yet" filter.
@@ -44,6 +44,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   fallback missed a barcode with dark print in front of it on the same line). Its test failed on main without the
   fix and passes with it; and the README tip on holding the phone. The branch is recorded as merged (`-s ours`:
   nothing else of it taken). Phone page cache `shipdesk-phone-v13`.
+- **Installer 1.1.3** built and tested (over 1.1.2: 15 checks; `tools/test_installer.py` now expects a 1.1.2+ files folder
+  with its marker to be deleted on uninstall). 1.1.2 was never published: publish 1.1.3 instead
+  (`gh release create v1.1.3 "dist/ShipDesk-Setup-1.1.3.exe" --title "Ship Desk 1.1.3" --notes-file "dist/release-notes-1.1.3.md" --target main`).
+  Tests: 189 passed.
 ### 2026-10-29: security fixes, TCGplayer Order List check, "Not sent" filter, tracked envelopes + USPS barcode; 1.1.2
 - **Security audit (2026-10-26, report `Security_Agent_Audit\reports\2026-10-26-Shipping.md`):** no critical/high/
   medium; 3 low + 2 info, all fixed now with the user's OK (2026-10-29):

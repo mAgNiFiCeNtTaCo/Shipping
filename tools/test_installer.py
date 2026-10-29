@@ -110,11 +110,14 @@ def main():
         out = subprocess.run([py, os.path.join(app, "serve.py"), "--stop", "--port", str(PORT)], capture_output=True, text=True, timeout=60).stdout
         check("is off" in out, "its --stop turns it off")
         proc.wait(10)
+        marked = os.path.isfile(os.path.join(data, "Ship Desk files.txt"))  # 1.1.2+ mark their own files folder
         check(subprocess.run([os.path.join(app, "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DELETEFILES=1"], timeout=300).returncode == 0, "uninstalls (deleting the files it made)")
         time.sleep(2)
         check(not os.path.exists(os.path.join(app, "serve.py")), "program files removed")
-        if a.upgrade_from:
+        if a.upgrade_from and not marked:
             check(os.path.isfile(os.path.join(data, "Labels", "Kept.pdf")), "an older version's folder without the marker file is left alone")
+        elif a.upgrade_from:
+            check(not os.path.exists(data), "its own (marked) files folder is deleted")
         else:
             check(not os.path.exists(data), "its own files folder is deleted")
             check(os.path.isfile(os.path.join(os.path.dirname(data), "Photos", "mine.txt")), "the person's own Photos folder is untouched")
