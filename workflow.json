@@ -676,6 +676,54 @@
           ]
         }
       ]
+    },
+    {
+      "title": "Security fixes, Order List check, tracked envelopes + USPS barcode; 1.1.2",
+      "date": "2026-10-29",
+      "summary": "A security-auditor subagent checked the 1.1 additions (3 low, 2 info); this session added the TCGplayer Order List check and the History 'Not sent' filter, fixed every audit finding, and prepared TCGplayer's tracked envelopes (plan tag, USPS IMb read from the slip and printed on Ship Desk's label).",
+      "stages": [
+        {
+          "name": "Audit",
+          "kind": "review",
+          "note": "subagent of af0659e3, read-only on the project",
+          "sessions": [
+            {
+              "id": "aaebee0f",
+              "role": "Security auditor",
+              "start": "2026-10-26T16:30",
+              "end": "2026-10-26T16:48",
+              "did": "Full audit of the 1.1 additions: 129/129 attack requests refused; uninstall DelTree, OneDrive default folder, loose Tailscale signer check (low), Python 3.14.7, ts.net name in CT logs (info)",
+              "outcome": "done",
+              "files": 0
+            }
+          ]
+        },
+        {
+          "name": "Build",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "af0659e3",
+              "role": "Builder",
+              "start": "2026-10-26T16:27",
+              "end": "2026-10-29T01:50",
+              "did": "orderlist.js + applyOrderList, notsent filter, all audit fixes (installer marker/own folder, signer fields, Python 3.14.10), tracked-envelope plan setting, imb.js (USPS IMb encode/decode/find), barcode on labels; 188 tests",
+              "outcome": "done",
+              "files": 23
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "at": "2026-10-27T00:00",
+          "text": "Context paused 2026-10-26 to 2026-10-29; TCGplayer announced tracked envelopes 2026-10-27"
+        }
+      ],
+      "lessons": [
+        "Bash heredocs turned \\n in JS test strings into real line breaks again: patch scripts go through the Write tool.",
+        "A barcode check that needed half a bar's height to overlap failed on label renders by one pixel: 0.3 is safe."
+      ]
     }
   ]
 }

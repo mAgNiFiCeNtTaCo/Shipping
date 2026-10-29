@@ -3,7 +3,7 @@ import { ok, eq } from "./runner.js";
 import { parseCsv } from "../js/csv.js";
 import { KEYS, load, remove } from "../js/store.js";
 import { historyKey, recordPrinted, recordShipped, historyCounts, historyList, historyCsv, trackingUrl,
-  HISTORY_CSV_HEADER, MAX_RECORDS } from "../js/history.js";
+  HISTORY_CSV_HEADER, MAX_RECORDS, HISTORY_FILTERS } from "../js/history.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(fn, what, ms = 8000) {
@@ -57,13 +57,28 @@ const tests = {
     recordPrinted(h, [order("C-2", { name: "Zed Quill", city: "Boston" })], { when: "2026-10-19 09:00" });
     recordPrinted(h, [order("C-3")], { when: "2026-10-20 09:00" });
     recordShipped(h, order("C-1"), { tracking: "1Z999AA10123456784", carrier: "UPS", shipped: true }, { when: "2026-10-21 09:00" });
-    eq(historyCounts(h), { all: 3, printed: 3, waiting: 2, shipped: 1 });
+    eq(historyCounts(h), { all: 3, printed: 3, waiting: 2, shipped: 1, notsent: 1 });
     eq(historyList(h).map((r) => r.id), ["C-1", "C-3", "C-2"], "C-1 shipped last, so newest");
     eq(historyList(h, { filter: "shipped" }).map((r) => r.id), ["C-1"]);
     eq(historyList(h, { filter: "waiting" }).map((r) => r.id), ["C-3", "C-2"]);
     eq(historyList(h, { search: "quill" }).map((r) => r.id), ["C-2"]);
     eq(historyList(h, { search: "boston" }).map((r) => r.id), ["C-2"]);
     eq(historyList(h, { search: "1z999" }).map((r) => r.id), ["C-1"]);
+  },
+  "Not sent to TCGplayer yet: shipped orders with no import file, or still Ready to Ship on TCGplayer's list": async () => {
+    const h = {};
+    const ship = (id, when, extra = {}) => { recordShipped(h, order(id), { shipped: true }, { when }); Object.assign(h[id], extra); };
+    ship("N-1", "2026-10-24 09:00"); // before this browser's first import file: sent some other way
+    ship("N-2", "2026-10-25 09:00", { sentAt: "2026-10-25 10:00" });
+    ship("N-3", "2026-10-25 12:00"); // waiting
+    ship("N-4", "2026-10-25 12:00", { tcg: { status: "shipped", text: "Shipped - In Transit", at: "2026-10-26 00:08" } });
+    ship("N-5", "2026-10-23 12:00", { sentAt: "2026-10-25 10:00", tcg: { status: "open", text: "Ready to Ship", at: "2026-10-26 00:08" } });
+    ship("N-6", "2026-10-25 12:00", { sentAt: "2026-10-26 00:08", tcg: { status: "open", text: "Ready to Ship", at: "2026-10-26 00:08" } }); // sent the same minute
+    recordPrinted(h, [order("N-7")], { when: "2026-10-25 12:00" }); // not shipped
+    recordShipped(h, { name: "Pat Mailer", tracking: "9400111899223344550099" }, { tracking: "9400111899223344550099", shipped: true }, { source: "mailer", when: "2026-10-25 12:00" });
+    ok(HISTORY_FILTERS.some((f) => f.id === "notsent" && /Not sent to TCGplayer/.test(f.label)), "filter offered");
+    eq(historyList(h, { filter: "notsent" }).map((r) => r.id).sort(), ["N-3", "N-5"], "N-5: the list said Ready to Ship after its import file");
+    eq(historyCounts(h).notsent, 2);
   },
   "history CSV has a header row and one row per record": async () => {
     const h = {};

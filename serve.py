@@ -75,7 +75,7 @@ import time
 import urllib.parse
 import webbrowser
 
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "app")
 
@@ -435,21 +435,46 @@ def tailscale_with_link(args, wait=15, keep=False):
 
 # Setting Tailscale up on a new PC: its own installer, downloaded from Tailscale and checked to be signed by them.
 TAILSCALE_SETUP_URL = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
-TAILSCALE_SIGNER = "O=Tailscale Inc."
+# Tailscale's code-signing certificate, field by field (an EV certificate: SERIALNUMBER is their company number, which
+# stays the same when the certificate is renewed). Every field must match exactly (security audit 2026-10-26).
+TAILSCALE_SIGNER = {"O": "Tailscale Inc.", "C": "CA", "SERIALNUMBER": "1131559-5"}
+POWERSHELL = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 ts_setup = {"state": "", "error": ""}  # state: "" | downloading | started | failed
 
 
-def signed_by(path, org):
-    """Is this file's Windows signature valid and from org? (PowerShell's Get-AuthenticodeSignature)"""
+def subject_fields(subject):
+    """'CN=Tailscale Inc., O=Tailscale Inc., C=CA' -> {"CN": "Tailscale Inc.", "O": "Tailscale Inc.", "C": "CA"}
+    (quoted values like O="DigiCert, Inc." keep their comma; a field named twice -> None, so it can't be smuggled in)."""
+    out = {}
+    for m in re.finditer(r'\s*([A-Za-z0-9.]+)=("(?:[^"]|"")*"|[^,]*)(?:,|$)', subject or ""):
+        key, value = m.group(1).upper(), m.group(2).strip()
+        if value.startswith('"') and value.endswith('"') and len(value) >= 2:
+            value = value[1:-1].replace('""', '"')
+        if key in out:
+            return None
+        out[key] = value
+    return out
+
+
+def signed_by(path, want):
+    """Is this file's Windows signature valid, from a certificate whose subject has exactly these fields (want)?
+    (PowerShell's Get-AuthenticodeSignature)"""
     cmd = ("$s = Get-AuthenticodeSignature -LiteralPath $env:SHIPDESK_CHECK; "
            "if ($s.Status -eq 'Valid') { $s.SignerCertificate.Subject }")
     try:
-        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True, text=True,
+        r = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True, text=True,
                            timeout=60, env={**os.environ, "SHIPDESK_CHECK": path},
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.SubprocessError):
         return False
-    return r.returncode == 0 and org in r.stdout
+    lines = [x for x in r.stdout.splitlines() if x.strip()]
+    return r.returncode == 0 and len(lines) == 1 and signer_matches(lines[0], want)
+
+
+def signer_matches(subject, want):
+    """Does a certificate subject have exactly these field values (and no field twice)?"""
+    fields = subject_fields(subject)
+    return bool(fields) and all(fields.get(k) == v for k, v in want.items())
 
 
 def install_tailscale():

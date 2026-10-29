@@ -237,6 +237,7 @@ details.sub > p { margin-top: 10px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-weight: 650; font-size: .8rem; white-space: nowrap; background: var(--chip-bg); color: var(--chip-fg); line-height: 1.5; }
 .chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dotc); flex: none; }
 .tag-envelope { --chip-bg: var(--t-env-bg); --chip-fg: var(--t-env-fg); --dotc: var(--t-env-dot); }
+.tag-tracked-envelope { --chip-bg: var(--t-env-bg); --chip-fg: var(--t-env-fg); --dotc: var(--t-req-dot); }
 .tag-tracking-recommended { --chip-bg: var(--t-rec-bg); --chip-fg: var(--t-rec-fg); --dotc: var(--t-rec-dot); }
 .tag-tracking-required { --chip-bg: var(--t-req-bg); --chip-fg: var(--t-req-fg); --dotc: var(--t-req-dot); }
 .tag-signature { --chip-bg: var(--t-sig-bg); --chip-fg: var(--t-sig-fg); --dotc: var(--t-sig-dot); }
@@ -397,6 +398,7 @@ table.orders { width: 100%; border-collapse: collapse; font-size: .93rem; }
 
 /* already sent to TCGplayer */
 .sent { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-line); font-weight: 600; white-space: nowrap; }
+.tcg-open { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-line); font-weight: 600; white-space: nowrap; }
 .ship-sent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 10px 0 0; color: var(--muted); }
 
 /* Ship Desk on/off */

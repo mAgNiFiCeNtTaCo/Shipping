@@ -4,17 +4,23 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-10-26)
+## Where it stands (2026-10-29)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.1** (built and published 2026-10-26), Windows installer for other people:
+- **Version 1.1.2** (built 2026-10-29, not published yet; 1.1.1 published 2026-10-26), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1 = latest). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **173 passed, 0 failed** (2026-10-26); `tools/test_installer.py` 14 checks.
+- Tests: `python tools/test.py` = **188 passed, 0 failed** (2026-10-29: 181 in the browser + 7 server checks);
+  `tools/test_installer.py` 17 checks.
+- TCGplayer's own Order List export dropped on the page is checked against Ship Desk (forgotten uploads go back in the
+  import file, missed and canceled orders listed); History has a "Not sent to TCGplayer yet" filter.
+- Ready for TCGplayer's free tracked envelopes (sellers get them 2026-11-02..06): plan setting + "Tracked envelope
+  (free)" tag, and the USPS barcode (IMb) read off TCGplayer's tracked slip PDF and printed under the address on Ship
+  Desk's own label. Waiting for a real tracked slip to confirm.
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -30,6 +36,55 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-29: security fixes, TCGplayer Order List check, "Not sent" filter, tracked envelopes + USPS barcode; 1.1.2
+- **Security audit (2026-10-26, report `Security_Agent_Audit\reports\2026-10-26-Shipping.md`):** no critical/high/
+  medium; 3 low + 2 info, all fixed now with the user's OK (2026-10-29):
+  - SHIP-20261026-02 uninstall could delete a person's own Photos/History/... folders in a shared files folder:
+    setup now uses `<folder>\Ship Desk` when the chosen folder isn't empty (`UsableDataDir`, also for silent installs
+    at ssInstall), writes a marker `Ship Desk files.txt`, and uninstall deletes only where the marker is
+    (`/DELETEFILES=1` for silent tests). An older version's folder without the marker is never deleted.
+  - SHIP-20261026-01 default files folder inside OneDrive: default is `{localappdata}\Ship Desk` when Documents is
+    in OneDrive; a OneDrive/Dropbox folder gets a warning on the folder page.
+  - SHIP-20261026-03 Tailscale download check matched any signer name containing "O=Tailscale Inc.": serve.py now
+    parses the certificate subject and needs O=Tailscale Inc., C=CA, SERIALNUMBER=1131559-5 exactly (checked on this
+    PC's real tailscale.exe: accepted; explorer.exe and look-alike names: refused); PowerShell by full path. New
+    "server" checks in tools/test.py (7).
+  - SHIP-20261026-04 Python in the installer 3.14.7 -> **3.14.10** (newest 3.14.x on 2026-10-29, SHA-256 from
+    python.org's API). SHIP-20261026-05: README says Tailscale's secure addresses make the PC's name public.
+- **TCGplayer Order List check** (`app/js/orderlist.js`, app.js `applyOrderList`): drop `TCGplayer_OrderList_*.csv`
+  and Ship Desk lists orders shipped here but still "Ready to Ship" there (they go back in the next import file, past
+  the 14-day cutoff), "Ready to Ship" there but not shipped here (labels made or not; a scanned mailer to the same
+  buyer is pointed out), canceled there but labelled here, and shipped there but never in an import file (left out
+  from now on, chip "Shipped on TCGplayer"). History records keep `tcg: { status, text, at }`; the time comes from
+  the file name, and an import file made in the same minute or later wins over the list.
+- **History filter "Not sent to TCGplayer yet"** (history.js `notSentYet`): shipped TCGplayer orders TCGplayer
+  doesn't know about yet (never in an import file since the first one, or still Ready to Ship on the last list).
+- **TCGplayer tracked envelopes** (announced 2026-10-27: a free USPS Intelligent Mail barcode on TCGplayer's packing
+  slip for orders up to $49.99 to verified US addresses, own stamps, meant for a single-window envelope; sellers get
+  it 2026-11-02..06 in the new Orders page). The user's only printer is a KNAON Y813BT thermal label printer (4 in
+  wide, no plain paper), so a letter-size slip can't be printed here, and their return address must stay on the
+  envelope. Decided: prepare both ways, choose when a real tracked slip arrives.
+  - Plan setting **"I use TCGplayer's free tracked envelopes"** (off by default): letter-size orders under $49.99
+    (not paid faster shipping) get **Tracked envelope (free)**, count as stamped envelopes and leave the Pirate Ship file.
+  - `app/js/imb.js`: USPS-B-3200 IMb encoder/decoder (tables built per its Appendix C, bar map from Appendix D /
+    zint, BSD-3), checked against USPS's own Figure 5 example; reads it back upside down; finds the barcode in a
+    page picture at any quarter turn. slips.js reads it from TCGplayer's slip PDF (300 dpi) when the setting is on,
+    and render.js prints it under the buyer's address on 4x6 / 6x4 / letter / label+slip / #10 envelope labels
+    (Avery cells too small). Tests read every format back with pdf.js and decode the barcode.
+  - Still unknown (TCGplayer's help article is behind Cloudflare): the slip's layout and window position, how the
+    barcode is drawn in their PDF, and whether TCGplayer's protection counts with the barcode on our label instead
+    of the slip in a window. Next: the user saves one or two real tracked slips as PDF (Microsoft Print to PDF) when
+    they get the feature.
+- Writing check of the changed text (`/slop-check Shipping diff`, AI_SlopAgent report 2026-10-29-Shipping.md): clean.
+- Seen, not touched: another session's unmerged branch `worktree-faster-barcode-scan` (commit 34a0542, "Faster,
+  steadier tracking-barcode scanning on the phone": phone.js, phone tests, README, CLAUDE.md, sw.js). Merging it
+  will need the sw.js VERSION and doc lines joined with this save's.
+- Tests: `python tools/test.py` 188 passed, 0 failed.
+- **Installer 1.1.2** built (`dist\ShipDesk-Setup-1.1.2.exe`, 13.1 MB, Python 3.14.10): installer test passed both ways
+  (over 1.1.1: 15 checks; fresh into a folder with the person's own Photos folder: 14 checks, that folder untouched).
+  Not published yet: `gh release create v1.1.2 "dist/ShipDesk-Setup-1.1.2.exe" --title "Ship Desk 1.1.2" --notes-file "dist/release-notes-1.1.2.md" --target main`.
+- Resources 2026-10-29 01:49: Ship Desk 1 process, CPU 0%, RAM 31 MB, port 5091, disk 327 MB; whole PC CPU 12% of 32
+  threads, RAM 25.7 of 64 GB, GPU 20%.
 ### 2026-10-26: next steps agreed (before a context clear)
 - Agreed with the user, in this order: (1) a `/security-audit` of the 1.1 additions (Tailscale installer download +
   run, `/api/tailscale-*`, `/api/update` GitHub check, `--stop`, install.json / data folder, the import rows built from

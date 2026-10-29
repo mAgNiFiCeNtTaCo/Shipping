@@ -1,10 +1,12 @@
 // Data station tests: csv.js, plan.js, tracking.js, paste.js and the sample CSV.
-import { ok, eq, near } from "./runner.js";
+import { ok, eq, near, throws } from "./runner.js";
 import { parseCsv, HEADER_ALIASES, parseOrders, toCsv, normalizeZip } from "../js/csv.js";
 import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, letterPostage } from "../js/plan.js";
 import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv } from "../js/tracking.js";
 import { parseAddresses } from "../js/paste.js";
 import { readXlsx, readShipments, shipmentsFromCsv, matchShipments, nameKey, isoDate } from "../js/pirate.js";
+import { isOrderListHeader, orderListFromCsv, statusKind, listTime, compareOrderList } from "../js/orderlist.js";
+import { encodeImb, decodeImb, imbParts, findImb, IMB_SIZE } from "../js/imb.js";
 
 const TCG_HEADER = "Order #,FirstName,LastName,Address1,Address2,City,State,PostalCode,Country,Order Date,Product Weight,Shipping Method,Item Count,Value Of Products,Shipping Fee Paid,Tracking #,Carrier";
 const row = (id, first, last, value, more = {}) => {
@@ -23,6 +25,41 @@ const BARE = { ...DEFAULT_PLAN_SETTINGS, envelopeOz: 0, slipOz: 0, toploaderOz: 
 const sample = async () => (await fetch("../samples/tcgplayer-sample.csv")).text();
 
 export const tests = {
+  "TCGplayer's Order List is recognised, read and compared with what Ship Desk knows": async () => {
+    const head = "Order #,Buyer Name,Order Date,Status,Shipping Type,Product Amt,Shipping Amt,Total Amt,Buyer Paid,Carrier Information";
+    ok(isOrderListHeader(head.split(",")), "Order List");
+    ok(!isOrderListHeader("Order #,FirstName,LastName,Address1,City,State,PostalCode,Status".split(",")), "not the Export Shipping file");
+    ok(!isOrderListHeader("Created Date,Recipient,Tracking Number,Status".split(",")), "not Pirate Ship's");
+    eq(orderListFromCsv("Order #,FirstName\n1,A\n"), null);
+    eq(["Ready to Ship", "Shipped - In Transit", "Shipped - Delivered", "Canceled", "Pulling", ""].map(statusKind), ["open", "shipped", "shipped", "canceled", "open", ""]);
+    eq(listTime("TCGplayer_OrderList_20261026_000845.csv"), "2026-10-26 00:08");
+    eq(listTime("orders.csv"), "");
+    const rows = [
+      ["A-1", "Ann Lee", "Ready to Ship"], ["A-2", "Bo Kim", "Ready to Ship"], ["A-3", "Cy Park", "Ready to Ship"],
+      ["A-4", "Di Ng", "Shipped - In Transit"], ["A-5", "Ed Fox", "Shipped - Delivered"], ["A-6", "Flo Ray", "Canceled"],
+      ["A-7", "Gus Oak", "Ready to Ship"], ["A-8", "Zoë Quill", "Ready to Ship"], ["A-1", "Ann Lee", "Shipped - In Transit"],
+      ["__proto__", "Evil", "Ready to Ship"]];
+    const list = orderListFromCsv("\uFEFF" + head + "\r\n" + rows.map(([id, name, st]) => `${id},${name},"Saturday, 24 October 2026",${st},Standard,3.00,0.99,3.99,3.99,`).join("\r\n"));
+    eq(list.orders.length, 9, "one row per order (the first wins)");
+    eq(list.orders[0], { id: "A-1", name: "Ann Lee", date: "Saturday, 24 October 2026", status: "Ready to Ship", kind: "open" });
+    const rec = (id, extra) => ({ key: id, id, source: "csv", name: "", shipped: false, printCount: 0, ...extra });
+    const history = {
+      "A-1": rec("A-1", { shipped: true, shippedAt: "2026-10-25 15:00", sentAt: "2026-10-25 20:08" }),
+      "A-3": rec("A-3", { printCount: 1, lastPrintedAt: "2026-10-24 10:00" }),
+      "A-4": rec("A-4", { shipped: true, shippedAt: "2026-10-25 15:00" }),
+      "A-5": rec("A-5", { shipped: true, shippedAt: "2026-10-25 15:00", sentAt: "2026-10-25 20:08" }),
+      "A-6": rec("A-6", { printCount: 1 }),
+      "A-7": rec("A-7", { shipped: true, shippedAt: "2026-10-26 08:00", sentAt: "2026-10-26 09:00" }),
+      "mailer:9400111899223344550099": { key: "mailer:9400111899223344550099", id: "", source: "mailer", name: "Zoe Quill", shipped: true },
+    };
+    const c = compareOrderList(list, history, {}, "2026-10-26 00:08");
+    eq(c.forgotten.map((x) => [x.id, x.sentAt]), [["A-1", "2026-10-25 20:08"]], "A-7 was sent after the list was made");
+    eq(c.missed.map((x) => [x.id, x.label, x.mailer && x.mailer.name]), [["A-2", "", null], ["A-3", "2026-10-24 10:00", null], ["A-8", "", "Zoe Quill"], ["__proto__", "", null]]);
+    eq(c.canceled.map((x) => x.id), ["A-6"]);
+    eq(c.tcgShipped.map((x) => x.id), ["A-4"]);
+    // The shipped list counts too (an order ticked Shipped in step 4 before History has it).
+    eq(compareOrderList(list, {}, { "A-2": { shipped: true, at: "2026-10-25" } }, "2026-10-26 00:08").forgotten.map((x) => x.id), ["A-2"]);
+  },
   // ---------- parseCsv ----------
   "parseCsv: plain rows": async () => {
     eq(parseCsv("a,b,c\n1,2,3"), [["a", "b", "c"], ["1", "2", "3"]]);
@@ -217,12 +254,68 @@ export const tests = {
     eq(t.postage, 0.82); eq(t.stamps, 2);
   },
   "plan: defaults": async () => {
-    eq(DEFAULT_PLAN_SETTINGS, { cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4, rigid: true, slips: true, foreverValue: 0.82 });
+    eq(DEFAULT_PLAN_SETTINGS, { cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4, rigid: true, slips: true, foreverValue: 0.82, trackedEnvelopes: false });
+  },
+  "plan: TCGplayer's tracked envelopes (when switched on) take letter-size orders under $49.99": async () => {
+    const on = { ...DEFAULT_PLAN_SETTINGS, trackedEnvelopes: true };
+    const tag = (o, s) => planOrder(order(o), s).tag;
+    eq([5, 30, 49.98, 49.99, 300].map((value) => tag({ value }, on)), ["tracked-envelope", "tracked-envelope", "tracked-envelope", "tracking-required", "signature"]);
+    eq([5, 30].map((value) => tag({ value })), ["envelope", "tracking-recommended"], "off: as before");
+    eq(tag({ value: 30, shippingMethod: "Expedited Shipping (3-5 days)" }, on), "tracking-recommended", "paid for faster shipping: a tracked label");
+    eq(tag({ value: 10, itemCount: 80, weightOz: "" }, on), "envelope", "too heavy for a letter: not an envelope order");
+    const p = planOrder(order({ value: 30 }), on);
+    eq([p.label, p.tracked, p.stamps > 0], ["Tracked envelope (free)", false, true], "stamps, no tracked label to buy");
+    const os = [order({ id: "a", value: 5 }), order({ id: "b", value: 30 }), order({ id: "c", value: 60 })].map((o) => ({ ...o, plan: planOrder(o, on) }));
+    eq(filterOrders(os, "envelope").map((o) => o.id), ["a", "b"]);
+    eq(filterOrders(os, "tracked").map((o) => o.id), ["c"]);
+    eq(summarize(os, on).byTag["tracked-envelope"], 2);
+  },
+  "USPS IMb: USPS's own example, every ZIP length, read back upside down, a damaged bar refused": async () => {
+    // USPS-B-3200 Rev. H Figure 5.
+    const fig5 = "AADTFFDFTDADTAADAATFDTDDAAADDTDTTDAFADADDDTFFFDDTTTADFAAADFTDAADA";
+    eq(encodeImb("01234567094987654321", "01234567891"), fig5);
+    eq(decodeImb(fig5), { tracking: "01234567094987654321", routing: "01234567891" });
+    for (const t of ["01234567094987654321", "00040123456200800001", "44999999999999999999"]) {
+      for (const z of ["", "01234", "012345678", "99999999999"]) eq(decodeImb(encodeImb(t, z)), { tracking: t, routing: z }, `${t} ${z || "(no ZIP)"}`);
+    }
+    const upsideDown = [...fig5].reverse().map((c) => ({ A: "D", D: "A" })[c] || c).join("");
+    eq(decodeImb(upsideDown).tracking, "01234567094987654321");
+    eq(decodeImb(fig5.slice(0, 10) + (fig5[10] === "T" ? "F" : "T") + fig5.slice(11)), null, "one bar wrong");
+    eq(decodeImb(fig5.slice(1)), null, "64 bars");
+    await throws(() => encodeImb("123", ""), "too short");
+    await throws(() => encodeImb("05234567094987654321", ""), "second digit 5");
+    await throws(() => encodeImb("01234567094987654321", "1234"), "4-digit ZIP");
+    eq(imbParts("01234567094987654321"), { barcodeId: "01", serviceType: "234", mailerId: "567094", serial: "987654321" });
+    eq(imbParts("01234912345678654321").mailerId, "912345678", "a mailer ID starting with 9 is 9 digits");
+  },
+  "USPS IMb: found in a picture, also turned sideways, among other marks": async () => {
+    const dpi = 200, bars = encodeImb("01234567094987654321", "78701");
+    const draw = (turned) => {
+      const c = document.createElement("canvas");
+      c.width = turned ? 300 : 900; c.height = turned ? 900 : 300;
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      g.fillStyle = "#000";
+      g.font = "28px sans-serif"; g.fillText("Il1 | Order 1234", 20, 40); // thin upright marks that aren't bars
+      const s = IMB_SIZE, ext = (s.full - s.tracker) / 2;
+      [...bars].forEach((b, i) => {
+        const top = b === "F" || b === "A" ? 0 : ext, bottom = b === "F" || b === "D" ? s.full : ext + s.tracker;
+        const x = 100 + i * s.pitch * dpi, y = 150 + top * dpi, w = s.bar * dpi, h = (bottom - top) * dpi;
+        if (turned) g.fillRect(300 - y - h, x, h, w); // the picture turned a quarter clockwise: bars lie flat
+        else g.fillRect(x, y, w, h);
+      });
+      return g.getImageData(0, 0, c.width, c.height);
+    };
+    const upright = findImb(draw(false), dpi);
+    eq(upright.map((h) => h.imb), [{ tracking: "01234567094987654321", routing: "78701" }]);
+    eq(upright[0].bars, bars);
+    const turned = findImb(draw(true), dpi);
+    eq(turned.map((h) => h.imb.tracking), ["01234567094987654321"], "sideways");
   },
   "FILTERS + filterOrders keep file order": async () => {
     eq(FILTERS.map((f) => f.id), ["all", "envelope", "tracked", "unshipped"]);
     ok(FILTERS.every((f) => f.label), "labels");
-    eq(FILTERS[1].label, "Envelopes only (under $20)");
+    eq(FILTERS[1].label, "Envelopes only (stamps)");
     const os = [order({ id: "1", value: 5 }), order({ id: "2", value: 30 }), order({ id: "3", value: 2, shippingMethod: "Expedited" }),
       order({ id: "4", value: 300, tracking: "9400111111111111111111" }), order({ id: "5", value: 1 }), order({ id: "6", value: 60 })];
     const ids = (f, st) => filterOrders(os, f, st).map((o) => o.id);
@@ -239,11 +332,11 @@ export const tests = {
     const os = [order({ value: 5, weightOz: 0.06 }), order({ value: 25.5, weightOz: 0.06 }), order({ value: 300, weightOz: 10 }), order({ value: 60, weightOz: 0.06 })];
     const s = summarize(os, DEFAULT_PLAN_SETTINGS);
     eq(s.count, 4);
-    eq(s.byTag, { signature: 1, "tracking-required": 1, "tracking-recommended": 1, envelope: 1 });
+    eq(s.byTag, { signature: 1, "tracking-required": 1, "tracking-recommended": 1, "tracked-envelope": 0, envelope: 1 });
     near(s.totalValue, 390.5, 1e-9);
     near(s.totalPostage, 1.31 * 3, 1e-9);
     eq(s.totalStamps, 6);
-    eq(summarize([], undefined), { count: 0, byTag: { signature: 0, "tracking-required": 0, "tracking-recommended": 0, envelope: 0 }, totalValue: 0, totalPostage: 0, totalStamps: 0 });
+    eq(summarize([], undefined), { count: 0, byTag: { signature: 0, "tracking-required": 0, "tracking-recommended": 0, "tracked-envelope": 0, envelope: 0 }, totalValue: 0, totalPostage: 0, totalStamps: 0 });
   },
 
   // ---------- sample ----------

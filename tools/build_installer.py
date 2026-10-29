@@ -39,11 +39,12 @@ STAGE = os.path.join(BUILD, "stage")
 CACHE = os.path.join(BUILD, "cache")
 DIST = os.path.join(ROOT, "dist")
 
-PY_VERSION = "3.14.7"
+PY_VERSION = "3.14.10"
 PY_URL = f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-amd64.zip"
-# SHA-256 of that zip, as python.org lists it (api/v2/downloads/release_file, checked 2026-10-26); a different file
-# stops the build.
-PY_SHA256 = {"3.14.7": "d297e5ff019966817ad8502465176139f2d3d840fa4ed84b13bed399a6ab1f15"}
+# SHA-256 of that zip, as python.org lists it (api/v2/downloads/release_file, checked 2026-10-26 and 2026-10-29); a
+# different file stops the build. Use the newest 3.14.x (security audit 2026-10-26).
+PY_SHA256 = {"3.14.7": "d297e5ff019966817ad8502465176139f2d3d840fa4ed84b13bed399a6ab1f15",
+             "3.14.10": "90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159"}
 
 BUILDS = os.path.join(DIST, "builds.json")
 KEEP_DAYS = 31

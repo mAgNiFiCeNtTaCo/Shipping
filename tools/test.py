@@ -143,8 +143,32 @@ def free_port():
     return p
 
 
+def server_checks():
+    """Checks of serve.py itself that need no browser: -> lines like the page's ("ok   server > ...")."""
+    real = ("CN=Tailscale Inc., O=Tailscale Inc., L=Toronto, S=Ontario, C=CA, SERIALNUMBER=1131559-5, "
+            "OID.2.5.4.15=Private Organization, OID.1.3.6.1.4.1.311.60.2.1.3=CA")
+    want = serve.TAILSCALE_SIGNER
+    checks = {
+        "Tailscale's real certificate is accepted": serve.signer_matches(real, want),
+        "a name that only contains Tailscale's is refused": not serve.signer_matches("CN=Tailscale Inc. X, O=Tailscale Inc. X, C=CA, SERIALNUMBER=1131559-5", want),
+        "a shortened name is refused": not serve.signer_matches("CN=x, O=Tailscale, C=CA, SERIALNUMBER=1131559-5", want),
+        "another company number is refused": not serve.signer_matches("CN=Tailscale Inc., O=Tailscale Inc., C=CA, SERIALNUMBER=999", want),
+        "a field given twice is refused": not serve.signer_matches("O=Evil Ltd, O=Tailscale Inc., C=CA, SERIALNUMBER=1131559-5", want),
+        "quoted names keep their comma": serve.subject_fields('CN=DigiCert G4, O="DigiCert, Inc.", C=US') == {"CN": "DigiCert G4", "O": "DigiCert, Inc.", "C": "US"},
+        "PowerShell is called by its full path": os.path.isabs(serve.POWERSHELL),
+    }
+    return [f"{'ok  ' if good else 'FAIL'} server > signature check: {name}" for name, good in checks.items()]
+
+
 def main():
     suites = sys.argv[1:]
+    server = server_checks() if not suites or "server" in suites else []
+    suites = [s for s in suites if s != "server"]
+    if sys.argv[1:] == ["server"]:
+        print("\n".join(server))
+        failed = sum(1 for x in server if x.startswith("FAIL"))
+        print(f"RESULT: {len(server) - failed} passed, {failed} failed")
+        return 1 if failed else 0
     edge = next((p for p in EDGE_PATHS if os.path.exists(p)), None)
     if not edge:
         print("Microsoft Edge not found")
@@ -171,10 +195,12 @@ def main():
         shutil.rmtree(profile, ignore_errors=True)
         shutil.rmtree(Handler.save_root, ignore_errors=True)
         shutil.rmtree(Handler.backup_root, ignore_errors=True)
-    for line in result.get("lines", []):
+    for line in result.get("lines", []) + server:
         print(line)
-    print(f"RESULT: {result.get('passed', 0)} passed, {result.get('failed', 0)} failed")
-    return 0 if result.get("failed", 1) == 0 and result.get("passed", 0) > 0 else 1
+    bad = sum(1 for x in server if x.startswith("FAIL"))
+    passed, failed = result.get("passed", 0) + len(server) - bad, result.get("failed", 1) + bad
+    print(f"RESULT: {passed} passed, {failed} failed")
+    return 0 if failed == 0 and result.get("passed", 0) > 0 else 1
 
 
 if __name__ == "__main__":

@@ -104,7 +104,8 @@ const findHeader = (headers, key) => {
  *   already: [orderId] }
  * TCGplayer "Import Shipping Info" file: original columns and order, one row per shipped/tracked order. `what` is
  * the tracking number sent, or "Shipped". With skipSent, orders whose shippedState entry says they were already
- * sent with the same `what` (entry.sent = { at, what }) are left out and listed in `already`.
+ * sent with the same `what` (entry.sent = { at, what }), or that TCGplayer already shows shipped (entry.sent.tcg), are
+ * left out and listed in `already`.
  */
 export function importFileCsv(orders, shippedState, { skipSent = false } = {}) {
   const state = shippedState || {};
@@ -121,7 +122,7 @@ export function importFileCsv(orders, shippedState, { skipSent = false } = {}) {
     const tracking = compact(st.tracking || o.tracking);
     if (!tracking && !st.shipped) continue;
     const what = tracking || "Shipped";
-    if (skipSent && st.sent && st.sent.what === what) { already.push(o.id); continue; }
+    if (skipSent && st.sent && (st.sent.what === what || st.sent.tcg)) { already.push(o.id); continue; }
     included.push({ id: o.id, what });
     const row = { ...o.row };
     if (tracking) {

@@ -15,7 +15,9 @@ this PC.
 for your Windows user only (no administrator needed) and brings everything it needs, its own Python included.
 Setup asks:
 - **where Ship Desk keeps your files** (labels, packing slips, import files, phone photos): `Documents\Ship Desk`
-  unless you pick another folder;
+  unless you pick another folder. If OneDrive backs up your Documents, it suggests a folder OneDrive doesn't copy, and
+  it warns you if you pick a OneDrive or Dropbox folder (labels hold buyers' addresses). A folder that already has
+  other things in it gets a `Ship Desk` folder of its own inside it;
 - whether to put an icon on the desktop, and whether Ship Desk should **start in the background when you sign in
   to Windows** (you can change that later at the top of the Ship Desk page);
 - whether to **set up phone photos** straight away (Ship Desk then opens on its phone setup, which installs Tailscale
@@ -29,7 +31,8 @@ puts it away and **Setup checklist** at the top brings it back. The Start menu a
 **Ship Desk files** (the folder with everything it made) and this guide. Windows may warn that the installer is from
 an unknown publisher (it isn't signed): click **More info → Run anyway** if you trust where you got it.
 To remove it: **Settings → Apps → Installed apps → Ship Desk → Uninstall**; it asks whether to delete the files it
-made too (No keeps them).
+made too (No keeps them). It only offers that for Ship Desk's own files folder (the one with `Ship Desk files.txt` in
+it), so folders of yours are never deleted.
 
 **From the source folder** (the GitHub copy): double-click **`Start Ship Desk.bat`** (it needs Python 3), and
 **`Stop Ship Desk.bat`** to turn it off. Files then go to the `Saved` folder next to it.
@@ -45,6 +48,8 @@ files folder; a problem that stops it from starting also pops up. No internet ne
 2. **Drop the CSV onto Ship Desk** (anywhere on the page), or click the drop box to pick it. Your orders appear in a
    table with a coloured tag for each one:
    - **Envelope OK**: under $20, a stamped envelope is fine.
+   - **Tracked envelope (free)**: under $49.99 and fits a letter, when TCGplayer's tracked envelopes are switched
+     on (see "TCGplayer tracked envelopes" below).
    - **Tracking recommended**: $20 or more, or the buyer paid for faster shipping.
    - **Tracking required**: $49.99 or more (TCGplayer's rule).
    - **Signature required**: $250 or more.
@@ -101,6 +106,25 @@ buyer's name and ZIP).
 **Weights and postage settings** (under the table in step 2) set the weight of a card, envelope, slip and
 toploader, how many cards go in one toploader, whether your envelopes are rigid (adds USPS's non-machinable charge) and the Forever stamp price.
 
+## TCGplayer tracked envelopes (from November 2026)
+
+TCGplayer is adding free tracking for envelope orders: for orders of $49.99 and below going to a checked US
+address, its packing slip carries a USPS barcode (an "Intelligent Mail barcode"). You still put on your own stamps.
+TCGplayer's way is a window envelope with the slip showing through the window. Sellers get it between
+2026-11-02 and 2026-11-06, in the new Orders page of the Seller Portal ("packing slip with tracking").
+
+- Tick **I use TCGplayer's free tracked envelopes** in **Weights and postage settings** once you have it. Orders
+  under $49.99 that fit a letter then show **Tracked envelope (free)** instead of "Envelope OK" or "Tracking
+  recommended". They count as envelopes with stamps, and they no longer go in the Pirate Ship file. An order whose
+  buyer paid for faster shipping still gets a tracked label.
+- **The barcode on Ship Desk's own label:** add TCGplayer's tracked packing-slip PDF in step 3 (as for your own
+  packing slips). Ship Desk finds the barcode on each order's slip and prints it under the buyer's address on that
+  order's label (4x6, 6x4, letter paper and #10 envelope; Avery cells are too small). Then the label keeps your
+  return address and goes on a plain envelope as now, with no window envelope.
+- Still to check on TCGplayer's first real tracked slip: where the barcode sits on it (Ship Desk looks for it
+  anywhere on the page, any way up) and whether TCGplayer's protection counts when the barcode is on the label
+  rather than on the slip in the window. Until then, TCGplayer's own way (the slip in a window envelope) is the sure one.
+
 ## Tracking and Pirate Ship
 
 - In **Mark shipped**, paste one tracking number per line. Either just the numbers, in the same order as your
@@ -127,6 +151,18 @@ toploader, how many cards go in one toploader, whether your envelopes are rigid 
   (it marks them in History). The **Transactions** export is the money list and has no tracking numbers.
 - Ship Desk remembers what you marked shipped, so if you drop the same file again those orders aren't ticked
   for printing. **Clear shipped history** forgets it.
+- **Check against TCGplayer:** drop TCGplayer's order list (the export from the Seller Portal's Orders page, a file
+  named `TCGplayer_OrderList_<date>_<time>.csv`) anywhere on Ship Desk. It compares what TCGplayer shows with what
+  you did here and lists:
+  - orders you shipped that are still **"Ready to Ship" on TCGplayer** (an import file not made or not uploaded):
+    they go back in the next import file, also when they were in an earlier one;
+  - orders "Ready to Ship" on TCGplayer that **aren't shipped in Ship Desk** (labels made or not; if a scanned mailer
+    went to the same buyer it says so, so you can type the order # on it in History);
+  - orders **canceled** on TCGplayer that you made labels for or shipped: don't send them;
+  - orders TCGplayer **already shows shipped** (for example labels bought in Pirate Ship): they stay out of the import
+    file and show "Shipped on TCGplayer".
+  The time in the file name counts: an import file made after the list was exported is newer news than the list.
+  Your loaded orders stay as they are.
 
 ## Turning Ship Desk off and on
 
@@ -196,7 +232,7 @@ Click **History** at the top to see every order you made labels for or marked sh
   buyer, city, value, plan, and whether it shipped (date, tracking number, a "Track on USPS/UPS" link).
 - You can tick **Shipped** or type a tracking number right there, even days later without the file: a TCGplayer
   order then also counts as shipped in step 4, so it goes in the import file next time you load its CSV.
-- Buttons: **All / Labels made, not shipped / Shipped**, a search box (order #, buyer, city or tracking),
+- Buttons: **All / Labels made, not shipped / Shipped / Not sent to TCGplayer yet**, a search box (order #, buyer, city or tracking),
   **Download history (CSV)** for Excel or Google Sheets, **Remove** on a row, and **Clear history**.
 - **A copy on this PC:** History is also saved in `Saved\History\ship-desk-history.json` after every change, plus one
   dated copy per day (last 30) in `Saved\History\Backups`. If the browser loses its History (cleared browsing data,
@@ -204,6 +240,10 @@ Click **History** at the top to see every order you made labels for or marked sh
   (it also brings back which orders were shipped) or **Keep this browser's History**. A browser that lost its
   History never overwrites the saved copy before you choose.
 - **Sent to TCGplayer:** orders in an import file are marked "Sent to TCGplayer <date>" in step 4 and History.
+  **Not sent to TCGplayer yet** shows the TCGplayer orders you shipped that TCGplayer doesn't know about yet: never
+  in an import file (orders shipped before Ship Desk's first import file count as handled), or still "Ready to Ship"
+  on the last TCGplayer order list you dropped. After an order list, rows also say "Shipped on TCGplayer", "Still
+  Ready to Ship on TCGplayer" or "Canceled on TCGplayer".
 - **Proof pack:** in an order's photos window, **Make proof pack (PDF)** makes one PDF for a claim or a buyer's
   question: page 1 has the order, where it went, when the label was made and it shipped, the tracking number
   (with a link to the tracking page), when it went to TCGplayer, and every photo small with its time; then each
@@ -226,7 +266,9 @@ itself as each is done:
    sign-in page.
 3. **Switch on phone access.** That gives the phone page an address only your own Tailscale devices can open. The
    first time, Tailscale may ask to switch on secure addresses (HTTPS) for your network: the window shows the link,
-   click Enable there, then Switch on again. The rest of Ship Desk stays on this PC.
+   click Enable there, then Switch on again. The rest of Ship Desk stays on this PC. Secure addresses put this PC's
+   Tailscale name (for example `my-pc.tail1234.ts.net`) in a public list of web certificates; nobody can open it
+   from outside your Tailscale devices, but a PC named after you shows your name there, so a plain PC name is better.
 4. **Set up the phone:** install the Tailscale app (iPhone or Android), sign in with the same account, then point
    the phone's **Camera** at the QR code and tap the link. On an iPhone tap **Share → Add to Home Screen** in Safari:
    next time it's one tap.

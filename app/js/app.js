@@ -4,14 +4,15 @@
 
 import { load, save, remove, KEYS } from "./store.js";
 import { parseOrders, splitName } from "./csv.js";
-import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS } from "./plan.js";
+import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS, isEnvelopeTag } from "./plan.js";
 import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv, TCG_HEADERS } from "./tracking.js";
 import { parseAddresses } from "./paste.js";
 import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText } from "./render.js";
 import { readSlipPdf, attachSlips } from "./slips.js";
 import { readXlsx, isShipmentsHeader, readShipments, shipmentsFromCsv, matchShipments, isoDate } from "./pirate.js";
 import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
-  trackingUrl, formatName, historyKey, recordSeen, stamp } from "./history.js";
+  trackingUrl, formatName, historyKey, recordSeen, stamp, tcgSays, firstSentAt } from "./history.js";
+import { orderListFromCsv, compareOrderList, listTime } from "./orderlist.js";
 
 // ---------- small helpers ----------
 
@@ -395,8 +396,10 @@ async function handleFiles(files) {
       let text = "";
       try { text = await f.text(); } catch { showMsg($("#load-msg"), "error", `${f.name} couldn't be read.`); return; }
       const shipments = text.startsWith("%PDF") ? null : shipmentsFromCsv(text);
+      const orderList = text.startsWith("%PDF") || shipments ? null : orderListFromCsv(text);
       if (text.startsWith("%PDF")) pdfs.push(f);
       else if (shipments) applyShipments(shipments, f.name);
+      else if (orderList) applyOrderList(orderList, f.name, f.lastModified);
       else { const res = loadCsvText(text, f.name); if (res.orders.length && !pdfs.length) jumpTo("#step2"); }
     }
   }
@@ -482,6 +485,49 @@ export function applyShipments(res, fileName = "the Pirate Ship file") {
   return m;
 }
 
+// ---------- TCGplayer's Order List ----------
+
+/**
+ * TCGplayer's Order List export (what TCGplayer itself shows for each order, orderlist.js): noted on History's records
+ * (record.tcg), so orders TCGplayer already shows shipped stay out of the import file and shipped orders it still has
+ * as Ready to Ship go back in; then says what doesn't match. modified = the file's time when its name has none.
+ */
+export function applyOrderList(list, fileName = "TCGplayer's order list", modified = 0) {
+  const box = $("#load-msg");
+  if (!list || !list.orders.length) { showMsg(box, "warn", `${fileName} has no orders.`); return null; }
+  const at = listTime(fileName) || stamp(modified ? new Date(modified) : new Date());
+  const c = compareOrderList(list, state.history, state.shipped, at);
+  let noted = 0;
+  for (const o of list.orders) {
+    const r = own(state.history, o.id);
+    if (!r || !o.kind || (r.tcg && String(r.tcg.at || "") > at)) continue; // a newer list already said
+    r.tcg = { status: o.kind, text: o.status, at };
+    noted++;
+  }
+  if (noted) saveHistory();
+  const day = (s) => String(s || "").slice(5, 10);
+  const list12 = (items, text) => (items.length ? el("ul", { class: "plain" }, items.slice(0, 12).map((x) => el("li", { text: text(x) })),
+    items.length > 12 ? el("li", { text: `…and ${items.length - 12} more.` }) : null) : null);
+  const n = (items, one, many) => plural(items.length, one, many);
+  const issues = c.forgotten.length + c.missed.length + c.canceled.length;
+  const lines = [
+    c.forgotten.length ? `${n(c.forgotten, "order you shipped is", "orders you shipped are")} still “Ready to Ship” on TCGplayer:` : null,
+    list12(c.forgotten, (x) => `${x.id} (${x.name}): shipped ${day(x.shippedAt) || "here"}, ${x.sentAt ? `in the import file of ${x.sentAt}: was it uploaded?` : "not in an import file yet"}`),
+    c.forgotten.length ? "They go in the next import file: make it in step 4 and upload it in the Seller Portal (Orders → Import Shipping Info)." : null,
+    c.missed.length ? `${n(c.missed, "order is", "orders are")} “Ready to Ship” on TCGplayer and not shipped in Ship Desk:` : null,
+    list12(c.missed, (x) => `${x.id} (${x.name}): ${x.label ? `labels made ${day(x.label)}` : "no labels made here"}`
+      + (x.mailer ? `; a mailer to ${x.mailer.name} was scanned: if it's this order, type ${x.id} on it in History` : "")),
+    c.canceled.length ? `Canceled on TCGplayer, don't ship ${c.canceled.length === 1 ? "it" : "them"}:` : null,
+    list12(c.canceled, (x) => `${x.id} (${x.name})`),
+    c.tcgShipped.length ? `${n(c.tcgShipped, "shipped order", "shipped orders")} TCGplayer already shows as shipped: left out of the import file.` : null,
+    `Checked ${plural(list.orders.length, "order")} from TCGplayer's list of ${at}.`,
+  ];
+  showMsg(box, issues ? "warn" : "ok", issues ? `TCGplayer's order list: ${plural(issues, "order")} to look at.` : "TCGplayer's order list matches Ship Desk.", lines);
+  renderAll();
+  jumpTo("#load-msg");
+  return c;
+}
+
 // ---------- packing slips ----------
 
 async function loadSlipFile(file) {
@@ -494,13 +540,15 @@ async function loadSlipFile(file) {
   showMsg(box, "info", `Reading ${file.name}…`);
   try {
     const buf = await file.arrayBuffer();
-    const res = await readSlipPdf(buf, state.orders.map((o) => o.id));
+    const res = await readSlipPdf(buf, state.orders.map((o) => o.id), { imb: !!planSettings().trackedEnvelopes });
     attachSlips(state.orders, res.byOrder || {});
     state.slips = { byOrder: res.byOrder || {}, unmatchedPages: res.unmatchedPages || [], fileName: file.name };
     const matched = state.orders.filter((o) => state.slips.byOrder[o.id]).length;
     const lines = [];
     if (state.slips.unmatchedPages.length) lines.push(`${plural(state.slips.unmatchedPages.length, "page")} didn't mention any of your orders (page ${state.slips.unmatchedPages.join(", ")}).`);
     if (matched < state.orders.length) lines.push(`No slip found for: ${state.orders.filter((o) => !state.slips.byOrder[o.id]).map((o) => o.id).join(", ")}.`);
+    const barcoded = state.orders.filter((o) => o.imb);
+    if (barcoded.length) lines.push(`${plural(barcoded.length, "slip has", "slips have")} TCGplayer's USPS tracking barcode: Ship Desk prints it under the address on ${barcoded.length === 1 ? "its label" : "their labels"} (4x6, letter and #10 envelope; not Avery).`);
     showMsg(box, matched ? (lines.length ? "warn" : "ok") : "error",
       matched ? `Found slips for ${matched} of ${plural(state.orders.length, "order")}.` : "None of the pages matched your orders.",
       matched ? lines : ["Check that the PDF is for the same orders as your CSV."]);
@@ -800,13 +848,16 @@ function rowFromHistory(r) {
 function historyOnlyOrders() {
   const loaded = new Set(fileOrders().map((o) => o.id));
   const recs = Object.values(state.history).filter((r) => r && typeof r === "object" && r.source === "csv" && safeKey(r.id));
-  const firstSent = recs.map((r) => r.sentAt).filter(Boolean).sort()[0] || "";
+  const firstSent = firstSentAt(state.history);
   const since = stamp(new Date(Date.now() - ROW_DAYS * 864e5));
   const rows = keptRows();
   const out = [];
   for (const r of recs) {
     const when = String(r.shippedAt || "");
-    if (loaded.has(r.id) || !r.shipped || when < since || (firstSent && when < firstSent)) continue;
+    if (loaded.has(r.id) || !r.shipped) continue;
+    // TCGplayer's Order List decides when there is one: shipped there = done; still Ready to Ship = goes in, however old.
+    const says = tcgSays(r);
+    if (says === "shipped" || says === "canceled" || (says !== "open" && (when < since || (firstSent && when < firstSent)))) continue;
     const kept = own(rows, r.id);
     out.push({ id: r.id, name: r.name, value: r.value, fromHistory: !kept, row: kept ? kept.row : rowFromHistory(r) });
   }
@@ -823,6 +874,10 @@ function importCandidates() {
     let entry = own(state.shipped, o.id);
     if (!entry && r && (r.shipped || r.tracking)) entry = { tracking: r.tracking || "", carrier: r.carrier || "", shipped: true };
     if (entry && !entry.sent && r && r.sentAt) entry = { ...entry, sent: { at: r.sentAt, what: entry.tracking || "Shipped" } };
+    // What TCGplayer's Order List said since: shipped there = nothing to send; still Ready to Ship = send it again.
+    const says = tcgSays(r);
+    if (entry && says === "open" && entry.sent && String(entry.sent.at) < String(r.tcg.at)) entry = { ...entry, sent: undefined };
+    if (entry && !entry.sent && says === "shipped") entry = { ...entry, sent: { at: r.tcg.at, what: "TCGplayer", tcg: true } };
     if (entry) shipped[o.id] = entry;
   }
   return { orders, extra, shipped };
@@ -946,8 +1001,8 @@ function renderTable() {
 function renderTotals(rows) {
   const s = planSettings();
   const sum = summarize(rows, s);
-  const env = summarize(rows.filter((o) => o.plan && o.plan.tag === "envelope"), s);
-  const tagNames = { envelope: "envelope OK", "tracking-recommended": "tracking recommended", "tracking-required": "tracking required", signature: "signature" };
+  const env = summarize(rows.filter((o) => o.plan && isEnvelopeTag(o.plan.tag)), s);
+  const tagNames = { envelope: "envelope OK", "tracked-envelope": "tracked envelope", "tracking-recommended": "tracking recommended", "tracking-required": "tracking required", signature: "signature" };
   const parts = Object.entries(tagNames).filter(([t]) => sum.byTag[t]).map(([t, name]) => el("span", { class: `dot tag-${t}`, text: `${sum.byTag[t]} ${name}` }));
   const box = $("#totals");
   box.replaceChildren(
@@ -985,7 +1040,7 @@ function renderOutput() {
 }
 
 function renderShip() {
-  const waiting = importCandidates().extra;
+  const cand = importCandidates(), waiting = cand.extra;
   const has = state.orders.length > 0 || waiting.length > 0;
   $("#ship-empty").hidden = has;
   $("#ship-area").hidden = !has;
@@ -996,7 +1051,7 @@ function renderShip() {
     const id = `trk-${o.id.replace(/[^\w-]/g, "_")}`;
     return el("li", { class: "ship-row", "data-id": o.id },
       el("div", { class: "who" }, el("span", { class: "oid", text: o.id }), el("span", { class: "muted", text: o.name }), chip(o.plan),
-        s.sent ? el("span", { class: "sent small", title: `In the import file of ${s.sent.at} (${s.sent.what})`, text: `Sent to TCGplayer ${String(s.sent.at).slice(5, 10)}` }) : null),
+        tcgChip(own(state.history, o.id), own(cand.shipped, o.id))),
       el("label", { class: "sr", for: id, text: `Tracking number for order ${o.id}` }),
       el("input", { id, class: "trk-input", type: "text", value: s.tracking || "", placeholder: o.tracking || "Tracking #", "data-id": o.id, autocomplete: "off", spellcheck: "false" }),
       el("label", { class: "check ship-check" }, el("input", { type: "checkbox", "data-id": o.id, checked: !!(s.shipped || s.tracking), disabled: !!s.tracking }), " Shipped"));
@@ -1004,6 +1059,16 @@ function renderShip() {
   renderShipWarn();
   $("#btn-import").disabled = state.source !== "csv" && !waiting.length;
   $("#btn-import").title = $("#btn-import").disabled ? "Only for orders from a TCGplayer CSV" : "";
+}
+
+// Where an order stands with TCGplayer: in an import file, shown shipped on TCGplayer's Order List, or shipped here
+// while that list still has it as Ready to Ship. r = its History record, s = its importCandidates() shipped entry.
+function tcgChip(r, s) {
+  const sent = s && s.sent;
+  if (sent && sent.tcg) return el("span", { class: "sent small", title: `TCGplayer's order list of ${sent.at}`, text: "Shipped on TCGplayer" });
+  if (sent) return el("span", { class: "sent small", title: `In the import file of ${sent.at} (${sent.what})`, text: `Sent to TCGplayer ${String(sent.at).slice(5, 10)}` });
+  if (r && r.shipped && tcgSays(r) === "open") return el("span", { class: "tcg-open small", title: `TCGplayer's order list of ${r.tcg.at}`, text: "Still Ready to Ship on TCGplayer" });
+  return null;
 }
 
 function renderShipWarn() {
@@ -1019,11 +1084,14 @@ function renderShipWarn() {
   } else showMsg(box, "", "");
   // Orders already sent in an earlier import file (same tracking number or "Shipped").
   const all = importFile({ skipSent: true });
-  const sent = all.already;
-  $("#ship-sent").hidden = !sent.length;
-  if (sent.length) {
+  const sent = all.already.filter((id) => !all.shipped[id].sent.tcg), onTcg = all.already.length - sent.length;
+  $("#ship-sent").hidden = !sent.length && !onTcg;
+  if (sent.length || onTcg) {
     const last = sent.map((id) => all.shipped[id].sent.at).sort().pop();
-    $("#ship-sent-text").textContent = `${plural(sent.length, "shipped order")} ${sent.length === 1 ? "was" : "were"} already in an import file (last ${last}) and ${state.importAgain ? "will go in again" : "will be left out"}.`;
+    $("#ship-sent-text").textContent = [
+      sent.length ? `${plural(sent.length, "shipped order")} ${sent.length === 1 ? "was" : "were"} already in an import file (last ${last}).` : "",
+      onTcg ? `${plural(onTcg, "order")} TCGplayer already shows as shipped.` : "",
+      state.importAgain ? "They will go in again." : `${all.already.length === 1 ? "It" : "They"} will be left out.`].filter(Boolean).join(" ");
     $("#import-again").checked = state.importAgain;
   }
   $("#btn-import").textContent = r.count ? `Download TCGplayer import file (${plural(r.count, "order")})` : "Download TCGplayer import file";
@@ -1057,7 +1125,10 @@ function historyRow(r) {
         el("label", { class: "sr", for: tid, text: `Tracking number for ${label}` }),
         el("input", { id: tid, class: "trk-input h-trk", type: "text", value: r.tracking || "", placeholder: "Tracking #", autocomplete: "off", spellcheck: "false" }),
         link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", class: "small", text: `Track on ${r.carrier} ↗` }) : null,
-        r.sentAt ? el("span", { class: "sent small", text: `Sent to TCGplayer ${String(r.sentAt).slice(0, 10)}` }) : null)),
+        r.sentAt && tcgSays(r) !== "open" ? el("span", { class: "sent small", text: `Sent to TCGplayer ${String(r.sentAt).slice(0, 10)}` })
+          : tcgSays(r) === "shipped" ? el("span", { class: "sent small", title: `TCGplayer's order list of ${r.tcg.at}`, text: "Shipped on TCGplayer" }) : null,
+        r.shipped && tcgSays(r) === "open" ? el("span", { class: "tcg-open small", title: `TCGplayer's order list of ${r.tcg.at}`, text: "Still Ready to Ship on TCGplayer" }) : null,
+        !r.shipped && tcgSays(r) === "canceled" ? el("span", { class: "tcg-open small", text: "Canceled on TCGplayer" }) : null)),
     photoCell(r, label),
     el("td", { class: "c-del" }, el("button", { type: "button", class: "link danger h-del", "aria-label": `Remove ${label} from the history`, text: "Remove" })));
 }

@@ -81,9 +81,15 @@ def main():
             check(setup(a.installer, f"/DIR={app}") == 0, "new version installs over it")
             check(os.path.isfile(os.path.join(data, "Labels", "Kept.pdf")), "files made before are kept")
         else:
+            # The person picks a folder that already holds their own things: Ship Desk uses a folder of its own inside it.
+            os.makedirs(os.path.join(data, "Photos"))
+            with open(os.path.join(data, "Photos", "mine.txt"), "w") as f:
+                f.write("the person's own photo folder")
             check(setup(a.installer, f"/DIR={app}", f"/DATADIR={data}") == 0, "installs")
+            data = os.path.join(data, "Ship Desk")
         info = json.load(open(os.path.join(app, "install.json"), encoding="utf-8"))
-        check(os.path.normcase(info.get("dataDir", "")) == os.path.normcase(data), "install.json names the chosen files folder")
+        check(os.path.normcase(info.get("dataDir", "")) == os.path.normcase(data),
+              "install.json names the chosen files folder" + ("" if a.upgrade_from else " (its own Ship Desk folder inside it)"))
         check(os.path.isfile(os.path.join(app, "python", "pythonw.exe")) and not os.path.exists(os.path.join(app, "app", "tests")),
               "own Python included, test pages left out")
         proc = subprocess.Popen([os.path.join(app, "python", "pythonw.exe"), os.path.join(app, "serve.py"), "--port", str(PORT), "--no-browser"], cwd=app)
@@ -104,9 +110,14 @@ def main():
         out = subprocess.run([py, os.path.join(app, "serve.py"), "--stop", "--port", str(PORT)], capture_output=True, text=True, timeout=60).stdout
         check("is off" in out, "its --stop turns it off")
         proc.wait(10)
-        check(subprocess.run([os.path.join(app, "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], timeout=300).returncode == 0, "uninstalls")
+        check(subprocess.run([os.path.join(app, "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DELETEFILES=1"], timeout=300).returncode == 0, "uninstalls (deleting the files it made)")
         time.sleep(2)
         check(not os.path.exists(os.path.join(app, "serve.py")), "program files removed")
+        if a.upgrade_from:
+            check(os.path.isfile(os.path.join(data, "Labels", "Kept.pdf")), "an older version's folder without the marker file is left alone")
+        else:
+            check(not os.path.exists(data), "its own files folder is deleted")
+            check(os.path.isfile(os.path.join(os.path.dirname(data), "Photos", "mine.txt")), "the person's own Photos folder is untouched")
         check(windows_entries() == before, "this PC's Start-with-Windows entry and shipdesk:// link unchanged")
         check(local_ship_desk_on() == was_on, "this PC's own Ship Desk is as it was")
     finally:

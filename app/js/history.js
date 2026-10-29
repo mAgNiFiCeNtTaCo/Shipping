@@ -4,7 +4,9 @@
 //
 // record = { key, id, source: "csv" | "paste" | "mailer", name, city, state, zip, value, items, tag, orderDate,
 //            printedAt, lastPrintedAt, printCount, format,          // labels ("" / 0 when never printed here)
-//            shipped, tracking, carrier, shippedAt }                  // shipping
+//            shipped, tracking, carrier, shippedAt,                   // shipping
+//            sentAt,                                                  // in a TCGplayer import file
+//            tcg: { status: "open" | "shipped" | "canceled", text, at } } // what TCGplayer's Order List said (orderlist.js)
 
 import { toCsv } from "./csv.js";
 
@@ -14,6 +16,7 @@ export const HISTORY_FILTERS = [
   { id: "all", label: "All" },
   { id: "waiting", label: "Labels made, not shipped" },
   { id: "shipped", label: "Shipped" },
+  { id: "notsent", label: "Not sent to TCGplayer yet" },
 ];
 
 const FORMAT_NAMES = {
@@ -129,21 +132,52 @@ function prune(hist, max = MAX_RECORDS) {
 
 const lastActivity = (r) => [r.lastPrintedAt || "", r.shippedAt || ""].sort().pop();
 
+/**
+ * What TCGplayer's Order List last said that still holds: "open" (still to ship there, and no import file made since),
+ * "shipped", "canceled", or "".
+ */
+export function tcgSays(r) {
+  const t = r && r.tcg;
+  if (!t || !t.status) return "";
+  if (t.status === "open" && r.sentAt && String(r.sentAt) >= String(t.at || "")) return "";
+  return t.status;
+}
+
+/**
+ * When this browser's first import file was made (History's earliest sentAt): TCGplayer orders shipped before it
+ * were sent to TCGplayer some other way.
+ */
+export function firstSentAt(hist) {
+  return Object.values(hist || {}).filter((r) => r && r.source === "csv").map((r) => r.sentAt).filter(Boolean).sort()[0] || "";
+}
+
+/** A shipped TCGplayer order TCGplayer doesn't know is shipped yet (no import file, or its Order List says so). */
+export function notSentYet(r, firstSent = "") {
+  if (!r || r.source !== "csv" || !r.shipped) return false;
+  const says = tcgSays(r);
+  if (says === "open") return true;
+  if (r.sentAt || says) return false;
+  return !firstSent || String(r.shippedAt || "") >= firstSent;
+}
+
 export function historyCounts(hist) {
   const list = Object.values(hist || {});
+  const first = firstSentAt(hist);
   return {
     all: list.length,
     printed: list.filter((r) => r.printCount > 0).length,
     waiting: list.filter((r) => !r.shipped).length,
     shipped: list.filter((r) => r.shipped).length,
+    notsent: list.filter((r) => notSentYet(r, first)).length,
   };
 }
 
 /** Records matching a HISTORY_FILTERS id and a search text, newest activity first. */
 export function historyList(hist, { filter = "all", search = "" } = {}) {
   const q = String(search || "").trim().toLowerCase();
+  const first = filter === "notsent" ? firstSentAt(hist) : "";
   return Object.values(hist || {})
-    .filter((r) => (filter === "shipped" ? r.shipped : filter === "waiting" ? !r.shipped : true))
+    .filter((r) => (filter === "shipped" ? r.shipped : filter === "waiting" ? !r.shipped : filter === "notsent" ? notSentYet(r, first) : true))
     .filter((r) => !q || [r.id, r.name, r.city, r.state, r.zip, r.tracking].some((v) => String(v || "").toLowerCase().includes(q)))
     .sort((a, b) => lastActivity(b).localeCompare(lastActivity(a)) || String(b.id).localeCompare(String(a.id)));
 }

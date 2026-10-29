@@ -178,6 +178,7 @@
       </div>
       <p class="legend small">
         <span class="chip tag-envelope">Envelope OK</span> under $20, a stamped envelope is fine.
+        <span class="chip tag-tracked-envelope">Tracked envelope (free)</span> under $49.99 when TCGplayer's tracked envelopes are switched on below.
         <span class="chip tag-tracking-recommended">Tracking recommended</span> $20 or more, or the buyer paid for faster shipping.
         <span class="chip tag-tracking-required">Tracking required</span> $49.99 or more.
         <span class="chip tag-signature">Signature required</span> $250 or more.
@@ -193,6 +194,7 @@
         <label class="f c2">Cards per toploader <input name="cardsPerToploader" type="number" step="1" min="1"></label>
         <label class="f c2">Forever stamp value ($) <input name="foreverValue" type="number" step="0.01" min="0.01"></label>
         <label class="check c6"><input name="rigid" type="checkbox"> Envelopes have a toploader (rigid): add the USPS $0.49 non-machinable charge</label>
+        <label class="check c6"><input name="trackedEnvelopes" type="checkbox"> I use TCGplayer's free tracked envelopes (orders under $49.99 that fit a letter go in an envelope with stamps; TCGplayer's packing slip carries the USPS tracking barcode)</label>
       </form>
       <p class="muted small">Weights are estimates for stamps. Card weight from your TCGplayer file is used when it has one. <button type="button" id="plan-reset" class="link">Reset to the usual values</button></p>
     </details>
@@ -374,7 +376,7 @@
   <p>Ship Desk runs in your browser. Order files are read on this PC and never uploaded. Settings are saved in this browser only.</p>
 </footer>
 
-<div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true"><div><strong>Drop to load</strong><span>CSV for orders, PDF for packing slips, Pirate Ship export for tracking</span></div></div>
+<div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true"><div><strong>Drop to load</strong><span>CSV for orders, PDF for packing slips, Pirate Ship export for tracking, TCGplayer order list to check</span></div></div>
 <dialog id="phone-dialog" class="dlg" aria-labelledby="phone-h">
   <div class="dlg-head"><h2 id="phone-h">Phone photos</h2><button type="button" class="dlg-x" data-close aria-label="Close">&times;</button></div>
   <p class="muted dlg-intro">Use your phone to photograph each order: what's inside, the packed mail, and the post office drop-off. The photos are saved on this PC in <code>Saved\Photos</code>, one folder per order, and show in History.</p>

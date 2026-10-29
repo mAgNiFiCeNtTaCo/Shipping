@@ -2,6 +2,8 @@
 // number in its text; item lines are picked out heuristically; every page is kept as an image (~150 dpi)
 // so "Slips in label order" can reprint the user's own slips in the same order as the labels.
 
+import { findImb } from "./imb.js";
+
 const DPI = 150;
 const ORDER_LABEL = /order\s*(?:#|number|no\.?|id)\s*:?\s*([A-Z0-9][A-Z0-9-]{3,})/i;
 const PRICE = /\$?\s?(\d{1,6}(?:,\d{3})*\.\d{2})/;
@@ -136,6 +138,24 @@ function findOrder(text, ids) {
   return best;
 }
 
+// TCGplayer's tracked-envelope slips carry a USPS barcode (IMb, imb.js): looked for in the page drawn at this resolution.
+const IMB_DPI = 300;
+
+/** The first USPS IMb on the page: { tracking, routing, bars } or null. */
+async function pageImb(page) {
+  const viewport = page.getViewport({ scale: IMB_DPI / 72 });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const c2d = canvas.getContext("2d", { willReadFrequently: true });
+  c2d.fillStyle = "#ffffff";
+  c2d.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: c2d, viewport }).promise;
+  const hits = findImb(c2d.getImageData(0, 0, canvas.width, canvas.height), IMB_DPI);
+  canvas.width = canvas.height = 0;
+  return hits.length ? { ...hits[0].imb, bars: hits[0].bars } : null;
+}
+
 async function pageImage(page) {
   const viewport = page.getViewport({ scale: DPI / 72 });
   const canvas = document.createElement("canvas");
@@ -155,8 +175,9 @@ async function pageImage(page) {
  * Page numbers in unmatchedPages are 1-based. A page with no order number continues the order of the page
  * before it (slips that run over a page); a page naming an order that isn't in orderIds is unmatched.
  * With no orderIds, pages are keyed by the order number printed after "Order #" / "Order Number".
+ * With { imb: true } each order also gets the USPS barcode of a tracked-envelope slip (entry.imb, see pageImb).
  */
-export async function readSlipPdf(arrayBuffer, orderIds = []) {
+export async function readSlipPdf(arrayBuffer, orderIds = [], { imb = false } = {}) {
   const pdfjs = lib();
   const ids = [...new Set((orderIds || []).map((s) => String(s).trim()).filter(Boolean))];
   // pdf.js takes ownership of the bytes it is given: pass a copy so the caller's buffer stays usable.
@@ -188,6 +209,7 @@ export async function readSlipPdf(arrayBuffer, orderIds = []) {
       const entry = byOrder[id] || (byOrder[id] = { items: [], pageImages: [] });
       entry.items.push(...itemsFromRows(rows));
       entry.pageImages.push(await pageImage(page));
+      if (imb && !entry.imb) { const found = await pageImb(page); if (found) entry.imb = found; }
       page.cleanup();
     }
   } finally {
@@ -201,6 +223,7 @@ export function attachSlips(orders, byOrder) {
   for (const o of orders || []) {
     const e = byOrder && byOrder[o.id];
     if (e && Array.isArray(e.items) && e.items.length) o.items = e.items.map((it) => ({ ...it }));
+    if (e && e.imb) o.imb = { ...e.imb };
   }
   return orders;
 }

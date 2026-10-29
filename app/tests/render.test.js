@@ -3,6 +3,7 @@
 import { ok, eq, near, throws } from "./runner.js";
 import { FORMATS, renderPdf, slipsInLabelOrderPdf } from "../js/render.js";
 import { readSlipPdf, attachSlips, slipPagesFor, parseItemLine, describeItem } from "../js/slips.js";
+import { encodeImb, drawImb, findImb } from "../js/imb.js";
 
 const pdfjs = window.pdfjsLib;
 if (!pdfjs.GlobalWorkerOptions.workerSrc) pdfjs.GlobalWorkerOptions.workerSrc = "../vendor/pdf.worker.min.js";
@@ -87,6 +88,23 @@ function canvasImage(w, h, fill, type = "image/png") {
   g.fillStyle = "#ffffff"; g.fillRect(w * 0.1, h * 0.1, w * 0.2, h * 0.2);
   return c.toDataURL(type, 0.9);
 }
+
+// The USPS barcodes (IMb) on page n of a PDF, found the way slips.js finds them.
+async function imbsOn(doc, n = 1, dpi = 200) {
+  const pdf = await pdfjs.getDocument({ data: doc.output("arraybuffer") }).promise;
+  const page = await pdf.getPage(n);
+  const vp = page.getViewport({ scale: dpi / 72 });
+  const c = document.createElement("canvas");
+  c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.fillStyle = "#ffffff"; g.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: g, viewport: vp }).promise;
+  const hits = findImb(g.getImageData(0, 0, c.width, c.height), dpi);
+  pdf.destroy();
+  return hits.map((h) => ({ ...h, y: h.y / dpi }));
+}
+
+const IMB = { tracking: "00040901234500001234", routing: "90012" };
 
 async function centerPixel(page) {
   const vp = page.getViewport({ scale: 0.5 });
@@ -469,6 +487,48 @@ Object.assign(tests, {
     eq(out.pages.length, 3);
     const withItems = await readBack(renderPdf([list[1]], { format: "letter1", slips: true }));
     ok(withItems.text.includes("Blue-Eyes White Dragon") && withItems.text.includes("$12.50"), "attached items print on the drawn slip");
+  },
+
+  "tracked envelopes: TCGplayer's USPS barcode prints under the address and reads back (not on Avery)": async () => {
+    const o = makeOrder(0, { imb: { ...IMB, bars: encodeImb(IMB.tracking, IMB.routing) } });
+    for (const format of ["thermal4x6", "thermal6x4", "letter1", "letter4", "labelSlip", "envelope10"]) {
+      const doc = renderPdf([o], { format, slips: false, returnAddress: RETURN });
+      const hits = await imbsOn(doc);
+      eq(hits.map((h) => h.imb), [{ tracking: IMB.tracking, routing: IMB.routing }], format);
+      const { pages } = await readBack(doc);
+      inBounds(pages, format);
+      ok(pages[0].text.includes("Ash Example") && pages[0].text.includes("Los Angeles"), `${format}: address still there`);
+    }
+    // On the 4x6 label it sits right under the city line.
+    const { pages } = await readBack(renderPdf([o], { format: "thermal4x6", slips: false, returnAddress: RETURN }));
+    const city = pages[0].items.find((it) => it.s.includes("Los Angeles"));
+    const [hit] = await imbsOn(renderPdf([o], { format: "thermal4x6", slips: false, returnAddress: RETURN }));
+    ok(hit.y > city.base && hit.y < city.base + 0.4, `barcode at ${hit.y.toFixed(2)} in, city line at ${city.base.toFixed(2)} in`);
+    eq((await imbsOn(renderPdf([o], { format: "avery5160", slips: false, returnAddress: RETURN }))).length, 0, "Avery cells are too small");
+    eq((await imbsOn(renderPdf([makeOrder(0)], { format: "thermal4x6", slips: false, returnAddress: RETURN }))).length, 0, "no barcode without one");
+  },
+
+  "readSlipPdf: a tracked-envelope slip's USPS barcode is read and goes on its order": async () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "in", format: "letter" });
+    doc.setFontSize(11);
+    doc.text("Order Number: T-1000", 0.5, 0.8);
+    drawImb(doc, encodeImb(IMB.tracking, IMB.routing), 1, 2.2);
+    doc.text(["Ash Example", "45 Example St Apt 2", "Los Angeles, CA 90012"], 1, 2.55);
+    doc.text("1  Sol Ring - C21 - Near Mint  $1.99", 0.5, 4);
+    doc.addPage("letter");
+    doc.text("Order Number: T-1001", 0.5, 0.8);
+    doc.text("1  Lightning Bolt - 2X2 - Near Mint  $0.99", 0.5, 4);
+    const buf = doc.output("arraybuffer");
+    const res = await readSlipPdf(buf, ["T-1000", "T-1001"], { imb: true });
+    eq(res.byOrder["T-1000"].imb && res.byOrder["T-1000"].imb.tracking, IMB.tracking);
+    eq(res.byOrder["T-1000"].imb.routing, IMB.routing);
+    eq(res.byOrder["T-1001"].imb, undefined, "a slip without one");
+    const list = [makeOrder(0), makeOrder(1)];
+    attachSlips(list, res.byOrder);
+    eq(list[0].imb.bars, encodeImb(IMB.tracking, IMB.routing));
+    eq(list[1].imb, undefined);
+    eq((await readSlipPdf(buf, ["T-1000"])).byOrder["T-1000"].imb, undefined, "only looked for when asked");
   },
 
   "readSlipPdf: without order ids, pages are keyed by the printed order number": async () => {

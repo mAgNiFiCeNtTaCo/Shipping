@@ -75,18 +75,68 @@ Type: files; Name: "{app}\install.json"
 Type: filesandordirs; Name: "{app}\__pycache__"
 
 [Code]
+const
+  { Written into the files folder at install: uninstalling deletes files only from a folder that has it. }
+  MarkerName = 'Ship Desk files.txt';
+
 var
   DataPage: TInputDirWizardPage;
+  PreviousDataDir: String;
+
+{ Is this path inside a folder OneDrive or Dropbox copies to the internet? (security audit 2026-10-26) }
+function StartsWithDir(Path, Dir: String): Boolean;
+begin
+  Result := (Dir <> '') and (Pos(Lowercase(AddBackslash(Dir)), Lowercase(AddBackslash(Path))) = 1);
+end;
+
+function SyncedFolder(Path: String): Boolean;
+begin
+  Result := StartsWithDir(Path, GetEnv('OneDrive')) or StartsWithDir(Path, GetEnv('OneDriveConsumer')) or
+    StartsWithDir(Path, GetEnv('OneDriveCommercial')) or (Pos('\dropbox\', Lowercase(AddBackslash(Path))) > 0);
+end;
+
+function EmptyDir(Dir: String): Boolean;
+var
+  F: TFindRec;
+begin
+  Result := True;
+  if FindFirst(AddBackslash(Dir) + '*', F) then
+  try
+    repeat
+      if (F.Name <> '.') and (F.Name <> '..') then Result := False;
+    until (not Result) or (not FindNext(F));
+  finally
+    FindClose(F);
+  end;
+end;
+
+{ A folder that already holds other things gets a Ship Desk folder inside it, so uninstalling can never touch
+  someone's own Photos or History folder (security audit 2026-10-26). Ship Desk's own folder (marker, or the one an
+  earlier version used) stays as it is. }
+function UsableDataDir(Dir: String): String;
+begin
+  Result := RemoveBackslashUnlessRoot(Dir);
+  if DirExists(Result) and not EmptyDir(Result) and not FileExists(AddBackslash(Result) + MarkerName) and
+     (CompareText(Result, RemoveBackslashUnlessRoot(PreviousDataDir)) <> 0) then
+    Result := AddBackslash(Result) + 'Ship Desk';
+end;
 
 procedure InitializeWizard;
+var
+  Default: String;
 begin
   DataPage := CreateInputDirPage(wpSelectDir,
     'Where should Ship Desk keep your files?',
     'Labels, packing slips, TCGplayer import files, phone photos and the History copy.',
-    'Ship Desk saves the files it makes into this folder (not into Downloads). Pick a folder you can find and that ' +
-    'your backups include. Then click Next.', False, '');
+    'Ship Desk saves the files it makes into this folder (not into Downloads). Pick a folder you can find on this PC. ' +
+    'Then click Next.', False, '');
   DataPage.Add('');
-  DataPage.Values[0] := GetPreviousData('DataDir', ExpandConstant('{userdocs}\Ship Desk'));
+  { Documents, unless OneDrive copies Documents to the internet (labels hold buyers' addresses). }
+  Default := ExpandConstant('{userdocs}\Ship Desk');
+  if SyncedFolder(Default) then
+    Default := ExpandConstant('{localappdata}\Ship Desk');
+  PreviousDataDir := GetPreviousData('DataDir', '');
+  DataPage.Values[0] := GetPreviousData('DataDir', Default);
   { ShipDesk-Setup.exe /DATADIR="D:\Shipping files" sets it from the command line (silent installs, tests). }
   if ExpandConstant('{param:DATADIR}') <> '' then
     DataPage.Values[0] := ExpandConstant('{param:DATADIR}');
@@ -100,6 +150,26 @@ end;
 function GetDataDir(Param: String): String;
 begin
   Result := DataPage.Values[0];
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Dir: String;
+begin
+  Result := True;
+  if CurPageID <> DataPage.ID then exit;
+  Dir := UsableDataDir(DataPage.Values[0]);
+  if Dir <> RemoveBackslashUnlessRoot(DataPage.Values[0]) then
+  begin
+    DataPage.Values[0] := Dir;
+    if not WizardSilent then
+      MsgBox('That folder already has other things in it, so Ship Desk will keep its files in a folder of its own ' +
+        'inside it:' + #13#10 + Dir, mbInformation, MB_OK);
+  end;
+  if SyncedFolder(Dir) and not WizardSilent then
+    Result := MsgBox('This folder is inside OneDrive or Dropbox, so everything Ship Desk saves there (labels with ' +
+      'buyers'' addresses, phone photos, the phone''s pairing code) would be copied to the internet.' + #13#10 + #13#10 +
+      'Use it anyway?' + #13#10 + Dir, mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
 end;
 
 function JsonText(S: String): String;
@@ -129,10 +199,22 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Fresh: Boolean;
 begin
+  { Silent installs skip the folder page's check: do it before anything (also what's remembered for updates) is written. }
+  if CurStep = ssInstall then
+    DataPage.Values[0] := UsableDataDir(DataPage.Values[0]);
   if CurStep = ssPostInstall then
   begin
+    { The marker goes only into a new or empty folder, or one named Ship Desk (an earlier version's own folder). }
+    Fresh := not DirExists(DataPage.Values[0]) or EmptyDir(DataPage.Values[0]) or
+      (CompareText(ExtractFileName(RemoveBackslashUnlessRoot(DataPage.Values[0])), 'Ship Desk') = 0);
     ForceDirectories(DataPage.Values[0]);
+    if Fresh and not FileExists(AddBackslash(DataPage.Values[0]) + MarkerName) then
+      SaveStringToFile(AddBackslash(DataPage.Values[0]) + MarkerName,
+        'This folder holds the files Ship Desk makes (labels, packing slips, import files, phone photos, History).' + #13#10 +
+        'Uninstalling Ship Desk offers to delete them only from a folder with this file in it.' + #13#10, False);
     SaveStringToFile(ExpandConstant('{app}\install.json'),
       '{"dataDir": ' + JsonText(DataPage.Values[0]) + ', "version": "{#AppVersion}"}' + #13#10, False);
   end;
@@ -185,6 +267,7 @@ begin
   DeleteFile(AddBackslash(Dir) + 'update.json');
   DeleteFile(AddBackslash(Dir) + 'ship-desk.log');
   DeleteFile(AddBackslash(Dir) + 'ship-desk.log.old');
+  DeleteFile(AddBackslash(Dir) + MarkerName);
   RemoveDir(Dir); { only goes when nothing else is left in it }
 end;
 
@@ -206,9 +289,16 @@ begin
     if RegQueryStringValue(HKCU, 'Software\Classes\shipdesk\shell\open\command', '', Value) and PointsHere(Value) then
       RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\shipdesk');
   end;
-  if (CurUninstallStep = usPostUninstall) and (UninstallDataDir <> '') and DirExists(UninstallDataDir) and not UninstallSilent then
+  if (CurUninstallStep = usPostUninstall) and (UninstallDataDir <> '') and DirExists(UninstallDataDir) and
+     FileExists(AddBackslash(UninstallDataDir) + MarkerName) then
   begin
-    if MsgBox('Ship Desk is removed.' + #13#10 + #13#10 +
+    { unins000.exe /VERYSILENT /DELETEFILES=1 deletes them without asking (tests). }
+    if UninstallSilent then
+    begin
+      if ExpandConstant('{param:DELETEFILES}') = '1' then
+        DeleteShipDeskFiles(UninstallDataDir);
+    end
+    else if MsgBox('Ship Desk is removed.' + #13#10 + #13#10 +
       'Also delete the files it made (labels, packing slips, import files, phone photos, the History copy)?' + #13#10 +
       UninstallDataDir + #13#10 + #13#10 + 'Click No to keep them.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
       DeleteShipDeskFiles(UninstallDataDir);

@@ -19,6 +19,22 @@ explain in plain words and finish jobs end to end.
   `matchShipments` (by buyer name: the one open order from `MATCH_DAYS` = 21 before the label; never guesses between
   several). app.js `applyShipments` / `shipmentCandidates` (batch orders + History). The real export has no order #
   or ZIP (checked 2026-10-25); Order ID / ZIP columns are used if present. The Transactions export has no tracking.
+- `app/js/orderlist.js` (2026-10-26): TCGplayer's Order List export (`TCGplayer_OrderList_<yyyymmdd>_<hhmmss>.csv`: Order #,
+  Buyer Name, Order Date, Status, ...; no addresses) dropped on the page -> app.js `applyOrderList`: `compareOrderList` lists
+  forgotten (shipped here, still "Ready to Ship" there), missed, canceled, already shipped there; each History record gets
+  `tcg: { status: open|shipped|canceled, text, at }` (`at` = time in the file name). history.js `tcgSays(r)` (an "open"
+  older than or same minute as `sentAt` no longer counts), `notSentYet` = History filter `notsent`. importCandidates: "open"
+  drops `sent` (goes in again, past the 14-day / firstSent cutoffs), "shipped" = `sent: { tcg: true }` (left out;
+  tracking.js skips `sent.tcg`). Chips `.tcg-open` / "Shipped on TCGplayer" in step 4 and History.
+- TCGplayer tracked envelopes (announced 2026-10-27, sellers get it 2026-11-02..06: free USPS IMb on the packing slip for
+  orders <= $49.99, window envelope, own stamps). Plan setting `trackedEnvelopes` (plan.js, off by default; checkbox in
+  "Weights and postage settings"): letter-size `envelope` / non-expedited `tracking-recommended` orders -> tag
+  `tracked-envelope` (`isEnvelopeTag`, tracked false = not in the Pirate Ship file). `app/js/imb.js` (2026-10-29): USPS-B-3200
+  encoder/decoder (`encodeImb`, `decodeImb`; checked against USPS's Figure 5), `drawImb` (jsPDF, 22 bars/in), `findImb`
+  (bars in an ImageData, any quarter turn). slips.js `readSlipPdf(buf, ids, { imb: true })` (when the setting is on)
+  renders each slip page at 300 dpi -> `entry.imb` -> `attachSlips` sets `order.imb`; render.js `imbFor` prints it under
+  the ship-to block (labels, labelSlip, envelope10; not Avery). Not yet seen: a real tracked slip (layout, whether its
+  barcode is vector/font/image, whether TCGplayer's protection counts with the barcode on our label).
 - `app/js/render.js` (all PDF formats, `FORMATS`), `app/js/slips.js` (reads TCGplayer's packing-slip PDF).
 - Loaded batch kept across reloads: `KEYS.batch` holds the CSV/pasted text + ticks (app.js `keepBatch` / `restoreBatch` /
   `clearBatch`, "Clear these orders" in step 1, 14 days at most; full addresses, this browser only; slips not kept).
@@ -106,6 +122,13 @@ explain in plain words and finish jobs end to end.
   `data_root()` reads it (no install.json = Saved next to serve.py, as in this folder). Tasks: desktop icon, start
   with Windows (same Run value as `launcher_command()`). Uninstall removes the Run value / shipdesk:// key only when
   they point into {app}, and asks before deleting only Ship Desk's own subfolders in the files folder.
+  Since 1.1.2 (audit 2026-10-26): a chosen folder that isn't empty (and isn't the previous one / marked) gets `\Ship Desk`
+  appended (`UsableDataDir`, also at ssInstall for silent installs); setup writes the marker `Ship Desk files.txt` into a
+  new/empty folder (or one named Ship Desk) and uninstall deletes only where the marker is (`/DELETEFILES=1` = silent
+  delete, used by test_installer.py); default folder `{localappdata}\Ship Desk` when Documents is inside OneDrive, and a
+  warning for OneDrive/Dropbox folders. serve.py `signed_by` compares the signer's subject fields exactly
+  (`TAILSCALE_SIGNER` O/C/SERIALNUMBER, `subject_fields`, `signer_matches`; PowerShell by full path); `tools/test.py`
+  runs these as the "server" checks (`python tools/test.py server`).
   `serve.py --stop` turns off only the copy whose `/api/ping` "home" is this folder (`--stop-any` for any).
 - 1.1.0 (2026-10-26): first-run checklist (`#welcome`, app.js `welcomeItems` / `renderWelcome` / `setWelcome`,
   `KEYS.welcome` {hidden, format, sample, phone}; ticks come from real settings; "Setup checklist" `#btn-setup` brings

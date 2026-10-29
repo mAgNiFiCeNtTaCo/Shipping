@@ -422,6 +422,55 @@ export const tests = {
     eq(app.state.shipped["SAMPLE-0006"].sent.what, "9400111899223344550006");
   },
 
+  "TCGplayer's Order List: forgotten uploads go back in, orders it shows shipped stay out, missed ones are listed": async () => {
+    const { win, doc, app, saved } = await openApp();
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => app.state.orders.length === 10, "orders");
+    doc.querySelector("#btn-pdf").click();
+    await waitFor(() => app.state.history["SAMPLE-0010"], "History");
+    app.matchPasted("SAMPLE-0005 9400111899223344550005");
+    doc.querySelector('#ship-list input[type=checkbox][data-id="SAMPLE-0001"]').click();
+    doc.querySelector("#btn-import").click();
+    eq(parseCsv(await savedText(saved.pop())).slice(1).map((r) => r[0]), ["SAMPLE-0001", "SAMPLE-0005"], "first import file");
+    doc.querySelector('#ship-list input[type=checkbox][data-id="SAMPLE-0002"]').click(); // shipped, not sent yet
+    // TCGplayer's list, exported later (the import file is moved an hour back): SAMPLE-0001's upload never happened.
+    const p = (n) => String(n).padStart(2, "0"), d = new Date();
+    const hourAgo = ((t) => `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}`)(new Date(Date.now() - 3600e3));
+    for (const id of ["SAMPLE-0001", "SAMPLE-0005"]) { app.state.history[id].sentAt = hourAgo; app.state.shipped[id].sent.at = hourAgo; }
+    const name = `TCGplayer_OrderList_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}00.csv`;
+    const list = ["Order #,Buyer Name,Order Date,Status,Shipping Type,Product Amt,Shipping Amt,Total Amt,Buyer Paid,Carrier Information",
+      ...[["SAMPLE-0001", "Ash Example", "Ready to Ship"], ["SAMPLE-0002", "Brenna O'Callahan", "Shipped - In Transit"],
+        ["SAMPLE-0003", "Dmitri Vale", "Ready to Ship"], ["SAMPLE-0004", "Someone", "Canceled"],
+        ["SAMPLE-0005", "Someone Else", "Shipped - Delivered"], ["NEW-0009", "Never Seen", "Ready to Ship"]]
+        .map(([id, who, st]) => `${id},${who},"Monday, 26 October 2026",${st},Standard,3.00,0.99,3.99,3.99,`)].join("\r\n");
+    await dropFile(win, list, name);
+    const msg = await waitFor(() => /order list/.test(doc.querySelector("#load-msg").textContent) && doc.querySelector("#load-msg").textContent, "the check");
+    eq(app.state.orders.length, 10, "the loaded orders stay");
+    ok(/SAMPLE-0001 \(Ash Example\): shipped .*in the import file of .*was it uploaded\?/.test(msg), msg);
+    ok(/SAMPLE-0003 \(Dmitri Vale\): labels made/.test(msg) && /NEW-0009 \(Never Seen\): no labels made here/.test(msg), msg);
+    ok(/Canceled on TCGplayer.*SAMPLE-0004/.test(msg), msg);
+    ok(/1 shipped order TCGplayer already shows as shipped/.test(msg), msg);
+    ok(!/SAMPLE-0005/.test(msg), "matching orders aren't listed");
+    eq(app.state.history["SAMPLE-0001"].tcg.status, "open");
+    // The import file: SAMPLE-0001 again, not SAMPLE-0002 (TCGplayer has it).
+    eq(app.importFile().included.map((i) => i.id), ["SAMPLE-0001"]);
+    ok(doc.querySelector('#ship-list li[data-id="SAMPLE-0001"] .tcg-open'), "step 4 says it's still Ready to Ship there");
+    ok(/Shipped on TCGplayer/.test(doc.querySelector('#ship-list li[data-id="SAMPLE-0002"] .sent').textContent), "step 4 says TCGplayer has it");
+    ok(/TCGplayer already shows as shipped/.test(doc.querySelector("#ship-sent-text").textContent), doc.querySelector("#ship-sent-text").textContent);
+    // History's new filter shows the one TCGplayer still waits for.
+    app.state.historyFilter = "notsent";
+    app.renderHistory();
+    eq([...doc.querySelectorAll("#history-table tbody tr[data-key]")].map((tr) => tr.dataset.key), ["SAMPLE-0001"]);
+    eq(doc.querySelector('#history-filters button[data-filter="notsent"] .count').textContent, "1");
+    ok(doc.querySelector('#history-table tr[data-key="SAMPLE-0001"] .tcg-open'), "History says so too");
+    // Made and sent again: nothing is waiting any more.
+    doc.querySelector("#btn-import").click();
+    eq(parseCsv(await savedText(saved.pop())).slice(1).map((r) => r[0]), ["SAMPLE-0001"]);
+    app.renderHistory();
+    eq(doc.querySelector('#history-filters button[data-filter="notsent"] .count').textContent, "0");
+    eq(app.importFile().count, 0);
+  },
+
   "Pirate Ship CSV lists tracked orders that have no tracking yet": async () => {
     const { win, doc, app, saved } = await openApp();
     await dropFile(win, await sampleText(), "export.csv");

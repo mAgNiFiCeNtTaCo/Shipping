@@ -1,6 +1,7 @@
 // render.js: address labels, envelopes and packing slips as one PDF (jsPDF, all layout in inches).
 // renderPdf(orders, opts) -> jsPDF doc; the caller saves it (doc.save(name) / doc.output("blob")).
 import { historyKey } from "./history.js";
+import { drawImb, imbWidth, IMB_SIZE } from "./imb.js";
 
 const LETTER = [8.5, 11];
 const THERMAL = [4, 6];
@@ -297,6 +298,14 @@ function dashed(doc, x1, y1, x2, y2) {
 
 // ---------- the label ----------
 
+// The USPS barcode (IMb) of a TCGplayer tracked envelope, read from its packing slip (slips.js), when the space is wide
+// enough for it and USPS's clear space (0.125 in each side): its bars, else "".
+function imbFor(o, roomW) {
+  const bars = o && o.imb && /^[FADT]{65}$/.test(o.imb.bars || "") ? o.imb.bars : "";
+  return bars && roomW >= imbWidth() + 0.25 ? bars : "";
+}
+const IMB_ROOM = IMB_SIZE.full + 0.16; // the barcode and the clear space above and below it
+
 // One shipping label inside box {x, y, w, h}.
 function drawLabel(doc, ctx, o, box) {
   const { x, y, w, h } = box;
@@ -363,16 +372,20 @@ function drawLabel(doc, ctx, o, box) {
   const tagPt = clamp(7 * u, 6, 10);
   const tagH = tagPt * LH * PT;
   const maxW = iw * 0.94;
-  const maxH = Math.max(0.2, areaBottom - areaTop - tagH);
+  const imb = imbFor(o, iw);
+  const imbH = imb ? IMB_ROOM : 0;
+  const maxH = Math.max(0.2, areaBottom - areaTop - tagH - imbH);
   const startPt = Math.min(19 * u, 28);
   const fit = fitBlock(doc, ctx, shipToLines(o), maxW, maxH, startPt, 7);
-  const blockH = tagH + fit.height;
+  const blockH = tagH + fit.height + imbH;
   const by = areaTop + Math.max(0, (areaBottom - areaTop - blockH) / 2);
   const bx = ix + (iw - fit.width) / 2;
   setFont(doc, ctx, "bold", tagPt);
   color(doc, accent);
   put(doc, ctx, "SHIP TO", bx, by + tagPt * PT * 0.86);
   drawBlock(doc, ctx, fit, bx, by + tagH);
+  // The tracked envelope's barcode right under the address (USPS allows it in the address block).
+  if (imb) drawImb(doc, imb, clamp(bx, ix + 0.125, ix + iw - imbWidth() - 0.125), by + tagH + fit.height + 0.08);
 }
 
 // Avery 5160 cell: ship-to only, shrunk to fit.
@@ -400,14 +413,17 @@ function drawEnvelope(doc, ctx, o) {
   // Ship-to area: x 3.6 .. 9.1, y 1.3 .. H - 0.7 (keeps the bottom barcode strip clear).
   const ax = 3.6, aw = W - 0.4 - ax, ay = 1.3, ah = H - 0.7 - ay;
   const tagPt = 7.5, tagH = tagPt * LH * PT;
-  const fit = fitBlock(doc, ctx, shipToLines(o), aw, ah - tagH, 14, 8);
-  const blockH = tagH + fit.height;
+  const imb = imbFor(o, aw);
+  const imbH = imb ? IMB_ROOM : 0;
+  const fit = fitBlock(doc, ctx, shipToLines(o), aw, ah - tagH - imbH, 14, 8);
+  const blockH = tagH + fit.height + imbH;
   const by = ay + Math.max(0, (ah - blockH) / 2);
   const bx = ax + (aw - fit.width) / 2;
   setFont(doc, ctx, "bold", tagPt);
   color(doc, accent);
   put(doc, ctx, "SHIP TO", bx, by + tagPt * PT * 0.86);
   drawBlock(doc, ctx, fit, bx, by + tagH);
+  if (imb) drawImb(doc, imb, clamp(bx, ax + 0.125, ax + aw - imbWidth() - 0.125), by + tagH + fit.height + 0.08);
 
   // Bottom-left: order QR, QR, note, order # (the bottom-right is kept clear for the post office's barcode).
   let tx = 0.35;
