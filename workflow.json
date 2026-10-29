@@ -678,9 +678,9 @@
       ]
     },
     {
-      "title": "Security fixes, Order List check, tracked envelopes + USPS barcode; 1.1.2",
+      "title": "Security fixes, Order List check, tracked envelopes + USPS barcode; 1.1.3 published",
       "date": "2026-10-29",
-      "summary": "A security-auditor subagent checked the 1.1 additions (3 low, 2 info); this session added the TCGplayer Order List check and the History 'Not sent' filter, fixed every audit finding, and prepared TCGplayer's tracked envelopes (plan tag, USPS IMb read from the slip and printed on Ship Desk's label).",
+      "summary": "A security-auditor subagent checked the 1.1 additions (3 low, 2 info); this session added the TCGplayer Order List check and the History 'Not sent' filter, fixed every audit finding, and prepared TCGplayer's tracked envelopes (plan tag, USPS IMb read from the slip and printed on Ship Desk's label). Then the old 2026-10-21 phone-scanning branch was checked: only its zxing-js Code 128 fix was still useful (ported, branch and worktree removed), and 1.1.3 was built and published at the user's request.",
       "stages": [
         {
           "name": "Audit",
@@ -706,8 +706,8 @@
               "id": "af0659e3",
               "role": "Builder",
               "start": "2026-10-26T16:27",
-              "end": "2026-10-29T01:50",
-              "did": "orderlist.js + applyOrderList, notsent filter, all audit fixes (installer marker/own folder, signer fields, Python 3.14.10), tracked-envelope plan setting, imb.js (USPS IMb encode/decode/find), barcode on labels; 188 tests",
+              "end": "2026-10-29T02:15",
+              "did": "orderlist.js + applyOrderList, notsent filter, all audit fixes (installer marker/own folder, signer fields, Python 3.14.10), tracked-envelope plan setting, imb.js (USPS IMb encode/decode/find), barcode on labels; 188 tests; ported fixCode128 from the old branch, removed its worktree; installer 1.1.3 built, tested, published",
               "outcome": "done",
               "files": 23
             }
@@ -722,7 +722,8 @@
       ],
       "lessons": [
         "Bash heredocs turned \\n in JS test strings into real line breaks again: patch scripts go through the Write tool.",
-        "A barcode check that needed half a bar's height to overlap failed on label renders by one pixel: 0.3 is safe."
+        "A barcode check that needed half a bar's height to overlap failed on label renders by one pixel: 0.3 is safe.",
+        "An old branch can be behind main by dozens of commits: compare its base before merging, port the one useful piece with a test that fails without it, and record the branch merged with -s ours."
       ]
     }
   ]
