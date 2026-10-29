@@ -372,13 +372,48 @@ export function orderForTracking(tracking) {
   }) || null;
 }
 
+// zxing 0.21.3's Code 128 start search drops 2 of its 6 bar counters (Int32Array.slice), so it only found a barcode
+// that was the first dark thing on its line (a label border or a darker mailer in front of it hid it). Replaced with
+// the same search done right (from the 2026-10-21 branch worktree-faster-barcode-scan).
+function fixCode128(Z) {
+  const R = Z.Code128Reader;
+  if (!R || R.startFixed) return Z;
+  R.findStartPattern = function (row) {
+    const width = row.getSize(), offset = row.getNextSet(0);
+    const counters = new Int32Array(6);
+    let pos = 0, start = offset, white = false;
+    for (let i = offset; i < width; i++) {
+      if (row.get(i) !== white) { counters[pos]++; continue; }
+      if (pos === 5) {
+        let best = R.MAX_AVG_VARIANCE, code = -1;
+        for (let c = R.CODE_START_A; c <= R.CODE_START_C; c++) {
+          const v = Z.OneDReader.patternMatchVariance(counters, R.CODE_PATTERNS[c], R.MAX_INDIVIDUAL_VARIANCE);
+          if (v < best) { best = v; code = c; }
+        }
+        // a start code needs white in front of it (the quiet zone)
+        if (code >= 0 && row.isRange(Math.max(0, start - ((i - start) >> 1)), start, false)) return Int32Array.from([start, i, code]);
+        start += counters[0] + counters[1];
+        counters.copyWithin(0, 2);
+        counters[4] = 0;
+        counters[5] = 0;
+        pos--;
+      } else pos++;
+      counters[pos] = 1;
+      white = !white;
+    }
+    throw new Z.NotFoundException();
+  };
+  R.startFixed = true;
+  return Z;
+}
+
 let zxingLoad = null;
 function loadZxing() {
   if (window.ZXing) return Promise.resolve(window.ZXing);
   zxingLoad = zxingLoad || new Promise((resolve, reject) => {
     const sc = document.createElement("script");
     sc.src = ZXING;
-    sc.onload = () => (window.ZXing ? resolve(window.ZXing) : reject(new Error("no reader")));
+    sc.onload = () => (window.ZXing ? resolve(fixCode128(window.ZXing)) : reject(new Error("no reader")));
     sc.onerror = () => { zxingLoad = null; reject(new Error("The barcode reader didn't load.")); };
     document.head.append(sc);
   });

@@ -202,6 +202,9 @@ printed `gh release create ...` line. Log the new version in PROGRESS.md and on 
 - Patch scripts: encode before opening for "wb" (a failed write must not empty the file), keep each file's
   line endings (CRLF files exist), and never re-run a script whose `new` text contains its `old` text.
 - zxing-js (the fallback) finds one code per look, doesn't turn 1D barcodes, and its row reader fails when a darker
-  mailer is beside the label (whole-row threshold): hence strips + HybridBinarizer rows. On 96 phone-like test pictures
+  mailer is beside the label (whole-row threshold): hence strips + HybridBinarizer rows. Its Code 128 start search
+  (0.21.3) drops 2 of 6 counters, so a barcode with dark print before it on the line was missed: phone.js
+  `fixCode128` replaces `Code128Reader.findStartPattern` on load (ported 2026-10-29 from the old branch
+  `worktree-faster-barcode-scan`, whose other changes main had already replaced). On 96 phone-like test pictures
   the old look read 15, JS strips 24, zxing-wasm 50 (the misses are very soft small barcodes). `cameraPicture()` in
   phone.test.js makes such pictures. Scanner tests use a canvas `captureStream()` as the camera.

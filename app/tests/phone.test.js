@@ -587,6 +587,29 @@ Object.assign(tests, {
     }
   },
 
+  "scan: the JavaScript reader's Code 128 finds a barcode with dark print in front of it on the same line": async () => {
+    const { decodeFrame, readers } = await import("../js/phone.js");
+    readers.wasm = false;
+    try {
+      const pic = cameraPicture({ mailer: "#ffffff", module: 3, blur: 0.6 });
+      await decodeFrame(pic, pic.width, pic.height); // loads the JavaScript reader (and its fix)
+    } finally {
+      readers.wasm = true;
+    }
+    const Z = window.ZXing;
+    const c = document.createElement("canvas");
+    const code = code128Canvas(["42090012", "9400111899223344556677"]);
+    c.width = code.width + 200; c.height = code.height;
+    const g = c.getContext("2d");
+    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = "#000"; g.fillRect(10, 0, 60, c.height); // the table edge / a label border
+    g.drawImage(code, 160, 0);
+    const reader = new Z.MultiFormatReader();
+    reader.setHints(new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.CODE_128]]]));
+    const r = reader.decodeWithState(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(c))));
+    eq(r.getText(), "420900129400111899223344556677");
+  },
+
   "scan: if the main reader can't start, the JavaScript reader still reads barcodes and QR codes": async () => {
     const { decodeFrame, parseScan, readers } = await import("../js/phone.js");
     readers.wasm = false;

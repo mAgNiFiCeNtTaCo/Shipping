@@ -36,6 +36,14 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-10-29: the old phone-scanning branch, checked and its one useful fix taken
+- The user asked to merge `worktree-faster-barcode-scan` (34a0542, 2026-10-21) "so long as it doesn't mess things
+  up". It branched from 0972b15, 24 commits behind main; main had since rebuilt scanning (zxing-wasm main reader,
+  strips + HybridBinarizer fallback), so a plain merge would have clashed in phone.js / phone.test.js and undone that.
+- Kept from it: `fixCode128` (zxing-js 0.21.3's Code 128 start search drops 2 of its 6 counters, so the JavaScript
+  fallback missed a barcode with dark print in front of it on the same line). Its test failed on main without the
+  fix and passes with it; and the README tip on holding the phone. The branch is recorded as merged (`-s ours`:
+  nothing else of it taken). Phone page cache `shipdesk-phone-v13`.
 ### 2026-10-29: security fixes, TCGplayer Order List check, "Not sent" filter, tracked envelopes + USPS barcode; 1.1.2
 - **Security audit (2026-10-26, report `Security_Agent_Audit\reports\2026-10-26-Shipping.md`):** no critical/high/
   medium; 3 low + 2 info, all fixed now with the user's OK (2026-10-29):

@@ -276,7 +276,8 @@ itself as each is done:
 **Taking photos:** **Scan labels** (or **Take photo** after ticking orders) opens Ship Desk's camera screen:
 - It reads codes while you aim: the order QR code Ship Desk printed (label, envelope or packing slip) or the
   **tracking barcode** on a bubble mailer's label (Pirate Ship, USPS, UPS). Each one scanned joins the orders on
-  screen; scan a whole stack one after another.
+  screen; scan a whole stack one after another. Tracking barcodes read best with the barcode across the middle
+  of the frame and filling most of its width; sideways or a little crooked is fine.
 - Pick **Contents / Packed / Post office** at the top and press the round **shutter** as often as you like: a
   contents or packed photo goes to all the orders on screen, and you stay on the camera. Switch the type and keep
   shooting. **Done** goes back. (**iPhone camera** takes one photo with the iPhone's own camera app instead.)
