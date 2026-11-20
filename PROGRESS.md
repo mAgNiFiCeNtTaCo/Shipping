@@ -4,14 +4,17 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-11-19)
+## Where it stands (2026-11-20)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
 - **Version 1.1.4** (built 2026-11-19, published 2026-11-20), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4 = latest; 1.1.2 skipped). A fresh install sets itself up
-  completely: first-run checklist, guided Tailscale phone setup, update notice.
+  completely: first-run checklist, guided Tailscale phone setup, update notice. Since 2026-11-20 every build also
+  makes `dist\ShipDesk-<version>-portable.zip` (no installer: unzip, double-click "Start Ship Desk"), for PCs where
+  Windows or an antivirus objects to the unsigned installer; 1.1.4's zip is on the release (`tools/test_portable.py`
+  18 checks).
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
 - Tests: `python tools/test.py` = **206 passed, 0 failed** (2026-11-19: 199 in the browser + 7 server checks);
@@ -53,6 +56,11 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   version already built. Release notes 1.1.4 got a "No installer needed: the zip" section.
 - Writing check: 1 low hit ("Good to know" label -> "Day to day"), report `AI_SlopAgent/reports/2026-11-20-Shipping.md`.
 - Zip and its notes added to the v1.1.4 release 2026-11-20 at the user's request (GitHub's checksum matches the local file).
+- Save build: no new installer (nothing in it changed since 1.1.4). Open: whether the zip gets past the warning on
+  the PC that flagged the installer; if not, a signing certificate is the next step (the user's choice, costs money
+  or needs SignPath's approval).
+- Resources 2026-11-20 02:20 (Ship Desk running on 5091, idle): Shipping 1 process, CPU 0%, RAM 48 MB, port 5091,
+  disk 392 MB; whole PC CPU 13% of 32 threads, RAM 28.3 of 64 GB, GPU 30%.
 ### 2026-11-19: envelope labels from TCGplayer's tracked slips (real slip, real print checked)
 - **First real tracked slip** (`TCGplayer_PackingSlips_20261119_175142.pdf`, Downloads; buyer data, not copied into
   the project): a letter page; the USPS barcode is TEXT in a barcode font (65 F/A/D/T letters) above the buyer's

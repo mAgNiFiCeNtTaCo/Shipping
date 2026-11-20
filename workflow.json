@@ -752,6 +752,32 @@
         "A real sample beats guesses: TCGplayer's barcode was text in a font, so reading the text is exact where a picture search was the plan.",
         "The project's repo is public: log real orders' numbers and ZIPs nowhere, only what was checked."
       ]
+    },
+    {
+      "title": "1.1.4 published; a no-install zip for PCs that warn about the installer",
+      "date": "2026-11-20",
+      "summary": "Published 1.1.4, then, for the user's Windows/antivirus warning, added a zip of Ship Desk that needs no installing (only Python's signed programs and two .bat files), tested unzipped and added to the 1.1.4 release.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "af0659e3",
+              "role": "Builder",
+              "start": "2026-11-20T01:19",
+              "end": "2026-11-20T02:22",
+              "did": "gh release v1.1.4; looked for Defender detections (none, McAfee is this PC's antivirus); signing options researched; build_installer.py makes ShipDesk-<v>-portable.zip (+ --zip-only), tools/test_portable.py 18 checks; zip uploaded",
+              "outcome": "done",
+              "files": 4
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "Ask what the warning actually said before fixing it: SmartScreen's 'unrecognized app' box and a Defender virus alarm need different fixes.",
+        "The user cut the question short with a better idea (a zip): a zip of signed programs sidesteps the unsigned installer without paying for a certificate."
+      ]
     }
   ]
 }
