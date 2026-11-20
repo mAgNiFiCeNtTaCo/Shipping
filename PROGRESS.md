@@ -7,10 +7,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-19)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.4** (built 2026-11-19, not published yet; 1.1.3 published 2026-10-29 is the latest release), Windows installer for other people:
+- **Version 1.1.4** (built 2026-11-19, published 2026-11-20), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
-  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3 = latest; 1.1.2 skipped). A fresh install sets itself up
+  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4 = latest; 1.1.2 skipped). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
@@ -69,7 +69,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   Seller Portal for a USPS scan (1-3 days).
 - Writing check of the changed text: 0 hits. Tests: 206 passed (new: real-shaped tracked slip, envelopeCut,
   thermalCut, thermalEnvelope, the one-click button).
-- **Installer 1.1.4** built and tested (over 1.1.3, all good). Not published: `gh release create v1.1.4 "dist/ShipDesk-Setup-1.1.4.exe" --title "Ship Desk 1.1.4" --notes-file "dist/release-notes-1.1.4.md" --target main`.
+- **Installer 1.1.4** built and tested (over 1.1.3, all good). Published 2026-11-20 at the user's request: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases/tag/v1.1.4
 - Resources 2026-11-19: Ship Desk 2 processes, CPU 0%, RAM 77 MB, port 5091, disk 366 MB; whole PC CPU 8% of 32 threads,
   RAM 26.9 of 64 GB, GPU 36%.
 ### 2026-10-29: the old phone-scanning branch, checked and its one useful fix taken
