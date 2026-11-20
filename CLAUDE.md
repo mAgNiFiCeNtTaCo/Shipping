@@ -140,6 +140,15 @@ explain in plain words and finish jobs end to end.
   (`TAILSCALE_SIGNER` O/C/SERIALNUMBER, `subject_fields`, `signer_matches`; PowerShell by full path); `tools/test.py`
   runs these as the "server" checks (`python tools/test.py server`).
   `serve.py --stop` turns off only the copy whose `/api/ping` "home" is this folder (`--stop-any` for any).
+  No-install zip (2026-11-20, the user's answer to Windows/antivirus warnings on the unsigned installer): every build
+  also makes `dist/ShipDesk-<version>-portable.zip` = build\stage + "Start Ship Desk.bat" / "Stop Ship Desk.bat" (own
+  Python by relative path) + "READ ME FIRST.txt" (`START_BAT`, `STOP_BAT`, `PORTABLE_README`, `PORTABLE_NOTES` in
+  build_installer.py). No install.json, so files go in Saved inside the unzipped folder. Every .exe/.dll/.pyd in it is
+  signed (Python Software Foundation, Microsoft); only the two .bat files are ours. `tools/test_portable.py <zip>`
+  unzips it, starts it with its own .bat on port 5097, saves a file, stops it. `--zip-only --test` = just the zip for
+  a version already built (refuses if Ship Desk's files changed since: `appFingerprint` in builds.json = the
+  fingerprint without build_installer.py). Not testable here against Defender: McAfee is this PC's antivirus
+  (Defender "Not running"). Only a code-signing certificate removes SmartScreen's "unrecognized app" box.
 - 1.1.0 (2026-10-26): first-run checklist (`#welcome`, app.js `welcomeItems` / `renderWelcome` / `setWelcome`,
   `KEYS.welcome` {hidden, format, sample, phone}; ticks come from real settings; "Setup checklist" `#btn-setup` brings
   it back). Update notice: serve.py `/api/update` (GET status; POST `now=1` asks GitHub `releases/latest` of
@@ -165,7 +174,7 @@ the user's own copy and Windows entries untouched). Keep every build at least a 
 same-version files in `dist/old/`); the script removes only builds older than 31 days, never the newest 3. It writes
 `dist/release-notes-<version>.md` (its "What's new" comes from commit subjects, so rewrite it in plain words from the
 save's log entry: this save's own work isn't committed yet); publishing stays the user's (auto mode blocks `gh release create`): give them the
-printed `gh release create ...` line. Log the new version in PROGRESS.md and on the card.
+printed `gh release create ...` line (it lists the installer and the zip). Log the new version in PROGRESS.md and on the card.
 
 ## Commands
 - Run: `Start Ship Desk.bat` (background) / `Stop Ship Desk.bat`, or `python serve.py` (in a window) ->

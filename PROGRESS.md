@@ -37,6 +37,23 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-20: 1.1.4 published; a no-install zip for PCs that warn about the installer
+- 1.1.4 published on GitHub at the user's request (installer, latest release).
+- User: "build a version that wont flag windows defender" / "zip file?". Not knowable here what flagged it: this
+  PC's antivirus is McAfee (Defender isn't running), no Defender detections recorded. The installer is unsigned; the
+  blue SmartScreen "unrecognized app" box only goes with a code-signing certificate (Azure Artifact Signing, $9.99 a
+  month, ID check, shows the signer's legal name; or SignPath Foundation, free for open source, needs a GitHub build).
+  Not chosen; the user picked the zip.
+- **The zip** (`dist/ShipDesk-1.1.4-portable.zip`, 13.5 MB): the same files the installer puts down, plus "Start Ship
+  Desk.bat", "Stop Ship Desk.bat" and "READ ME FIRST.txt" (unblock the zip, Extract All, double-click Start Ship
+  Desk). No installer program at all; every program file in it is Python's or Microsoft's, signed. Files go in Saved
+  inside the unzipped folder. `tools/test_portable.py`: 18 checks, all good (unzipped into a folder with a space,
+  started with its own .bat on port 5097, a saved file lands in its Saved, its Stop .bat turns it off, this PC's
+  Ship Desk and Windows entries untouched). From now on every build makes both; `--zip-only` adds the zip to a
+  version already built. Release notes 1.1.4 got a "No installer needed: the zip" section.
+- Writing check: 1 low hit ("Good to know" label -> "Day to day"), report `AI_SlopAgent/reports/2026-11-20-Shipping.md`.
+- For the user to run: `gh release upload v1.1.4 "dist/ShipDesk-1.1.4-portable.zip"` and
+  `gh release edit v1.1.4 --notes-file "dist/release-notes-1.1.4.md"`.
 ### 2026-11-19: envelope labels from TCGplayer's tracked slips (real slip, real print checked)
 - **First real tracked slip** (`TCGplayer_PackingSlips_20261119_175142.pdf`, Downloads; buyer data, not copied into
   the project): a letter page; the USPS barcode is TEXT in a barcode font (65 F/A/D/T letters) above the buyer's
