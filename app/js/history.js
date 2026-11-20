@@ -27,6 +27,9 @@ const FORMAT_NAMES = {
   letter3: "Letter, 3 per page",
   letter4: "Letter, 4 per page",
   labelSlip: "Label + slip",
+  envelopeCut: "Envelope labels to cut out",
+  thermalCut: "4x6 thermal, 2 envelope labels",
+  thermalEnvelope: "6x4 thermal envelope label",
   avery5160: "Avery 5160",
   envelope10: "#10 envelope",
 };

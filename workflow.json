@@ -725,6 +725,33 @@
         "A barcode check that needed half a bar's height to overlap failed on label renders by one pixel: 0.3 is safe.",
         "An old branch can be behind main by dozens of commits: compare its base before merging, port the one useful piece with a test that fails without it, and record the branch merged with -s ours."
       ]
+    },
+    {
+      "title": "Envelope labels from TCGplayer's tracked slips",
+      "date": "2026-11-19",
+      "summary": "With the first real tracked slip: the USPS barcode is read from the slip's text with its checked address, the new slip's item rows are read again, and three envelope-label formats (2 per 4x6, 6x4 landscape, 8 per letter) print return address + barcode + address for plain envelopes; checked on the user's printed label from a phone photo.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "af0659e3",
+              "role": "Builder",
+              "start": "2026-11-19T17:55",
+              "end": "2026-11-19T19:10",
+              "did": "imbFromRows (barcode as text + address), new item-row layout, drawCutLabel + thermalCut/thermalEnvelope/envelopeCut, one-click button, reload notice, safety research (USPS ok, TCGplayer wants window envelopes); 206 tests",
+              "outcome": "done",
+              "files": 12
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "The user's first two PDFs came from the cached old app: a service-worker app needs an 'updated, reload' notice, not 'reload twice'.",
+        "A real sample beats guesses: TCGplayer's barcode was text in a font, so reading the text is exact where a picture search was the plan.",
+        "The project's repo is public: log real orders' numbers and ZIPs nowhere, only what was checked."
+      ]
     }
   ]
 }

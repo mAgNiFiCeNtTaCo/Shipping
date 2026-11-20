@@ -212,7 +212,24 @@ export function returnAddress() {
 const hasReturnAddress = () => { const r = returnAddress(); return !!(r.name && r.street && r.city && r.state && r.zip); };
 
 export function planSettings() {
-  return { ...DEFAULT_PLAN_SETTINGS, ...state.plan, slips: !!state.output.slips };
+  // A packing slip goes in the envelope when Ship Desk prints one or when TCGplayer's slips were added (step 3).
+  return { ...DEFAULT_PLAN_SETTINGS, ...state.plan, slips: !!(state.output.slips || state.slips) };
+}
+
+const ENVELOPE_FORMATS = ["thermalCut", "thermalEnvelope", "envelopeCut"];
+
+/**
+ * TCGplayer's tracked slips were added: print envelope labels (the kind last picked, else 2 per 4x6 cut apart) and
+ * leave the slips off the thermal labels (they print on their own with "Only my slips, in label order").
+ */
+export function useEnvelopeLabels() {
+  const format = ENVELOPE_FORMATS.includes(state.output.envelopeFormat) ? state.output.envelopeFormat : "thermalCut";
+  Object.assign(state.output, { format, slips: false, slipsInLabelOrder: false });
+  save(KEYS.output, state.output);
+  setWelcome({ format: true });
+  replan();
+  renderAll();
+  toast(`Printing ${(formatList.find((f) => f.id === format) || {}).label || "envelope labels"}. Packing slips are off for these labels.`);
 }
 
 function replan() {
@@ -543,12 +560,21 @@ async function loadSlipFile(file) {
     const res = await readSlipPdf(buf, state.orders.map((o) => o.id), { imb: !!planSettings().trackedEnvelopes });
     attachSlips(state.orders, res.byOrder || {});
     state.slips = { byOrder: res.byOrder || {}, unmatchedPages: res.unmatchedPages || [], fileName: file.name };
+    replan(); // the slips go in the envelopes: their weight counts
     const matched = state.orders.filter((o) => state.slips.byOrder[o.id]).length;
     const lines = [];
     if (state.slips.unmatchedPages.length) lines.push(`${plural(state.slips.unmatchedPages.length, "page")} didn't mention any of your orders (page ${state.slips.unmatchedPages.join(", ")}).`);
     if (matched < state.orders.length) lines.push(`No slip found for: ${state.orders.filter((o) => !state.slips.byOrder[o.id]).map((o) => o.id).join(", ")}.`);
     const barcoded = state.orders.filter((o) => o.imb);
-    if (barcoded.length) lines.push(`${plural(barcoded.length, "slip has", "slips have")} TCGplayer's USPS tracking barcode: Ship Desk prints it under the address on ${barcoded.length === 1 ? "its label" : "their labels"} (4x6, letter and #10 envelope; not Avery).`);
+    if (barcoded.length) {
+      lines.push(`${plural(barcoded.length, "slip has", "slips have")} TCGplayer's USPS tracking barcode: Ship Desk prints it with the address TCGplayer checked on ${barcoded.length === 1 ? "its label" : "their labels"} (every format but Avery). TCGplayer's protection is only sure with the slip in a #10 window envelope.`);
+      if (!ENVELOPE_FORMATS.includes(state.output.format)) {
+        const kind = state.output.envelopeFormat === "thermalEnvelope" ? "6 x 4, one per label" : state.output.envelopeFormat === "envelopeCut" ? "letter paper, cut out" : "2 per 4x6, cut apart";
+        const b = el("button", { type: "button", id: "btn-env-labels", class: "btn primary small", text: `Print envelope labels (${kind})` });
+        b.addEventListener("click", useEnvelopeLabels);
+        lines.push(b);
+      }
+    }
     showMsg(box, matched ? (lines.length ? "warn" : "ok") : "error",
       matched ? `Found slips for ${matched} of ${plural(state.orders.length, "order")}.` : "None of the pages matched your orders.",
       matched ? lines : ["Check that the PDF is for the same orders as your CSV."]);
@@ -2299,6 +2325,7 @@ function bindOutput() {
     const k = e.target.name;
     if (!k) return;
     state.output[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    if (k === "format" && ENVELOPE_FORMATS.includes(e.target.value)) state.output.envelopeFormat = e.target.value; // for useEnvelopeLabels
     save(KEYS.output, state.output);
     if (k === "format") setWelcome({ format: true });
     if (k === "slips") replan();
@@ -2404,6 +2431,12 @@ export function clearShipped() {
 function registerWorker() {
   if (!/^https?:$/.test(location.protocol) || !("serviceWorker" in navigator) || window.top !== window) return;
   navigator.serviceWorker.register("sw.js").catch(() => { /* offline mode is a bonus; the app works without it */ });
+  // sw.js takes over as soon as a new version is installed, but this page keeps running the old code until it is
+  // reloaded (2026-11-19: labels were made with the old version after one reload). Say so, unless this is the first
+  // visit (no old version was showing).
+  const hadOne = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadOne) $("#reload-note").hidden = false; });
+  $("#reload-now").addEventListener("click", () => location.reload());
 }
 
 let started = false;
@@ -2444,7 +2477,7 @@ export function init() {
 }
 
 export const api = {
-  state, init, loadCsvText, loadPastedText, setFilter, visibleOrders, printOrders, returnAddress, planSettings,
+  state, init, loadCsvText, loadPastedText, setFilter, visibleOrders, printOrders, returnAddress, planSettings, useEnvelopeLabels,
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
   clearShipped, renderAll, handleFiles, loadSlipFile, today, restoreBatch, clearBatch, applyShipments,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder,

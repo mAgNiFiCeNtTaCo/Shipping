@@ -471,6 +471,41 @@ export const tests = {
     eq(app.importFile().count, 0);
   },
 
+  "tracked slips: one click prints envelope labels, 2 per 4x6 with TCGplayer's barcode, slips off the labels": async () => {
+    const { win, doc, app, saved } = await openApp();
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => app.state.orders.length === 10, "orders");
+    setOutput(win, doc, "format", "labelSlip");
+    setOutput(win, doc, "slips", true);
+    const { encodeImb } = await import("../js/imb.js");
+    const { jsPDF } = window.jspdf;
+    const slip = new jsPDF({ unit: "pt", format: "letter" });
+    slip.setFontSize(11);
+    slip.text("Order Number: SAMPLE-0001", 56, 60);
+    slip.text(encodeImb("00310123456900000001", "900121234"), 80, 222);
+    slip.text(["Ash Example", "45 EXAMPLE ST", "LOS ANGELES, CA 90012-1234"], 80, 236, { lineHeightFactor: 1.4 });
+    slip.setFontSize(8); slip.text("Fold Line", 306, 312);
+    await dropFile(win, slip.output("arraybuffer"), "TCGplayer_PackingSlips.pdf", "application/pdf");
+    await waitFor(() => /tracking barcode/.test(doc.querySelector("#slip-msg").textContent), "the slip");
+    eq(app.state.orders[0].imb.tracking, "00310123456900000001");
+    ok(app.planSettings().slips, "the slips' weight counts (they go in the envelopes)");
+    doc.querySelector("#btn-env-labels").click();
+    eq([app.state.output.format, app.state.output.slips, app.state.output.slipsInLabelOrder], ["thermalCut", false, false]);
+    eq(doc.querySelector("#format").value, "thermalCut", "the picker shows it");
+    ok(app.planSettings().slips, "still counted with Packing slips too off");
+    saved.length = 0;
+    doc.querySelector("#btn-pdf").click();
+    const r = await readBack(saved[0].doc);
+    eq(r.pages.length, 5, "10 orders on 5 labels, no slip pages");
+    near(r.pages[0].w, 4, 0.01, "4x6");
+    ok(r.text.includes("LOS ANGELES, CA 90012-1234"), "the checked address from the slip");
+    // The landscape one picked once is what the button picks next time.
+    setOutput(win, doc, "format", "thermalEnvelope");
+    setOutput(win, doc, "format", "thermal4x6");
+    app.useEnvelopeLabels();
+    eq(app.state.output.format, "thermalEnvelope", "remembered");
+  },
+
   "Pirate Ship CSV lists tracked orders that have no tracking yet": async () => {
     const { win, doc, app, saved } = await openApp();
     await dropFile(win, await sampleText(), "export.csv");

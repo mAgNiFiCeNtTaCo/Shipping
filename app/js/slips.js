@@ -2,7 +2,7 @@
 // number in its text; item lines are picked out heuristically; every page is kept as an image (~150 dpi)
 // so "Slips in label order" can reprint the user's own slips in the same order as the labels.
 
-import { findImb } from "./imb.js";
+import { findImb, decodeImb } from "./imb.js";
 
 const DPI = 150;
 const ORDER_LABEL = /order\s*(?:#|number|no\.?|id)\s*:?\s*([A-Z0-9][A-Z0-9-]{3,})/i;
@@ -99,25 +99,43 @@ export function parseItemLine(line) {
   return item;
 }
 
+// A row with only a quantity and its price(s): the newer slip (seen 2026-11-19) centres them on a description that
+// wraps, so the description's first line is the row above and the rest are the rows below.
+const BARE_ITEM = new RegExp(`^(\\d{1,3})\\s+(${PRICE.source}(?:\\s+${PRICE.source})*)$`);
+
+// Joins a wrapped description: "#CORI-" + "EN002" is one card number (a dash after a space separates words).
+const joinWrap = (a, b) => (/[A-Za-z0-9]-$/.test(a) ? a + b : `${a} ${b}`);
+
 /**
  * The items on one page's rows: item lines, each with the lines under it that carry on its description (indented
- * past the quantity, no price, nothing like "Total": a long description wraps onto them).
+ * past the quantity, no price, nothing like "Total": a long description wraps onto them). A quantity + price row with
+ * no description takes the indented description lines just above it.
  */
 export function itemsFromRows(rows) {
   const items = [];
   let open = null; // { item, x } while the next rows may carry on its description
+  let loose = []; // description-like rows not yet given to an item
   for (const r of rows) {
-    const it = parseItem(r.text);
+    const t = r.text.trim();
+    const bare = BARE_ITEM.exec(t);
+    const above = bare ? loose.filter((l) => l.x > r.x + 4) : [];
+    const it = above.length
+      ? parseItem(`${bare[1]}  ${above.map((l) => l.text.trim()).reduce(joinWrap)}  ${bare[2]}`)
+      : parseItem(r.text);
     if (it) {
       items.push(it);
       open = { item: it, x: r.x };
+      loose = [];
       continue;
     }
-    const t = r.text.trim();
-    if (open && t && r.x > open.x + 4 && !PRICE.test(t) && !NOT_ITEM.test(t) && /[A-Za-z]/.test(t)) {
-      open.item.text = `${open.item.text} ${t}`;
+    const described = t && !PRICE.test(t) && !NOT_ITEM.test(t) && /[A-Za-z]/.test(t);
+    if (open && described && r.x > open.x + 4) {
+      open.item.text = joinWrap(open.item.text, t);
       Object.assign(open.item, describeItem(open.item.text));
-    } else open = null;
+      continue;
+    }
+    open = null;
+    loose = described ? [...loose, r] : [];
   }
   return items.map(({ text, ...it }) => it);
 }
@@ -138,8 +156,29 @@ function findOrder(text, ids) {
   return best;
 }
 
-// TCGplayer's tracked-envelope slips carry a USPS barcode (IMb, imb.js): looked for in the page drawn at this resolution.
+// TCGplayer's tracked-envelope slips carry a USPS barcode (IMb, imb.js). On the real slip (seen 2026-11-19) it is text in a
+// USPS barcode font: the 65 letters F/A/D/T on a row of their own, with the address it was made for on the rows below
+// (the address TCGplayer checked, ZIP+4 included) down to the "Fold Line". A slip that draws the bars instead is
+// looked for in the page drawn at IMB_DPI.
 const IMB_DPI = 300;
+const IMB_TEXT = /(?:^|[^A-Z])([FADT]{65})(?![A-Z])/;
+
+/** The barcode written as text in the page's rows: { tracking, routing, bars, address: [lines] } or null. */
+export function imbFromRows(rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const m = IMB_TEXT.exec(String(rows[i].text || "").replace(/\s+/g, ""));
+    const imb = m && decodeImb(m[1]);
+    if (!imb) continue;
+    const address = [];
+    for (let j = i + 1; j < rows.length && address.length < 5; j++) {
+      const t = rows[j].text.trim();
+      if (!t || /fold line/i.test(t) || Math.abs(rows[j].x - rows[i].x) > 20) break;
+      address.push(t);
+    }
+    return { ...imb, bars: m[1], address };
+  }
+  return null;
+}
 
 /** The first USPS IMb on the page: { tracking, routing, bars } or null. */
 async function pageImb(page) {
@@ -175,7 +214,8 @@ async function pageImage(page) {
  * Page numbers in unmatchedPages are 1-based. A page with no order number continues the order of the page
  * before it (slips that run over a page); a page naming an order that isn't in orderIds is unmatched.
  * With no orderIds, pages are keyed by the order number printed after "Order #" / "Order Number".
- * With { imb: true } each order also gets the USPS barcode of a tracked-envelope slip (entry.imb, see pageImb).
+ * A tracked-envelope slip's USPS barcode goes in entry.imb (imbFromRows); with { imb: true } a slip whose barcode
+ * isn't text is also looked at as a picture (pageImb, slower).
  */
 export async function readSlipPdf(arrayBuffer, orderIds = [], { imb = false } = {}) {
   const pdfjs = lib();
@@ -209,7 +249,10 @@ export async function readSlipPdf(arrayBuffer, orderIds = [], { imb = false } = 
       const entry = byOrder[id] || (byOrder[id] = { items: [], pageImages: [] });
       entry.items.push(...itemsFromRows(rows));
       entry.pageImages.push(await pageImage(page));
-      if (imb && !entry.imb) { const found = await pageImb(page); if (found) entry.imb = found; }
+      if (!entry.imb) {
+        const found = imbFromRows(rows) || (imb ? await pageImb(page) : null);
+        if (found) entry.imb = found;
+      }
       page.cleanup();
     }
   } finally {

@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <title>PDF preview</title>
 <!-- QA helper: renders one page of a format's PDF (the sample orders) to a canvas for screenshots.
-     tests/pdf-preview.html?format=thermal4x6&page=1&width=900 -->
+     tests/pdf-preview.html?format=thermal4x6&page=1&width=900 (&imb=1: made-up tracked-envelope barcodes, as from
+     TCGplayer's tracked slips) -->
 <script src="../vendor/jspdf.umd.min.js"></script>
 <script src="../vendor/pdf.min.js"></script>
 <script src="../vendor/qrcode.js"></script>
@@ -18,6 +19,7 @@
 import { parseOrders } from "../js/csv.js";
 import { planOrder } from "../js/plan.js";
 import { renderPdf } from "../js/render.js";
+import { encodeImb } from "../js/imb.js";
 
 const q = new URLSearchParams(location.search);
 const format = q.get("format") || "thermal4x6";
@@ -28,6 +30,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "../vendor/pdf.worker.min.js";
 const text = await (await fetch("../samples/tcgplayer-sample.csv")).text();
 const orders = parseOrders(text).orders;
 for (const o of orders) o.plan = planOrder(o, {});
+if (q.get("imb") === "1") {
+  orders.forEach((o, i) => {
+    const tracking = "00310" + "123456" + String(900000000 + i);
+    const zip = String(o.zip || "").replace(/\D/g, "").slice(0, 5);
+    if (zip.length === 5) o.imb = { tracking, routing: zip, bars: encodeImb(tracking, zip) };
+  });
+}
 const doc = renderPdf(orders, {
   format,
   slips: q.get("slips") !== "0",

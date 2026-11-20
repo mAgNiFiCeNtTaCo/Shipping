@@ -29,8 +29,8 @@ EDGE = next(p for p in [r"C:\Program Files (x86)\Microsoft\Edge\Application\msed
 
 # format id -> (page width, page height) in inches
 FORMATS = {
-    "thermal4x6": (4, 6), "thermal6x4": (4, 6), "letter1": (8.5, 11), "letter2": (8.5, 11), "letter3": (8.5, 11), "letter4": (8.5, 11),
-    "labelSlip": (8.5, 11), "avery5160": (8.5, 11), "envelope10": (9.5, 4.125),
+    "thermal4x6": (4, 6), "thermal6x4": (4, 6), "thermalCut": (4, 6), "thermalEnvelope": (4, 6), "letter1": (8.5, 11), "letter2": (8.5, 11), "letter3": (8.5, 11), "letter4": (8.5, 11),
+    "labelSlip": (8.5, 11), "envelopeCut": (8.5, 11), "avery5160": (8.5, 11), "envelope10": (9.5, 4.125),
 }
 
 
@@ -201,7 +201,8 @@ def main():
     for fid, (pw, ph) in FORMATS.items():
         width = 600 if fid.startswith("thermal") else 900
         height = round(width * ph / pw)
-        shot(f"{base}tests/pdf-preview.html?format={fid}&page=1&width={width}", f"pdf-{fid}.png", width, height)
+        extra = "&imb=1" if fid in ("envelopeCut", "thermalCut", "thermalEnvelope") else ""  # with made-up tracked-envelope barcodes
+        shot(f"{base}tests/pdf-preview.html?format={fid}&page=1&width={width}{extra}", f"pdf-{fid}.png", width, height)
     # A packing slip page: thermal slips follow the 10 labels; letter slips follow 1 (letter4 = 3 label pages).
     shot(f"{base}tests/pdf-preview.html?format=thermal4x6&page=11&width=600", "pdf-thermal4x6-slip.png", 600, 900)
     shot(f"{base}tests/pdf-preview.html?format=letter4&page=4&width=900", "pdf-letter-slip.png", 900, 1165)

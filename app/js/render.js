@@ -5,7 +5,7 @@ import { drawImb, imbWidth, IMB_SIZE } from "./imb.js";
 
 const LETTER = [8.5, 11];
 const THERMAL = [4, 6];
-const isThermal = (format) => format === "thermal4x6" || format === "thermal6x4";
+const isThermal = (format) => ["thermal4x6", "thermal6x4", "thermalCut", "thermalEnvelope"].includes(format);
 const ENVELOPE = [9.5, 4.125];
 const PT = 1 / 72; // one point in inches
 const LH = 1.2; // line height, as a multiple of the font size
@@ -16,6 +16,12 @@ export const FORMATS = [
   // An upright 4x6 page with the label drawn a quarter turn: thermal printers don't rotate a wide page, they cut it off.
   { id: "thermal6x4", label: "Thermal label 6 x 4 in, landscape (sideways)", pageSize: THERMAL, perPage: 1, sideways: true,
     slipSize: THERMAL, hint: "Same 4x6 label with the address turned sideways. Print at 100% with zero margins, paper 4 x 6." },
+  // Two small envelope labels on one 4x6 label, cut apart (the same layout as envelopeCut below).
+  { id: "thermalCut", label: "Thermal label 4 x 6 in, 2 envelope labels to cut apart", pageSize: THERMAL, perPage: 2,
+    slipSize: THERMAL, hint: "Two 4 x 3 in labels on each 4x6 label: cut along the dashed line and stick one on each plain envelope. For TCGplayer tracked envelopes, add the tracked packing-slip PDF first so its barcode prints. TCGplayer's protection is only sure with its slip in a #10 window envelope." },
+  // One big envelope label per 4x6 label, turned sideways (6 x 4 in, upright page as thermal6x4).
+  { id: "thermalEnvelope", label: "Thermal label 6 x 4 in, landscape envelope label (1 per label)", pageSize: THERMAL, perPage: 1,
+    sideways: true, slipSize: THERMAL, hint: "One 6 x 4 in envelope label per 4x6 label, no cutting: fits a #10 envelope. For TCGplayer tracked envelopes, add the tracked packing-slip PDF first so its barcode prints. TCGplayer's protection is only sure with its slip in a #10 window envelope." },
   { id: "letter1", label: "Letter paper, 1 label per page (full sheet)", pageSize: LETTER, perPage: 1,
     slipSize: LETTER, hint: "Full-sheet labels or plain paper." },
   { id: "letter2", label: "Letter paper, 2 labels per page (half sheets)", pageSize: LETTER, perPage: 2,
@@ -26,6 +32,10 @@ export const FORMATS = [
     slipSize: LETTER, hint: "Quarter-sheet labels, or cut along the dashed lines." },
   { id: "labelSlip", label: "Letter paper, label + packing slip on one page", pageSize: LETTER, perPage: 1,
     slipSize: LETTER, hint: "Label on top, packing slip below. Cut or fold on the dashed line." },
+  // Small labels to cut out and stick on plain envelopes: return address, TCGplayer's tracked-envelope barcode (from its
+  // packing slip) and the buyer's address, 8 per page with dashed cut lines.
+  { id: "envelopeCut", label: "Letter paper, envelope labels to cut out (8 per page)", pageSize: LETTER, perPage: 8,
+    slipSize: LETTER, hint: "Cut along the dashed lines and stick one on each plain envelope. For TCGplayer tracked envelopes, add the tracked packing-slip PDF first so its barcode prints. TCGplayer's protection is only sure with its slip in a #10 window envelope." },
   { id: "avery5160", label: "Avery 5160 / 8160 address labels (30 per sheet)", pageSize: LETTER, perPage: 30,
     slipSize: LETTER, hint: "Ship-to address only, 1 x 2-5/8 in labels." },
   { id: "envelope10", label: "#10 envelope (9.5 x 4.125 in)", pageSize: ENVELOPE, perPage: 1,
@@ -77,6 +87,9 @@ function cityLine(a) {
 }
 
 function shipToLines(o) {
+  // TCGplayer's tracked slip prints the address its USPS barcode was made for (checked, with ZIP+4): use it with the barcode.
+  const slip = o.imb && Array.isArray(o.imb.address) && o.imb.address.length >= 2 ? o.imb.address : null;
+  if (slip) return slip.map((t, i) => ({ t: cleanText(t), ...(i === 0 ? { style: "bold", rel: 1.12 } : {}) })).filter((l) => l.t);
   const lines = [{ t: cleanText(o.name || [o.firstName, o.lastName].filter(Boolean).join(" ")), style: "bold", rel: 1.12 }];
   if (o.address1) lines.push({ t: cleanText(o.address1) });
   if (o.address2) lines.push({ t: cleanText(o.address2) });
@@ -386,6 +399,32 @@ function drawLabel(doc, ctx, o, box) {
   drawBlock(doc, ctx, fit, bx, by + tagH);
   // The tracked envelope's barcode right under the address (USPS allows it in the address block).
   if (imb) drawImb(doc, imb, clamp(bx, ix + 0.125, ix + iw - imbWidth() - 0.125), by + tagH + fit.height + 0.08);
+}
+
+// A label to cut out for a plain envelope: return address top left, the order's QR code top right, then TCGplayer's
+// tracked-envelope barcode (when its slip was added) right above the buyer's address, as on TCGplayer's slip.
+function drawCutLabel(doc, ctx, o, box) {
+  const pad = 0.28;
+  const ix = box.x + pad, iy = box.y + pad, iw = box.w - 2 * pad, ih = box.h - 2 * pad;
+  const u = clamp(Math.min(box.w / 4.25, box.h / 2.75), 1, 1.5); // bigger text on the 6 x 4 label
+  const orderQr = ctx.orderQr(o);
+  const qr = orderQr ? 0.55 * u : 0;
+  const retFit = fitBlock(doc, ctx, returnLines(ctx.ret, ctx.boldReturn), iw - (qr ? qr + 0.15 : 0), 0.62 * u, 8 * u, 5.5);
+  drawBlock(doc, ctx, retFit, ix, iy);
+  if (orderQr) drawQr(doc, orderQr, ix + iw - qr, iy, qr);
+  const smallPt = 6.5 * Math.min(u, 1.25), smallH = smallPt * LH * PT; // the label note bottom left, the order number bottom right
+  line1(doc, ctx, "Order " + cleanText(o.id), ix + iw - 1.6, iy + ih - smallH, { pt: smallPt - 0.5, floor: 4.5, maxW: 1.6, rgb: MUTED, align: "right" });
+  const note = cleanText(ctx.note);
+  if (note) line1(doc, ctx, note, ix, iy + ih - smallH, { style: "italic", pt: smallPt, floor: 5, maxW: iw - 1.7, rgb: MUTED });
+  const top = iy + Math.max(retFit.height, qr) + 0.12 * u;
+  const imb = imbFor(o, iw);
+  const imbH = imb ? IMB_SIZE.full + 0.08 : 0;
+  const fit = fitBlock(doc, ctx, shipToLines(o), iw - 0.3, iy + ih - smallH - 0.04 - top - imbH, 13 * u, 7);
+  const blockW = Math.max(fit.width, imb ? imbWidth() : 0);
+  const bx = clamp(ix + (iw - blockW) / 2, ix + 0.125, ix + iw - blockW);
+  const by = top + Math.max(0, (iy + ih - smallH - 0.04 - top - imbH - fit.height) / 2);
+  if (imb) drawImb(doc, imb, bx, by);
+  drawBlock(doc, ctx, fit, bx, by + imbH);
 }
 
 // Avery 5160 cell: ship-to only, shrunk to fit.
@@ -704,6 +743,7 @@ function cellsFor(format) {
     case "letter2": return [0, 1].map((i) => ({ x: 0, y: i * H / 2, w: W, h: H / 2 }));
     case "letter3": return [0, 1, 2].map((i) => ({ x: 0, y: i * H / 3, w: W, h: H / 3 }));
     case "letter4": return [0, 1, 2, 3].map((i) => ({ x: (i % 2) * W / 2, y: Math.floor(i / 2) * H / 2, w: W / 2, h: H / 2 }));
+    case "envelopeCut": return [...Array(8).keys()].map((i) => ({ x: (i % 2) * W / 2, y: Math.floor(i / 2) * H / 4, w: W / 2, h: H / 4 }));
     default: return null;
   }
 }
@@ -713,6 +753,10 @@ function cutLines(doc, format) {
   if (format === "letter2") dashed(doc, 0.15, H / 2, W - 0.15, H / 2);
   if (format === "letter3") { dashed(doc, 0.15, H / 3, W - 0.15, H / 3); dashed(doc, 0.15, 2 * H / 3, W - 0.15, 2 * H / 3); }
   if (format === "letter4") { dashed(doc, 0.15, H / 2, W - 0.15, H / 2); dashed(doc, W / 2, 0.15, W / 2, H - 0.15); }
+  if (format === "envelopeCut") {
+    for (const k of [1, 2, 3]) dashed(doc, 0.15, k * H / 4, W - 0.15, k * H / 4);
+    dashed(doc, W / 2, 0.15, W / 2, H - 0.15);
+  }
 }
 
 /**
@@ -754,7 +798,18 @@ export function renderPdf(orders, opts = {}) {
     return doc;
   }
 
-  if (isThermal(format)) {
+  if (format === "thermalCut") {
+    const [w, h] = THERMAL;
+    orders.forEach((o, i) => {
+      if (i % 2 === 0) { page(THERMAL); dashed(doc, 0.1, h / 2, w - 0.1, h / 2); }
+      drawCutLabel(doc, ctx, o, { x: 0, y: (i % 2) * h / 2, w, h: h / 2 });
+    });
+  } else if (format === "thermalEnvelope") {
+    for (const o of orders) {
+      page(THERMAL);
+      sideways(doc, 0, (box) => drawCutLabel(doc, ctx, o, box));
+    }
+  } else if (isThermal(format)) {
     const [w, h] = fmt.pageSize;
     for (const o of orders) {
       page(fmt.pageSize);
@@ -777,7 +832,8 @@ export function renderPdf(orders, opts = {}) {
     orders.forEach((o, i) => {
       const k = i % cells.length;
       if (k === 0) { page(LETTER); cutLines(doc, format); }
-      drawLabel(doc, ctx, o, { ...cells[k], pad: 0.3 });
+      if (format === "envelopeCut") drawCutLabel(doc, ctx, o, cells[k]);
+      else drawLabel(doc, ctx, o, { ...cells[k], pad: 0.3 });
     });
   }
 

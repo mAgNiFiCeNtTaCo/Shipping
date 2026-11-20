@@ -75,8 +75,11 @@ files folder; a problem that stops it from starting also pops up. No internet ne
 |---|---|
 | Thermal label 4 x 6 in | One label per 4x6 label (Rollo, MUNBYN, Dymo and similar). Packing slips come after, also 4x6. |
 | Thermal label 6 x 4 in, landscape | The same 4x6 label with the address turned sideways (reads along the long side). The PDF page is a normal upright 4x6, so the printer prints it whole; packing slips come after, upright. |
+| Thermal label 4 x 6 in, 2 envelope labels to cut apart | Two 4 x 3 in labels on each 4x6 label, a dashed line between them: cut and stick one on each plain envelope. Return address, order QR code, TCGplayer's tracked-envelope barcode and the buyer's address. |
 | Letter paper, 1 / 2 / 3 / 4 labels per page | Full sheet, halves, thirds or quarters, with dashed cut lines. |
 | Letter paper, label + packing slip | Label on the top half, packing slip on the bottom half of each page. |
+| Thermal label 6 x 4 in, landscape envelope label | The same envelope label, bigger: one per 4x6 label, turned sideways (6 x 4 in), no cutting. Fits a #10 envelope. |
+| Letter paper, envelope labels to cut out | The same small envelope label, 8 per page (4.25 x 2.75 in each) with dashed cut lines. |
 | Avery 5160 / 8160 | 30 address labels per sheet (just the buyer's address). |
 | #10 envelope | Prints straight onto a 9.5 x 4.125 in envelope; the stamp corner is left empty. |
 
@@ -117,13 +120,25 @@ TCGplayer's way is a window envelope with the slip showing through the window. S
   under $49.99 that fit a letter then show **Tracked envelope (free)** instead of "Envelope OK" or "Tracking
   recommended". They count as envelopes with stamps, and they no longer go in the Pirate Ship file. An order whose
   buyer paid for faster shipping still gets a tracked label.
-- **The barcode on Ship Desk's own label:** add TCGplayer's tracked packing-slip PDF in step 3 (as for your own
-  packing slips). Ship Desk finds the barcode on each order's slip and prints it under the buyer's address on that
-  order's label (4x6, 6x4, letter paper and #10 envelope; Avery cells are too small). Then the label keeps your
-  return address and goes on a plain envelope as now, with no window envelope.
-- Still to check on TCGplayer's first real tracked slip: where the barcode sits on it (Ship Desk looks for it
-  anywhere on the page, any way up) and whether TCGplayer's protection counts when the barcode is on the label
-  rather than on the slip in the window. Until then, TCGplayer's own way (the slip in a window envelope) is the sure one.
+- **Plain envelopes instead of window envelopes:**
+  1. Drop the orders' Export Shipping CSV as usual.
+  2. In TCGplayer, make the packing slips with tracking and save them as a PDF. Add that PDF in step 3
+     (**+ Add TCGplayer packing slips**). Ship Desk reads each slip's barcode and the address TCGplayer checked
+     for it (with ZIP+4), and says how many slips have one.
+  3. Pick **Thermal label 4 x 6 in, 2 envelope labels to cut apart**, **Thermal label 6 x 4 in, landscape envelope
+     label** (one bigger label, no cutting) or **Letter paper, envelope labels to cut out**, click **Download PDF**
+     and print. The **Print envelope labels** button under the slip message picks the first one and turns the slips off. Cut along the dashed lines and stick one label on each envelope.
+     Each label has your return address top left, the order's QR code, the barcode, and the buyer's address under it.
+     TCGplayer's own slips print after the labels (**Slips in label order**), to go inside.
+  The barcode also prints on the other formats (under the address), but not on Avery labels (too small).
+- Checked on a real tracked slip (2026-11-19): TCGplayer writes the barcode as text in a barcode font, so Ship Desk
+  reads it exactly, and its numbers pass USPS's check. USPS's machines read the barcode on a label just as well
+  (it sits in the address block, as USPS allows).
+- **TCGplayer's protection:** TCGplayer's help article (as quoted by other sellers' tools; it can't be read from here)
+  says to put the tracked slip in a standard #10 window envelope and not to use it with a plain envelope. So a label on
+  a plain envelope is your own choice: the tracking works, but TCGplayer may not count it for its "not received"
+  protection. For orders where that protection matters, use TCGplayer's way (the slip in a #10 window envelope), or
+  ask TCGplayer support first.
 
 ## Tracking and Pirate Ship
 

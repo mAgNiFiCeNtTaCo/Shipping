@@ -33,8 +33,18 @@ explain in plain words and finish jobs end to end.
   encoder/decoder (`encodeImb`, `decodeImb`; checked against USPS's Figure 5), `drawImb` (jsPDF, 22 bars/in), `findImb`
   (bars in an ImageData, any quarter turn). slips.js `readSlipPdf(buf, ids, { imb: true })` (when the setting is on)
   renders each slip page at 300 dpi -> `entry.imb` -> `attachSlips` sets `order.imb`; render.js `imbFor` prints it under
-  the ship-to block (labels, labelSlip, envelope10; not Avery). Not yet seen: a real tracked slip (layout, whether its
-  barcode is vector/font/image, whether TCGplayer's protection counts with the barcode on our label).
+  the ship-to block (labels, labelSlip, envelope10; not Avery). Real tracked slip seen 2026-11-19 (letter page, barcode +
+  address at ~1.1 in from the left, ~2.9 in from the top, "Fold Line" below): the IMb is TEXT in a barcode font (65
+  F/A/D/T letters), so slips.js `imbFromRows` reads it from pdf.js text (always, no setting needed) plus the address
+  rows under it (`imb.address`, TCGplayer's checked address with ZIP+4; render.js `shipToLines` prints that address
+  whenever `o.imb.address` exists); `pageImb` (picture search) only with { imb: true }. Envelope labels to cut out:
+  formats `thermalCut` (2 per 4x6, cut line at 3 in), `thermalEnvelope` (one 6 x 4 per 4x6 via `sideways`, text
+  scaled by `u`) and `envelopeCut` (8 per letter page), drawn by `drawCutLabel` (return address top left, order QR
+  top right, IMb above the name as on TCGplayer's slip, note + order # at the bottom). app.js `useEnvelopeLabels`
+  (button `#btn-env-labels` under the slip message) picks `state.output.envelopeFormat` (last envelope format
+  chosen) and turns slips off; `planSettings().slips` counts slip weight when slips print OR a slip PDF is loaded. The new slip also centres qty + prices between the two lines of a wrapped description: slips.js
+  `itemsFromRows` gives a bare "qty price price" row the indented rows above it (`BARE_ITEM`, `joinWrap` joins
+  "#CORI-" + "EN002"). Still unknown: whether TCGplayer's protection counts with the barcode on our label.
 - `app/js/render.js` (all PDF formats, `FORMATS`), `app/js/slips.js` (reads TCGplayer's packing-slip PDF).
 - Loaded batch kept across reloads: `KEYS.batch` holds the CSV/pasted text + ticks (app.js `keepBatch` / `restoreBatch` /
   `clearBatch`, "Clear these orders" in step 1, 14 days at most; full addresses, this browser only; slips not kept).
@@ -195,6 +205,8 @@ printed `gh release create ...` line. Log the new version in PROGRESS.md and on 
 - Windows reads a running .bat from disk line by line: editing `Start Ship Desk.bat` while an old window still runs
   it made that window start a second copy when Ship Desk stopped (2026-10-21). Close old windows first.
 - Browsers keep the old app until the service worker's `VERSION` changes: reload once or twice after an update.
+  Since 2026-11-19 the page shows `#reload-note` ("Ship Desk was just updated", Reload now) when a new worker takes
+  over (`controllerchange`); before that the user made labels with the cached old version twice.
 - Home network is double NAT: the phone can't reach 192.168.1.x, so phone access is Tailscale only (iPhone "iphone182").
 - `--virtual-time-budget` screenshots don't wait for IndexedDB: the phone shots use real-time DevTools capture (`live_shot`).
 - Tests never touch real Tailscale (`tools/test.py` fakes `tailscale_status` / `tailscale_switch`).

@@ -4,23 +4,24 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-10-29)
+## Where it stands (2026-11-19)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.3** (built and published 2026-10-29), Windows installer for other people:
+- **Version 1.1.4** (built 2026-11-19, not published yet; 1.1.3 published 2026-10-29 is the latest release), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3 = latest; 1.1.2 skipped). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice.
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **189 passed, 0 failed** (2026-10-29: 182 in the browser + 7 server checks);
+- Tests: `python tools/test.py` = **206 passed, 0 failed** (2026-11-19: 199 in the browser + 7 server checks);
   `tools/test_installer.py` 17 checks.
 - TCGplayer's own Order List export dropped on the page is checked against Ship Desk (forgotten uploads go back in the
   import file, missed and canceled orders listed); History has a "Not sent to TCGplayer yet" filter.
-- Ready for TCGplayer's free tracked envelopes (sellers get them 2026-11-02..06): plan setting + "Tracked envelope
-  (free)" tag, and the USPS barcode (IMb) read off TCGplayer's tracked slip PDF and printed under the address on Ship
-  Desk's own label. Waiting for a real tracked slip to confirm.
+- TCGplayer's free tracked envelopes: Ship Desk reads the USPS barcode (IMb) and checked address off TCGplayer's
+  tracked slip PDF (confirmed on a real slip 2026-11-19) and prints envelope labels for plain envelopes: 2 per 4x6
+  cut apart, one 6x4 landscape, or 8 per letter sheet. A printed label's barcode was read back from a phone photo
+  and matched TCGplayer's slip.
 - 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
@@ -36,6 +37,41 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-19: envelope labels from TCGplayer's tracked slips (real slip, real print checked)
+- **First real tracked slip** (`TCGplayer_PackingSlips_20261119_175142.pdf`, Downloads; buyer data, not copied into
+  the project): a letter page; the USPS barcode is TEXT in a barcode font (65 F/A/D/T letters) above the buyer's
+  checked address (ZIP+4), ~1.1 in from the left and ~2.9 in from the top, "Fold Line" below. slips.js `imbFromRows`
+  now reads it from the text (always, no setting needed; the picture search stays as a fallback), with the address
+  rows under it (`imb.address`); render.js prints that checked address whenever the barcode is used. Decoded on the
+  real slip: a 20-digit tracking code + the buyer's ZIP+4, USPS check passed (numbers not written here: the repo is public).
+- **New slip layout broke the card lines** (0 items read): the quantity and prices sit on their own row between the
+  two lines of a wrapped description. `itemsFromRows` gives such a bare "qty price price" row the indented rows above
+  it (`BARE_ITEM`) and joins "#CORI-" + "EN002" without a space (`joinWrap`).
+- **Envelope labels for plain envelopes** (user: return address top left, cut lines, stick on a plain white
+  envelope; prints only on the KNAON thermal printer): `drawCutLabel` = return address top left, order QR top right,
+  the barcode right above the buyer's name (as on TCGplayer's slip), note + order # at the bottom. Formats
+  `thermalCut` (2 per 4x6, 4 x 3 in each, dashed cut line), `thermalEnvelope` (one 6 x 4 in label per 4x6, turned
+  like thermal6x4, text ~1.4x bigger; user asked for landscape) and `envelopeCut` (8 per letter page).
+  "Print envelope labels" button under the slip message (`useEnvelopeLabels`): picks the last envelope format used
+  (`state.output.envelopeFormat`, else thermalCut) and turns slips off on the labels; the slips' weight still counts
+  for stamps when a slip PDF is loaded (`planSettings` slips = printed or loaded).
+- **Old version kept running** (the user's first two PDFs came from the cached app after one reload): the page now
+  shows "Ship Desk was just updated" with **Reload now** when a new service worker takes over (`#reload-note`,
+  `controllerchange`; not on the first visit). sw.js `shipdesk-v30`.
+- **Is it safe?** USPS: an IMb on an address label in the address block is allowed (1/8 in side clearance, within
+  5/8 in of the address). TCGplayer: its help article (quoted by TCGHaulTracker; not readable here, Cloudflare)
+  says to use the slip in a #10 window envelope, not a plain envelope, and another tool says thermal labels "aren't
+  covered"; protection itself is tied to a USPS scan. Told the user: fine for cheap orders, window envelope (or a
+  Pirate Ship label) for $20-49.99; README and the format hints say so. Also: toploader envelopes are
+  non-machinable (hand-sorted) and may get no barcode scans at all, whichever way the barcode goes on.
+- **Checked end to end:** the user's label PDF read back at 203 dpi (KNAON) with the slip's exact numbers; a phone
+  photo of the printed label decoded to the same 65 bars. Next: the user mails it and watches the order in the
+  Seller Portal for a USPS scan (1-3 days).
+- Writing check of the changed text: 0 hits. Tests: 206 passed (new: real-shaped tracked slip, envelopeCut,
+  thermalCut, thermalEnvelope, the one-click button).
+- **Installer 1.1.4** built and tested (over 1.1.3, all good). Not published: `gh release create v1.1.4 "dist/ShipDesk-Setup-1.1.4.exe" --title "Ship Desk 1.1.4" --notes-file "dist/release-notes-1.1.4.md" --target main`.
+- Resources 2026-11-19: Ship Desk 2 processes, CPU 0%, RAM 77 MB, port 5091, disk 366 MB; whole PC CPU 8% of 32 threads,
+  RAM 26.9 of 64 GB, GPU 36%.
 ### 2026-10-29: the old phone-scanning branch, checked and its one useful fix taken
 - The user asked to merge `worktree-faster-barcode-scan` (34a0542, 2026-10-21) "so long as it doesn't mess things
   up". It branched from 0972b15, 24 commits behind main; main had since rebuilt scanning (zxing-wasm main reader,

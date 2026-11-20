@@ -39,7 +39,7 @@ const LONG = makeOrder(0, {
 });
 
 function labelPages(id, n) {
-  const per = { letter1: 1, letter2: 2, letter3: 3, letter4: 4, avery5160: 30 }[id];
+  const per = { thermalCut: 2, letter1: 1, letter2: 2, letter3: 3, letter4: 4, envelopeCut: 8, avery5160: 30 }[id];
   return per ? Math.ceil(n / per) : n;
 }
 const slipSize = (id) => (id.startsWith("thermal") ? [4, 6] : [8.5, 11]);
@@ -117,7 +117,9 @@ async function centerPixel(page) {
 
 const tests = {
   "FORMATS has every contract format with label, page size and labels per page": async () => {
-    eq(FORMATS.map((f) => f.id), ["thermal4x6", "thermal6x4", "letter1", "letter2", "letter3", "letter4", "labelSlip", "avery5160", "envelope10"]);
+    eq(FORMATS.map((f) => f.id), ["thermal4x6", "thermal6x4", "thermalCut", "thermalEnvelope", "letter1", "letter2", "letter3", "letter4", "labelSlip", "envelopeCut", "avery5160", "envelope10"]);
+    eq(FORMATS.find((f) => f.id === "thermalCut").perPage, 2);
+    eq(FORMATS.find((f) => f.id === "envelopeCut").perPage, 8);
     for (const f of FORMATS) {
       ok(f.label && f.label.length > 5, f.id + " label");
       ok(Array.isArray(f.pageSize) && f.pageSize.length === 2, f.id + " pageSize");
@@ -491,7 +493,7 @@ Object.assign(tests, {
 
   "tracked envelopes: TCGplayer's USPS barcode prints under the address and reads back (not on Avery)": async () => {
     const o = makeOrder(0, { imb: { ...IMB, bars: encodeImb(IMB.tracking, IMB.routing) } });
-    for (const format of ["thermal4x6", "thermal6x4", "letter1", "letter4", "labelSlip", "envelope10"]) {
+    for (const format of ["thermal4x6", "thermal6x4", "thermalCut", "thermalEnvelope", "letter1", "letter4", "labelSlip", "envelopeCut", "envelope10"]) {
       const doc = renderPdf([o], { format, slips: false, returnAddress: RETURN });
       const hits = await imbsOn(doc);
       eq(hits.map((h) => h.imb), [{ tracking: IMB.tracking, routing: IMB.routing }], format);
@@ -506,6 +508,89 @@ Object.assign(tests, {
     ok(hit.y > city.base && hit.y < city.base + 0.4, `barcode at ${hit.y.toFixed(2)} in, city line at ${city.base.toFixed(2)} in`);
     eq((await imbsOn(renderPdf([o], { format: "avery5160", slips: false, returnAddress: RETURN }))).length, 0, "Avery cells are too small");
     eq((await imbsOn(renderPdf([makeOrder(0)], { format: "thermal4x6", slips: false, returnAddress: RETURN }))).length, 0, "no barcode without one");
+  },
+
+  "envelopeCut: 8 labels to cut out per page; return address, barcode, then the address TCGplayer checked": async () => {
+    const bars = encodeImb(IMB.tracking, "900121234");
+    const list = Array.from({ length: 9 }, (_, i) => makeOrder(i, { imb: i === 0 ? { ...IMB, routing: "900121234", bars,
+      address: ["Ash Example", "45 EXAMPLE ST APT 2", "LOS ANGELES, CA 90012-1234"] } : undefined }));
+    const doc = renderPdf(list, { format: "envelopeCut", slips: false, returnAddress: RETURN });
+    const { pages } = await readBack(doc);
+    eq(pages.length, 2, "9 labels -> 2 pages");
+    checkSizes(pages, [8.5, 11], 0, 2, "envelopeCut");
+    inBounds(pages, "envelopeCut");
+    const first = pages[0].items.filter((it) => it.x < 4.25 && it.base < 2.75); // the top-left label
+    const words = first.map((it) => it.s).join(" ");
+    ok(words.includes("Taco Card Shop") && words.includes("12 Return Rd"), "return address on the label: " + words);
+    ok(words.includes("LOS ANGELES, CA 90012-1234") && !words.includes("Los Angeles"), "the checked address from the slip: " + words);
+    const ret = first.find((it) => it.s.includes("Taco Card Shop"));
+    ok(ret.x < 0.5 && ret.base < 0.6, "return address top left");
+    for (const it of pages[0].items) ok(Math.abs(it.x - 4.25) > 0.05, `"${it.s}" doesn't sit on the cut line`);
+    const [hit] = await imbsOn(doc);
+    eq(hit.imb, { tracking: IMB.tracking, routing: "900121234" });
+    const name = first.find((it) => it.s === "Ash Example");
+    ok(hit.y < name.base && hit.y > ret.base, `barcode (${hit.y.toFixed(2)} in) between the return address and the buyer's name (${name.base.toFixed(2)} in)`);
+    ok(pages[1].text.includes("Order T-1008"), "order number on each label");
+  },
+
+  "thermalCut: two 4 x 3 in envelope labels per 4x6 label, a cut line between them": async () => {
+    const second = { tracking: "00040901234500005678", routing: "02134" };
+    const list = [makeOrder(0, { imb: { ...IMB, bars: encodeImb(IMB.tracking, IMB.routing) } }),
+      makeOrder(1, { imb: { ...second, bars: encodeImb(second.tracking, second.routing) } }), makeOrder(2)];
+    const doc = renderPdf(list, { format: "thermalCut", slips: false, returnAddress: RETURN });
+    const { pages } = await readBack(doc);
+    eq(pages.length, 2, "3 labels -> 2 pages");
+    checkSizes(pages, [4, 6], 0, 2, "thermalCut");
+    inBounds(pages, "thermalCut");
+    const top = pages[0].items.filter((it) => it.base < 3).map((it) => it.s).join(" ");
+    const bottom = pages[0].items.filter((it) => it.base > 3).map((it) => it.s).join(" ");
+    ok(top.includes("Ash Example") && top.includes("Taco Card Shop") && !top.includes("Brock Sample"), "first label: " + top);
+    ok(bottom.includes("Brock Sample") && bottom.includes("Taco Card Shop"), "second label: " + bottom);
+    for (const it of pages[0].items) ok(Math.abs(it.base - 3) > 0.12, `"${it.s}" clear of the cut line`);
+    const hits = await imbsOn(doc);
+    eq(hits.length, 2, "both barcodes read back");
+    eq(hits.map((h) => [h.imb.tracking, h.y < 3]).sort(), [[IMB.tracking, true], [second.tracking, false]].sort(), "each barcode on its own half");
+  },
+
+  "thermalEnvelope: one 6 x 4 in envelope label per 4x6 page, turned sideways, bigger than the cut-apart ones": async () => {
+    const o = makeOrder(0, { imb: { ...IMB, bars: encodeImb(IMB.tracking, IMB.routing) } });
+    const doc = renderPdf([o, makeOrder(1)], { format: "thermalEnvelope", slips: false, returnAddress: RETURN });
+    const { pages } = await readBack(doc);
+    eq(pages.length, 2, "one label per page");
+    checkSizes(pages, [4, 6], 0, 2, "thermalEnvelope");
+    inBounds(pages, "thermalEnvelope");
+    const name = pages[0].items.find((it) => it.s === "Ash Example");
+    eq([Math.round(name.dx), Math.round(name.dy)], [0, 1], "text turned a quarter, reading down the upright page");
+    const cut = (await readBack(renderPdf([o], { format: "thermalCut", slips: false, returnAddress: RETURN }))).pages[0].items.find((it) => it.s === "Ash Example");
+    ok(name.size > cut.size * 1.15, `bigger name (${name.size.toFixed(1)} pt vs ${cut.size.toFixed(1)} pt)`);
+    const [hit] = await imbsOn(doc);
+    eq(hit && hit.imb, { tracking: IMB.tracking, routing: IMB.routing }, "the barcode reads, turned");
+  },
+
+  "readSlipPdf: TCGplayer's tracked slip (2026-11): barcode as text with its address, items centred on a wrapped name": async () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const bars = encodeImb(IMB.tracking, "900121234");
+    doc.setFontSize(18); doc.text("T-1000", 540, 70, { align: "right" });
+    doc.setFontSize(11);
+    doc.text(bars, 80, 222); // the slip's barcode font draws these letters as bars; plain text here
+    doc.text(["Ash Example", "45 EXAMPLE ST APT 2", "LOS ANGELES, CA 90012-1234"], 80, 236, { lineHeightFactor: 1.4 });
+    doc.setFontSize(8); doc.text("Fold Line", 306, 312);
+    doc.setFontSize(9); doc.text("QTY", 42, 370); doc.text("DESCRIPTION", 74, 370); doc.text("PRICE", 460, 370);
+    doc.setFontSize(12);
+    doc.text("YuGiOh - Chaos Origins - Skull Archfiend of Chaos - #CORI-", 74, 392);
+    doc.text("1", 48, 399); doc.text("$0.89", 466, 399); doc.text("$0.89", 546, 399);
+    doc.text("EN002 - Super Rare - Near Mint 1st Edition", 74, 406);
+    doc.text("2", 48, 440); doc.text("Pot of Greed - LOB - Near Mint", 74, 440); doc.text("$1.50", 466, 440); doc.text("$3.00", 546, 440);
+    doc.text("3", 48, 470); doc.text("Total", 74, 470); doc.text("$3.89", 546, 470);
+    doc.setFontSize(9); doc.text("Order Number: T-1000", 56, 760);
+    const res = await readSlipPdf(doc.output("arraybuffer"), ["T-1000"]);
+    const e = res.byOrder["T-1000"];
+    eq(e.imb && [e.imb.tracking, e.imb.routing, e.imb.bars], [IMB.tracking, "900121234", bars], "barcode read from the text, no picture needed");
+    eq(e.imb.address, ["Ash Example", "45 EXAMPLE ST APT 2", "LOS ANGELES, CA 90012-1234"], "its address, down to the fold line");
+    eq(e.items.map((i) => [i.qty, i.name, i.detail, i.price]), [
+      [1, "Skull Archfiend of Chaos", "Chaos Origins - #CORI-EN002 - Super Rare - Near Mint 1st Edition", 0.89],
+      [2, "Pot of Greed", "LOB - Near Mint", 1.5]]);
   },
 
   "readSlipPdf: a tracked-envelope slip's USPS barcode is read and goes on its order": async () => {
