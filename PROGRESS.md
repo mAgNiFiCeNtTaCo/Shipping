@@ -52,8 +52,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   Ship Desk and Windows entries untouched). From now on every build makes both; `--zip-only` adds the zip to a
   version already built. Release notes 1.1.4 got a "No installer needed: the zip" section.
 - Writing check: 1 low hit ("Good to know" label -> "Day to day"), report `AI_SlopAgent/reports/2026-11-20-Shipping.md`.
-- For the user to run: `gh release upload v1.1.4 "dist/ShipDesk-1.1.4-portable.zip"` and
-  `gh release edit v1.1.4 --notes-file "dist/release-notes-1.1.4.md"`.
+- Zip and its notes added to the v1.1.4 release 2026-11-20 at the user's request (GitHub's checksum matches the local file).
 ### 2026-11-19: envelope labels from TCGplayer's tracked slips (real slip, real print checked)
 - **First real tracked slip** (`TCGplayer_PackingSlips_20261119_175142.pdf`, Downloads; buyer data, not copied into
   the project): a letter page; the USPS barcode is TEXT in a barcode font (65 F/A/D/T letters) above the buyer's
