@@ -134,6 +134,11 @@ explain in plain words and finish jobs end to end.
   by the Phone photos window, tailnet only, never Funnel). Anything with X-Forwarded-For / Tailscale-User-* headers or a
   non-local Host gets only `PHONE_FILES` + `/api/phone/*` (with the `X-Ship-Desk-Key` pairing code).
 - `serve.py` local server, `tools/test.py` test runner, `docs/make_screens.py` + `docs/screens/` screenshots.
+- GitHub page (2026-11-26): README parts between `<!-- github-only ... -->` and `<!-- /github-only -->` (banner, badges,
+  screenshot table, Mermaid "How a batch goes" chart, print-format pictures, proof pack picture) show on GitHub only;
+  build_installer.py `write_guide` cuts them out of the installed guide (it has no pictures). `docs/readme/banner.svg`
+  is drawn by hand in the app's colours; `python tools/make_readme_art.py` re-crops `docs/readme/*.png` from
+  `docs/screens/` and draws `social-preview.png` (1280x640, uploaded by hand: repo Settings -> Social preview).
 - Windows installer (2026-10-26): `tools/build_installer.py` -> `dist/ShipDesk-Setup-<APP_VERSION>.exe` (build/ and dist/
   gitignored). It stages serve.py + app/ (no tests) + Python's embeddable zip (`PY_VERSION`, checked against
   `PY_SHA256` from python.org's API) + `shipdesk.ico` (icon.svg drawn by Edge, Pillow) + "Ship Desk guide.html" (README

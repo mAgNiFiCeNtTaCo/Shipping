@@ -1,3 +1,75 @@
+<!-- github-only: everything down to "/github-only" shows on GitHub only; the installed guide leaves it out -->
+<p align="center">
+  <img src="docs/readme/banner.svg" width="100%" alt="Ship Desk: drop TCGplayer's shipping CSV, get labels, packing slips, stamps and the file that marks the batch shipped">
+</p>
+
+<p align="center">
+  <a href="https://github.com/mAgNiFiCeNtTaCo/Shipping/releases/latest"><img alt="Latest version" src="https://img.shields.io/github/v/release/mAgNiFiCeNtTaCo/Shipping?style=for-the-badge&label=download&color=136f63"></a>
+  <a href="https://github.com/mAgNiFiCeNtTaCo/Shipping/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/mAgNiFiCeNtTaCo/Shipping/total?style=for-the-badge&color=d9a441"></a>
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0f5a50?style=for-the-badge">
+  <img alt="Works offline" src="https://img.shields.io/badge/works-offline-0f5a50?style=for-the-badge">
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/github/license/mAgNiFiCeNtTaCo/Shipping?style=for-the-badge&color=5b6662"></a>
+  <img alt="Last update" src="https://img.shields.io/github/last-commit/mAgNiFiCeNtTaCo/Shipping?style=for-the-badge&label=updated&color=5b6662">
+</p>
+
+<p align="center">
+  <a href="https://github.com/mAgNiFiCeNtTaCo/Shipping/releases/latest"><b>Download for Windows</b></a> ·
+  <a href="#install-and-start-it">Install</a> ·
+  <a href="#the-4-steps">The 4 steps</a> ·
+  <a href="#what-you-can-print-on">Print formats</a> ·
+  <a href="#phone-photos">Phone photos</a> ·
+  <a href="#honest-limits">Honest limits</a>
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/readme/plan.png" alt="The shipping plan: every order tagged Envelope OK, Tracking recommended, Tracking required or Signature required, with weight and stamps">
+      <p align="center"><b>A plan for every order.</b><br>Envelope or tracked label, weight, and how many stamps.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/readme/labels.png" alt="Two envelope labels on one 4x6 thermal label, with return address, order QR code and tracking barcode">
+      <p align="center"><b>Labels for the printer you have.</b><br>4x6 thermal, letter sheets, Avery 5160 or straight onto a #10 envelope.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/readme/history.png" alt="The History page: every order with its label date, plan and shipped tick">
+      <p align="center"><b>History of what you shipped.</b><br>Tracking links, shipped ticks and the photos for each order.</p>
+    </td>
+    <td width="50%" valign="top">
+      <p align="center">
+        <img src="docs/readme/phone.png" width="48%" alt="Ship Desk Photos on an iPhone: pick the kind of photo and the orders">
+        <img src="docs/readme/scan.png" width="48%" alt="The iPhone scanner reading a label's QR code">
+      </p>
+      <p align="center"><b>Proof photos from your iPhone.</b><br>Scan the label, take the photo, it lands on your PC.</p>
+    </td>
+  </tr>
+</table>
+
+### How a batch goes
+
+```mermaid
+flowchart LR
+    csv["TCGplayer<br/>Export Shipping CSV"]:::tcg --> desk(["Ship Desk"]):::desk
+    slip["TCGplayer<br/>packing slip PDF"]:::tcg -. optional .-> desk
+    desk --> pdf["Labels + packing slips<br/>one PDF"]:::out
+    desk --> plan["Shipping plan<br/>weights and stamps"]:::out
+    desk --> pirate["Pirate Ship CSV<br/>for tracked labels"]:::out
+    pirate --> track["Tracking numbers<br/>read back in"]:::out
+    phone["iPhone<br/>scan + photos"]:::phone --> desk
+    track --> import["Import file<br/>marks the batch shipped"]:::done
+    desk --> import
+    import --> tcgdone["TCGplayer<br/>Import Shipping Info"]:::tcg
+
+    classDef desk fill:#136f63,stroke:#0f5a50,color:#ffffff,font-weight:bold
+    classDef tcg fill:#fff6e4,stroke:#d9a441,color:#3b2a07
+    classDef out fill:#e3f4ec,stroke:#1f9d5b,color:#14663c
+    classDef phone fill:#e5ecfb,stroke:#3b6fd8,color:#24479a
+    classDef done fill:#d9a441,stroke:#b98a2e,color:#3b2a07,font-weight:bold
+```
+<!-- /github-only -->
+
 # Ship Desk
 
 Ship Desk turns your TCGplayer orders into print-ready **address labels, packing slips and envelopes**, tells you
@@ -82,6 +154,15 @@ files folder; a problem that stops it from starting also pops up. No internet ne
 | Letter paper, envelope labels to cut out | The same small envelope label, 8 per page (4.25 x 2.75 in each) with dashed cut lines. |
 | Avery 5160 / 8160 | 30 address labels per sheet (just the buyer's address). |
 | #10 envelope | Prints straight onto a 9.5 x 4.125 in envelope; the stamp corner is left empty. |
+
+<!-- github-only -->
+<p align="center">
+  <img src="docs/screens/pdf-thermal4x6.png" height="300" alt="A 4x6 thermal label">
+  <img src="docs/screens/pdf-letter-slip.png" height="300" alt="Letter page: label on top, packing slip below">
+  <img src="docs/screens/pdf-avery5160.png" height="300" alt="Avery 5160 sheet">
+</p>
+<p align="center"><img src="docs/screens/pdf-envelope10.png" width="70%" alt="Printed straight onto a #10 envelope"></p>
+<!-- /github-only -->
 
 Tick boxes under the picker: **Packing slips too**, **Bold return address** (darker on thermal printers) and
 **No divider line** (leaves room for stamps or a postage meter).
@@ -290,6 +371,10 @@ Click **History** at the top to see every order you made labels for or marked sh
 Take photos of each order with your iPhone: **what's inside** (the cards), the **packed** mail ready to go, and the
 **post office** drop-off or receipt. They're saved on this PC in `Saved\Photos\<order # and buyer>\`, named
 like `Packed 2026-10-20 16-25-03 ab12cd.jpg`, and show in History.
+
+<!-- github-only -->
+<p align="center"><img src="docs/readme/proof.png" width="80%" alt="A proof pack: one PDF with the order's facts and every photo"></p>
+<!-- /github-only -->
 
 **Set it up once:** click **Phone photos** (top right). The window takes you through four steps and moves on by
 itself as each is done:

@@ -287,6 +287,8 @@ a {{ color: var(--brand); }} li {{ margin: .25em 0; }}
 def write_guide(dest):
     md = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
     md = re.split(r"^## For developers", md, flags=re.M)[0]
+    # The GitHub page's banner, badges, screenshots and chart sit between these markers: the guide leaves them out.
+    md = re.sub(r"^<!-- github-only.*?^<!-- /github-only -->\n?", "", md.replace("\r\n", "\n"), flags=re.M | re.S)
     with open(os.path.join(dest, "Ship Desk guide.html"), "w", encoding="utf-8") as f:
         f.write(guide_html(md))
 
