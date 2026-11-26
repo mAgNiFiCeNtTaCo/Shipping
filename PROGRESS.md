@@ -86,7 +86,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   Reading several dropped slip PDFs at once: not wanted (user).
 - 1.1.5 published on GitHub 2026-11-26 at the user's request (installer + zip, latest; GitHub's checksums match the local files).
 - One-time cleanup at the user's request 2026-11-26: everything in Labels / Packing slips made before 2026-11-26 moved into
-  `Archive6-11-16 to 2026-11-29` (12 labels + 11 slips; `archive_old(SAVE_ROOT, now=<midnight>, days=0)`); only that
+  `Archive\2026-11-16 to 2026-11-29` (12 labels + 11 slips; `archive_old(SAVE_ROOT, now=<midnight>, days=0)`); only that
   day's files stay. The normal 14-day rule carries on from there.
 - Resources 2026-11-26 02:53 (Ship Desk on 5091 + the installer build and its headless-Edge tests running): Shipping
   21 processes, CPU 173% of a core, RAM 2435 MB (the build), disk 463 MB; whole PC CPU 11% of 32 threads, RAM 27.4 of
