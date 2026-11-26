@@ -7,10 +7,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.5** (built 2026-11-26, not published yet; 1.1.4 = latest on GitHub), Windows installer for other people:
+- **Version 1.1.5** (built and published 2026-11-26, latest on GitHub), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
-  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4 = latest; 1.1.2 skipped). A fresh install sets itself up
+  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5 = latest; 1.1.2 skipped). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice. Since 2026-11-20 every build also
   makes `dist\ShipDesk-<version>-portable.zip` (no installer: unzip, double-click "Start Ship Desk"), for PCs where
   Windows or an antivirus objects to the unsigned installer; 1.1.4's zip is on the release (`tools/test_portable.py`
@@ -84,6 +84,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   --title "Ship Desk 1.1.5" --notes-file "dist/release-notes-1.1.5.md" --target main`.
 - Confirmed by the user 2026-11-26: the Track on TCGplayer link opens the first envelope on TCGplayer's tracking page.
   Reading several dropped slip PDFs at once: not wanted (user).
+- 1.1.5 published on GitHub 2026-11-26 at the user's request (installer + zip, latest; GitHub's checksums match the local files).
 - Resources 2026-11-26 02:53 (Ship Desk on 5091 + the installer build and its headless-Edge tests running): Shipping
   21 processes, CPU 173% of a core, RAM 2435 MB (the build), disk 463 MB; whole PC CPU 11% of 32 threads, RAM 27.4 of
   64 GB, GPU 50%.
