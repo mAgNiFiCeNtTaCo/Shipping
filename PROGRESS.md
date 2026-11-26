@@ -66,6 +66,8 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   itself is unchanged; release notes say so. Not published: the user runs the `gh release create v1.1.6 ...` line.
 - Resources (2026-11-26 04:07, during the build): Shipping 10 processes, 0% CPU, 2527 MB RAM (test browsers), disk
   495 MB; whole PC CPU 94% of 32 threads (AI_Songs busy), RAM 32.4 of 64 GB, GPU 39%.
+- Social preview: the user uploaded `docs/readme/social-preview.png` in repo Settings (2026-11-26); checked with
+  `gh api graphql` (`usesCustomOpenGraphImage: true`, GitHub's copy is the same 1280x640 picture).
 
 ### 2026-11-26: top scrollbar, two-week Archive folders, PDFs open by themselves, envelope barcode = tracking number
 - **Second sideways scrollbar above wide tables** (History and step 2; user: "so i dont have to scroll all the way
