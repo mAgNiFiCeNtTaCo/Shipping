@@ -69,6 +69,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   495 MB; whole PC CPU 94% of 32 threads (AI_Songs busy), RAM 32.4 of 64 GB, GPU 39%.
 - Social preview: the user uploaded `docs/readme/social-preview.png` in repo Settings (2026-11-26); checked with
   `gh api graphql` (`usesCustomOpenGraphImage: true`, GitHub's copy is the same 1280x640 picture).
+- Resource tool: the running Ship Desk (started by the Turn on link / Start with Windows as `pythonw serve.py
+  --no-browser`, no folder in the command line) showed as "0 processes". `_brain/resources.json` now matches that
+  command (port 5091 not claimed: tailscaled listens there too). Idle snapshot 2026-11-26 04:22: Shipping 2 processes,
+  44 MB RAM, port 5091, disk 519 MB; whole PC CPU 7% of 32 threads, RAM 26.7 of 64 GB, GPU 17%.
 
 ### 2026-11-26: top scrollbar, two-week Archive folders, PDFs open by themselves, envelope barcode = tracking number
 - **Second sideways scrollbar above wide tables** (History and step 2; user: "so i dont have to scroll all the way

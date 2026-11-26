@@ -806,9 +806,9 @@
       ]
     },
     {
-      "title": "GitHub page: banner, badges, screenshots, \"How a batch goes\" picture",
+      "title": "GitHub page: banner, badges, screenshots, \"How a batch goes\" picture; 1.1.6 published",
       "date": "2026-11-26",
-      "summary": "One session gave the public GitHub page a banner, badges, a screenshot table and a drawn 4-step picture (a Mermaid chart didn't render), set the repo's About box, and kept it all out of the installed guide.",
+      "summary": "One session gave the public GitHub page a banner, badges, a screenshot table and a drawn 4-step picture (a Mermaid chart didn't render), set the About box and share picture, kept it out of the installed guide, and built and published 1.1.6.",
       "stages": [
         {
           "name": "Solo",
@@ -818,8 +818,8 @@
               "id": "e41cb2ca",
               "role": "Builder",
               "start": "2026-11-26T03:28",
-              "end": "2026-11-26T04:20",
-              "did": "docs/readme banner.svg + how-it-works.svg, make_readme_art.py crops + social preview, README github-only section, write_guide strips it, gh repo edit description/topics; slop check clean",
+              "end": "2026-11-26T04:45",
+              "did": "docs/readme banner.svg + how-it-works.svg, make_readme_art.py crops + social preview, README github-only section, write_guide strips it, gh repo edit description/topics; slop check clean; 1.1.6 built (222 tests, installer + zip tests) and published at the user's request; user uploaded the social preview (checked via gh api)",
               "outcome": "done",
               "files": 7
             }
