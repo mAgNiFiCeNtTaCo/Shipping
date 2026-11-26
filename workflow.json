@@ -804,6 +804,28 @@
         "Try a link before shipping it: USPS's tracking page doesn't find IMb numbers; the user's example link (TCGplayer's tracking page) showed the right number form (20 digits + ZIP).",
         "Check what already works before building it: dropping the slip PDF on the page already worked; the page just never said so."
       ]
+    },
+    {
+      "title": "GitHub page: banner, badges, screenshots, \"How a batch goes\" picture",
+      "date": "2026-11-26",
+      "summary": "One session gave the public GitHub page a banner, badges, a screenshot table and a drawn 4-step picture (a Mermaid chart didn't render), set the repo's About box, and kept it all out of the installed guide.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-26T03:28",
+              "end": "2026-11-26T04:20",
+              "did": "docs/readme banner.svg + how-it-works.svg, make_readme_art.py crops + social preview, README github-only section, write_guide strips it, gh repo edit description/topics; slop check clean",
+              "outcome": "done",
+              "files": 7
+            }
+          ]
+        }
+      ]
     }
   ]
 }

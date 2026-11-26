@@ -7,7 +7,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.5** (built and published 2026-11-26, latest on GitHub), Windows installer for other people:
+- **Version 1.1.6** built 2026-11-26 (GitHub page change only; not published yet, 1.1.5 is the latest on GitHub), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5 = latest; 1.1.2 skipped). A fresh install sets itself up
@@ -40,6 +40,33 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-26: GitHub page with banner, screenshots and a "How a batch goes" picture
+- User: "make the git super fancy with visuals". Read as the public GitHub page
+  (https://github.com/mAgNiFiCeNtTaCo/Shipping); the app itself is unchanged.
+- **README top section, GitHub only** (between `<!-- github-only ... -->` and `<!-- /github-only -->`): banner
+  `docs/readme/banner.svg` (hand-drawn in the app's green/cream/gold, the parcel icon, a sample label with the four
+  plan tags), shields.io badges (latest release = download link, downloads, Windows 10 | 11, works offline, MIT, last
+  update), quick links, a 2x2 screenshot table with captions (plan, labels, History, phone + scanner) and the
+  "How a batch goes" picture `docs/readme/how-it-works.svg` (the 4 steps as cards + an iPhone strip). Further down:
+  print-format pictures under "What you can print on", the proof pack under "Phone photos".
+- A Mermaid chart was tried first: the live page showed "Unable to render rich display" (in headless Edge at least),
+  so it was replaced with the drawn SVG, which always shows.
+- `tools/make_readme_art.py`: crops `docs/readme/*.png` from `docs/screens/` (sample orders only) and draws
+  `social-preview.png` (1280x640) with headless Edge. GitHub has no API for the social preview picture: the user
+  uploads it (repo Settings -> General -> Social preview).
+- `tools/build_installer.py` `write_guide` cuts the github-only parts out of the installed "Ship Desk guide.html" (it has
+  no pictures; checked: no leftover tags, only the existing `<version>`-style placeholders).
+- Repo "About": description, link to the latest release, topics (tcgplayer, shipping-labels, packing-slips,
+  thermal-printer, usps, trading-card-games, windows, offline-first), set with `gh repo edit`.
+- Slop check (diff): 0 hits in the 601 added README words, the banner text and the picture text
+  (`AI_SlopAgent\reports\2026-11-26-Shipping-2.md`). Checked the live page with headless-Edge screenshots.
+- Pushed as 9b3f70c + fcb62e2. GitHub's image cache showed the old two-label crop for a few minutes after the update.
+- **1.1.6 built** (README changed, so the save build ran): `dist\ShipDesk-Setup-1.1.6.exe` (13.1 MB) +
+  `ShipDesk-1.1.6-portable.zip` (13.6 MB); 222 tests passed, installer test (over 1.1.5) and zip test all good. The app
+  itself is unchanged; release notes say so. Not published: the user runs the `gh release create v1.1.6 ...` line.
+- Resources (2026-11-26 04:07, during the build): Shipping 10 processes, 0% CPU, 2527 MB RAM (test browsers), disk
+  495 MB; whole PC CPU 94% of 32 threads (AI_Songs busy), RAM 32.4 of 64 GB, GPU 39%.
+
 ### 2026-11-26: top scrollbar, two-week Archive folders, PDFs open by themselves, envelope barcode = tracking number
 - **Second sideways scrollbar above wide tables** (History and step 2; user: "so i dont have to scroll all the way
   down"): app.js `addTopScrollbar` mirrors the table box's scroll, shows only while the table is wider than its box,
