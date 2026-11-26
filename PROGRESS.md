@@ -82,7 +82,8 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   tests, `test_installer.py` and `test_portable.py` all good; `dist/release-notes-1.1.5.md` rewritten in plain words.
   Publishing is the user's: `gh release create v1.1.5 "dist/ShipDesk-Setup-1.1.5.exe" "dist/ShipDesk-1.1.5-portable.zip"
   --title "Ship Desk 1.1.5" --notes-file "dist/release-notes-1.1.5.md" --target main`.
-- Open: does TCGplayer's tracking page show the first envelope (user to look); read several dropped slip PDFs at once?
+- Confirmed by the user 2026-11-26: the Track on TCGplayer link opens the first envelope on TCGplayer's tracking page.
+  Reading several dropped slip PDFs at once: not wanted (user).
 - Resources 2026-11-26 02:53 (Ship Desk on 5091 + the installer build and its headless-Edge tests running): Shipping
   21 processes, CPU 173% of a core, RAM 2435 MB (the build), disk 463 MB; whole PC CPU 11% of 32 threads, RAM 27.4 of
   64 GB, GPU 50%.
