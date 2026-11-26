@@ -189,8 +189,8 @@ patch version in serve.py when needed (1.1.0 -> 1.1.1; commit that), runs the br
 the user's own copy and Windows entries untouched). Keep every build at least a month: they stay in `dist/` (older
 same-version files in `dist/old/`); the script removes only builds older than 31 days, never the newest 3. It writes
 `dist/release-notes-<version>.md` (its "What's new" comes from commit subjects, so rewrite it in plain words from the
-save's log entry: this save's own work isn't committed yet); publishing stays the user's (auto mode blocks `gh release create`): give them the
-printed `gh release create ...` line (it lists the installer and the zip). Log the new version in PROGRESS.md and on the card.
+save's log entry: this save's own work isn't committed yet); publishing stays the user's call: give them the printed `gh release create ...` line (it lists the installer and
+the zip), and run it only when they ask (blocked in auto mode before; ran fine on 2026-11-26 when the user asked). Log the new version in PROGRESS.md and on the card.
 
 ## Commands
 - Run: `Start Ship Desk.bat` (background) / `Stop Ship Desk.bat`, or `python serve.py` (in a window) ->
