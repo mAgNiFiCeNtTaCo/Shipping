@@ -22,10 +22,10 @@ CROPS = {
     "plan": ("app-1280-sample.png", (60, 730, 1220, 1690), 1160),
     "plan-dark": ("app-1280-sample-dark.png", (60, 730, 1220, 1690), 1160),
     "print": ("app-1280-sample.png", (60, 1740, 1220, 2340), 1160),
-    "history": ("app-1280-history.png", (60, 0, 1220, 1110), 1160),
+    "history": ("app-1280-history.png", (60, 130, 1220, 1000), 1160),
     "phone": ("phone-390.png", (0, 0, 390, 760), 390),
     "scan": ("phone-390-scan.png", (0, 0, 390, 844), 390),
-    "labels": ("pdf-thermalCut.png", (0, 0, 600, 900), 600),
+    "labels": ("pdf-thermalCut.png", (0, 0, 600, 445), 600),
     "slip": ("pdf-labelSlip.png", (0, 0, 900, 1165), 600),
     "proof": ("proof-pack.png", (0, 0, 1300, 880), 1160),
 }
@@ -70,6 +70,8 @@ def main():
     banner = os.path.join(OUT, "banner.svg")
     # GitHub's "Social preview" picture (Settings -> General -> Social preview): 1280 x 640.
     draw_svg(banner, os.path.join(OUT, "social-preview.png"), 1280, 640)
+    # A PNG look at the "How a batch goes" picture, to check it by eye (not used on the page).
+    draw_svg(os.path.join(OUT, "how-it-works.svg"), os.path.join(tempfile.gettempdir(), "how-it-works-check.png"), 1280, 440, "#ffffff")
 
 
 if __name__ == "__main__":

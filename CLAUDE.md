@@ -135,7 +135,7 @@ explain in plain words and finish jobs end to end.
   non-local Host gets only `PHONE_FILES` + `/api/phone/*` (with the `X-Ship-Desk-Key` pairing code).
 - `serve.py` local server, `tools/test.py` test runner, `docs/make_screens.py` + `docs/screens/` screenshots.
 - GitHub page (2026-11-26): README parts between `<!-- github-only ... -->` and `<!-- /github-only -->` (banner, badges,
-  screenshot table, Mermaid "How a batch goes" chart, print-format pictures, proof pack picture) show on GitHub only;
+  screenshot table, "How a batch goes" picture `docs/readme/how-it-works.svg` (a Mermaid chart showed "Unable to render" there), print-format pictures, proof pack picture) show on GitHub only;
   build_installer.py `write_guide` cuts them out of the installed guide (it has no pictures). `docs/readme/banner.svg`
   is drawn by hand in the app's colours; `python tools/make_readme_art.py` re-crops `docs/readme/*.png` from
   `docs/screens/` and draws `social-preview.png` (1280x640, uploaded by hand: repo Settings -> Social preview).

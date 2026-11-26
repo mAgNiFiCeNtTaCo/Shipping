@@ -49,25 +49,7 @@
 
 ### How a batch goes
 
-```mermaid
-flowchart LR
-    csv["TCGplayer<br/>Export Shipping CSV"]:::tcg --> desk(["Ship Desk"]):::desk
-    slip["TCGplayer<br/>packing slip PDF"]:::tcg -. optional .-> desk
-    desk --> pdf["Labels + packing slips<br/>one PDF"]:::out
-    desk --> plan["Shipping plan<br/>weights and stamps"]:::out
-    desk --> pirate["Pirate Ship CSV<br/>for tracked labels"]:::out
-    pirate --> track["Tracking numbers<br/>read back in"]:::out
-    phone["iPhone<br/>scan + photos"]:::phone --> desk
-    track --> import["Import file<br/>marks the batch shipped"]:::done
-    desk --> import
-    import --> tcgdone["TCGplayer<br/>Import Shipping Info"]:::tcg
-
-    classDef desk fill:#136f63,stroke:#0f5a50,color:#ffffff,font-weight:bold
-    classDef tcg fill:#fff6e4,stroke:#d9a441,color:#3b2a07
-    classDef out fill:#e3f4ec,stroke:#1f9d5b,color:#14663c
-    classDef phone fill:#e5ecfb,stroke:#3b6fd8,color:#24479a
-    classDef done fill:#d9a441,stroke:#b98a2e,color:#3b2a07,font-weight:bold
-```
+<p align="center"><img src="docs/readme/how-it-works.svg" width="100%" alt="How a batch goes: 1 export the CSV from TCGplayer, 2 drop it on Ship Desk for a plan per order, 3 print labels and packing slips, 4 read tracking back in and upload the import file. Optional: iPhone photos of each order."></p>
 <!-- /github-only -->
 
 # Ship Desk

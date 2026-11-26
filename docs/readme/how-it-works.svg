@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 440" width="1280" height="440">
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0f5a50" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="440" rx="24" fill="#fbfaf7"/>
+  <g font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+
+    <!-- step cards -->
+    <g filter="url(#sh)">
+      <rect x="25" y="30" width="270" height="270" rx="16" fill="#ffffff" stroke="#dcd8cf"/>
+      <rect x="345" y="30" width="270" height="270" rx="16" fill="#ffffff" stroke="#dcd8cf"/>
+      <rect x="665" y="30" width="270" height="270" rx="16" fill="#ffffff" stroke="#dcd8cf"/>
+      <rect x="985" y="30" width="270" height="270" rx="16" fill="#136f63"/>
+    </g>
+    <rect x="25" y="30" width="270" height="8" rx="4" fill="#d9a441"/>
+    <rect x="345" y="30" width="270" height="8" rx="4" fill="#136f63"/>
+    <rect x="665" y="30" width="270" height="8" rx="4" fill="#136f63"/>
+
+    <!-- arrows -->
+    <g fill="none" stroke="#d9a441" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M305 165h30m-10-12 10 12-10 12"/>
+      <path d="M625 165h30m-10-12 10 12-10 12"/>
+      <path d="M945 165h30m-10-12 10 12-10 12"/>
+    </g>
+
+    <!-- 1 -->
+    <circle cx="69" cy="88" r="24" fill="#d9a441"/>
+    <text x="69" y="97" font-size="26" font-weight="700" text-anchor="middle" fill="#3b2a07">1</text>
+    <text x="105" y="96" font-size="22" font-weight="700" fill="#1d2321">TCGplayer</text>
+    <g font-size="17" fill="#3d4744">
+      <text x="49" y="150">Seller Portal → Orders,</text>
+      <text x="49" y="174">tick them, Export Shipping.</text>
+      <text x="49" y="210">Add the Packing Slip PDF</text>
+      <text x="49" y="234">for the card lists.</text>
+    </g>
+    <text x="49" y="278" font-size="14" font-weight="600" fill="#9a7420">.csv  (+ .pdf)</text>
+
+    <!-- 2 -->
+    <circle cx="389" cy="88" r="24" fill="#136f63"/>
+    <text x="389" y="97" font-size="26" font-weight="700" text-anchor="middle" fill="#ffffff">2</text>
+    <text x="425" y="96" font-size="22" font-weight="700" fill="#1d2321">Drop it in</text>
+    <g font-size="17" fill="#3d4744">
+      <text x="369" y="150">Each order gets a plan:</text>
+      <text x="369" y="174">envelope, tracked label</text>
+      <text x="369" y="198">or signature.</text>
+      <text x="369" y="234">Weight and stamps counted.</text>
+    </g>
+    <g font-size="12" font-weight="700">
+      <rect x="369" y="258" width="76" height="24" rx="12" fill="#e3f4ec"/>
+      <text x="407" y="274" text-anchor="middle" fill="#14663c">Envelope</text>
+      <rect x="451" y="258" width="70" height="24" rx="12" fill="#e5ecfb"/>
+      <text x="486" y="274" text-anchor="middle" fill="#24479a">Tracked</text>
+      <rect x="527" y="258" width="76" height="24" rx="12" fill="#fbe7ec"/>
+      <text x="565" y="274" text-anchor="middle" fill="#8f1e3a">Signature</text>
+    </g>
+
+    <!-- 3 -->
+    <circle cx="709" cy="88" r="24" fill="#136f63"/>
+    <text x="709" y="97" font-size="26" font-weight="700" text-anchor="middle" fill="#ffffff">3</text>
+    <text x="745" y="96" font-size="22" font-weight="700" fill="#1d2321">Print</text>
+    <g font-size="17" fill="#3d4744">
+      <text x="689" y="150">Labels and packing slips</text>
+      <text x="689" y="174">in one PDF: 4x6 thermal,</text>
+      <text x="689" y="198">letter paper, Avery 5160</text>
+      <text x="689" y="222">or a #10 envelope.</text>
+    </g>
+    <text x="689" y="278" font-size="14" font-weight="600" fill="#136f63">Labels … 10 orders.pdf</text>
+
+    <!-- 4 -->
+    <circle cx="1029" cy="88" r="24" fill="#fbfaf7"/>
+    <text x="1029" y="97" font-size="26" font-weight="700" text-anchor="middle" fill="#136f63">4</text>
+    <text x="1065" y="96" font-size="22" font-weight="700" fill="#ffffff">Mark shipped</text>
+    <g font-size="17" fill="#e8f3f0">
+      <text x="1009" y="150">Tracking numbers from</text>
+      <text x="1009" y="174">Pirate Ship read back in.</text>
+      <text x="1009" y="210">Upload the import file and</text>
+      <text x="1009" y="234">TCGplayer marks them shipped.</text>
+    </g>
+    <g font-size="13" font-weight="700">
+      <rect x="1009" y="258" width="130" height="26" rx="13" fill="#d9a441"/>
+      <text x="1074" y="275" text-anchor="middle" fill="#3b2a07">Shipped</text>
+    </g>
+
+    <!-- iPhone strip -->
+    <rect x="25" y="330" width="1230" height="84" rx="16" fill="#e5ecfb" stroke="#c4d3f3"/>
+    <g transform="translate(55 342)">
+      <rect width="36" height="60" rx="8" fill="#ffffff" stroke="#3b6fd8" stroke-width="3"/>
+      <rect x="13" y="6" width="10" height="3" rx="1.5" fill="#3b6fd8"/>
+      <rect x="9" y="20" width="18" height="18" fill="none" stroke="#3b6fd8" stroke-width="2.5"/>
+      <rect x="14" y="25" width="8" height="8" fill="#3b6fd8"/>
+    </g>
+    <text x="115" y="366" font-size="19" font-weight="700" fill="#24479a">Your iPhone (optional)</text>
+    <text x="115" y="394" font-size="17" fill="#2c3d66">Scan a label's QR code, photo the cards, the packed order and the post office receipt. The photos land in History on your PC.</text>
+  </g>
+</svg>
