@@ -7,6 +7,7 @@ Starts a private copy of the app server on a free port, opens app/tests/run.html
 headless Edge, waits for the page to POST its results back, prints them and exits
 0 (all passed) or 1. Timeout: 120 s.
 """
+import datetime
 import json
 import os
 import shutil
@@ -46,6 +47,9 @@ class Handler(serve.Handler):
 
     def open_folder(self, folder):
         opened.append(folder)
+
+    def open_file(self, path):
+        opened.append(path)
 
     def stop_server(self):
         # The page's "Turn off" must not end the test run: only note it (GET /__opened lists it too).
@@ -157,7 +161,56 @@ def server_checks():
         "quoted names keep their comma": serve.subject_fields('CN=DigiCert G4, O="DigiCert, Inc.", C=US') == {"CN": "DigiCert G4", "O": "DigiCert, Inc.", "C": "US"},
         "PowerShell is called by its full path": os.path.isabs(serve.POWERSHELL),
     }
-    return [f"{'ok  ' if good else 'FAIL'} server > signature check: {name}" for name, good in checks.items()]
+    lines = [f"{'ok  ' if good else 'FAIL'} server > signature check: {name}" for name, good in checks.items()]
+    return lines + [f"{'ok  ' if good else 'FAIL'} server > archive: {name}" for name, good in archive_checks().items()]
+
+
+def archive_checks():
+    """archive_old on a throwaway Saved folder: old labels/slips move to Archive, new ones and other kinds stay."""
+    root = tempfile.mkdtemp(prefix="shipdesk-archive-")
+    try:
+        now = 1_800_000_000
+        old, new = now - 15 * 86400, now - 13 * 86400
+
+        def put(kind, name, when):
+            folder = os.path.join(root, serve.FOLDERS[kind])
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, name)
+            with open(path, "wb") as f:
+                f.write(b"%PDF-")
+            os.utime(path, (when, when))
+            return folder
+
+        labels = put("labels", "Label old.pdf", old)
+        put("labels", "Label new.pdf", new)
+        slips = put("slips", "TCGplayer_PackingSlips_old.pdf", old)
+        os.makedirs(os.path.join(labels, serve.ARCHIVE_FOLDER), exist_ok=True)
+        with open(os.path.join(labels, serve.ARCHIVE_FOLDER, "Label old.pdf"), "wb") as f:
+            f.write(b"earlier")
+        imports = put("import", "TCGplayer import old.csv", old)
+        arch = os.path.join(labels, serve.ARCHIVE_FOLDER)
+        os.utime(os.path.join(arch, "Label old.pdf"), (old, old))  # loose in Archive, from before the periods
+        put("labels", "Label older.pdf", now - 40 * 86400)
+        moved = serve.archive_old(root, now=now)
+        period = os.path.join(arch, serve.archive_period(old))
+        older = os.path.join(arch, serve.archive_period(now - 40 * 86400))
+        return {
+            "moved four files (2 old labels, the loose one, 1 slip)": moved == 4,
+            "period folder named by its two weeks": serve.archive_period(datetime.datetime(2026, 11, 26).timestamp()) == "2026-11-16 to 2026-11-29"
+            and serve.archive_period(datetime.datetime(2026, 11, 15, 23, 0).timestamp()) == "2026-11-02 to 2026-11-15",
+            "old label in Labels\\Archive\\<its two weeks>": os.path.isfile(os.path.join(period, "Label old.pdf"))
+            and os.path.isfile(os.path.join(period, "Label old (2).pdf")),
+            "a file loose in Archive is sorted in, kept": sorted(open(os.path.join(period, n), "rb").read() for n in ("Label old.pdf", "Label old (2).pdf")) == [b"%PDF-", b"earlier"],
+            "an older label gets its own period folder": os.path.isfile(os.path.join(older, "Label older.pdf")) and older != period,
+            "nothing left loose in Archive": not any(e.is_file() for e in os.scandir(arch)),
+            "new label stays": os.path.isfile(os.path.join(labels, "Label new.pdf")),
+            "old TCGplayer slip in Packing slips\\Archive\\<its two weeks>": os.path.isfile(os.path.join(slips, serve.ARCHIVE_FOLDER, serve.archive_period(old), "TCGplayer_PackingSlips_old.pdf")),
+            "import files are left alone": os.path.isfile(os.path.join(imports, "TCGplayer import old.csv")),
+            "an archived file is still found to open": serve.find_saved(labels, "Label older.pdf") == os.path.join(older, "Label older.pdf"),
+            "second run moves nothing": serve.archive_old(root, now=now) == 0,
+        }
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def main():

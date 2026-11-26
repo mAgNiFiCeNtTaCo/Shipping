@@ -79,8 +79,23 @@ function upsert(hist, order, source) {
   hist[key] = cur ? { ...cur, name: fresh.name || cur.name, city: fresh.city || cur.city, state: fresh.state || cur.state,
     zip: fresh.zip || cur.zip, value: fresh.value || cur.value, items: fresh.items || cur.items, tag: fresh.tag || cur.tag,
     orderDate: fresh.orderDate || cur.orderDate } : fresh;
+  // TCGplayer's tracked-slip USPS barcode (slips.js entry.imb): kept so a later "shipped" (a post office photo
+  // after a reload, when the slip PDF is gone) can still fill in the tracking number.
+  if (barcodeNumber(order.imb)) hist[key].barcode = barcodeNumber(order.imb);
   return hist[key];
 }
+
+/**
+ * The tracking number of a TCGplayer tracked-slip barcode ({ tracking, routing } from imb.js): the 20-digit tracking
+ * code + the buyer's ZIP (routing), as TCGplayer's tracking page shows it (tcgp.shipment.co/track/<29 digits>,
+ * the user's example 2026-11-26). "" when there is no barcode.
+ */
+export function barcodeNumber(imb) {
+  return imb && imb.tracking ? String(imb.tracking) + String(imb.routing || "") : "";
+}
+
+/** TCGplayer's tracking page for an envelope barcode number (USPS's own page doesn't find these). */
+export const barcodeTrackingUrl = (n) => `https://tcgp.shipment.co/track/${encodeURIComponent(String(n || "").replace(/\D/g, ""))}`;
 
 /** Labels were downloaded for these orders. Mutates and returns hist. */
 export function recordPrinted(hist, orders, { source = "csv", format = "", when = stamp() } = {}) {

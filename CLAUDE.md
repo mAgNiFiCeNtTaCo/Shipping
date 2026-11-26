@@ -45,6 +45,12 @@ explain in plain words and finish jobs end to end.
   chosen) and turns slips off; `planSettings().slips` counts slip weight when slips print OR a slip PDF is loaded. The new slip also centres qty + prices between the two lines of a wrapped description: slips.js
   `itemsFromRows` gives a bare "qty price price" row the indented rows above it (`BARE_ITEM`, `joinWrap` joins
   "#CORI-" + "EN002"). Still unknown: whether TCGplayer's protection counts with the barcode on our label.
+  Barcode = tracking (2026-11-26): History keeps `r.barcode` (history.js `barcodeNumber` = 20-digit code + routing ZIP,
+  as TCGplayer shows it); shipped with no tracking (post office photo, Shipped ticks) fills it in (app.js `barcodeOf`,
+  `recordBarcode` also takes a typed 20(+5/9/11)-digit number on an envelope-label order, `fillBarcodes` on slip load).
+  Link `barcodeTrackingUrl` = tcgp.shipment.co/track/<n> (USPS's page doesn't find these). Import file keeps
+  "Shipped" for them (tracking.js compares with `o.barcode`; TCGplayer has the number already).
+  "Slips in label order" always starts unticked (`loadSettings`), never auto-ticked.
 - `app/js/render.js` (all PDF formats, `FORMATS`), `app/js/slips.js` (reads TCGplayer's packing-slip PDF).
 - Loaded batch kept across reloads: `KEYS.batch` holds the CSV/pasted text + ticks (app.js `keepBatch` / `restoreBatch` /
   `clearBatch`, "Clear these orders" in step 1, 14 days at most; full addresses, this browser only; slips not kept).
@@ -110,6 +116,11 @@ explain in plain words and finish jobs end to end.
   `state.importAgain` ("Put them in again"). Code that rewrites a shipped entry keeps `sent` (`withSent`).
 - Proof pack (app.js `proofPack`, photos window button): jsPDF letter PDF, page 1 facts + thumbnails, then one photo
   per page (photos redrawn as JPEG via createImageBitmap); kind "proof" -> `Saved/Proof packs`.
+- Archive (2026-11-26): serve.py `archive_old` moves Labels / Packing slips files older than `ARCHIVE_DAYS` = 14 into
+  `<folder>\Archive\<two-week period>` (`archive_period`, Monday periods from `ARCHIVE_EPOCH`), on each label/slip save
+  and hourly in `backup_loop`. PDFs open once saved (`/api/save?...&open=1`, `open_file`; box `#open-pdf` =
+  `state.output.openPdf`); **Open it** = `POST /api/open-file` (.pdf only, `find_saved` looks in Archive too). Tests
+  fake `open_file`. Wide tables get a second scrollbar on top (app.js `addTopScrollbar`).
 - Saved file names come from app.js `fileName()` ("Labels <date> <HH-MM> - N orders - buyer, buyer ...pdf"); serve.py
   `NAME_OK` must keep allowing what it produces (any-language letters, `,'&+()`).
 - `app/sw.js` offline cache (bump `VERSION` whenever app files change), `app/manifest.webmanifest`, `app/icon.svg`.

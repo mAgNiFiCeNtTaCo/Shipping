@@ -12,10 +12,14 @@ The app runs entirely in the browser. This server hands out the files in app/ an
 makes (label PDFs, packing slips, import/Pirate Ship/history CSVs) into the Saved folder next to this file,
 so they don't fill up the browser's Downloads folder:
 
-    POST /api/save?kind=<labels|slips|import|pirate|history>&name=<file name>   body = the file
+    POST /api/save?kind=<labels|slips|import|pirate|history>&name=<file name>[&open=1]   body = the file
+         (open=1: a PDF opens in the PC's PDF program once saved)
     POST /api/open-folder?kind=<kind, photos or empty>[&order=<order key>]     opens it in Explorer
+    POST /api/open-file?kind=<kind>&name=<a saved .pdf>                        opens it (also from Archive)
 
-Both only answer Ship Desk's own page (Host + Origin must be this server, plus an X-Ship-Desk header that
+Labels and packing slips older than 14 days move into an Archive folder inside their folder (archive_old).
+
+These only answer Ship Desk's own page (Host + Origin must be this server, plus an X-Ship-Desk header that
 a form on another website can't send), so other websites can't write files here.
 
 Phone photos. The server still listens on 127.0.0.1 only; the phone reaches it through Tailscale
@@ -74,8 +78,9 @@ import threading
 import time
 import urllib.parse
 import webbrowser
+import datetime
 
-APP_VERSION = "1.1.4"
+APP_VERSION = "1.1.5"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "app")
 
@@ -110,6 +115,14 @@ FOLDERS = {
     "photos": "Photos",
 }
 NAME_OK = re.compile(r"^[\w ,.'&()+-]{1,150}\.(pdf|csv)$")  # \w: letters of any language, digits, _
+# Labels and packing slips older than ARCHIVE_DAYS move into an "Archive" folder inside their own folder, so the
+# folder (and the file picker when adding a slip) shows only the last two weeks. In Archive, one folder per two-week
+# period named by its dates ("2026-11-09 to 2026-11-22"; the user's wish 2026-11-26). Periods start on a Monday,
+# counted from ARCHIVE_EPOCH, so every file of the same two weeks lands in the same folder.
+ARCHIVE_KINDS = ("labels", "slips")
+ARCHIVE_FOLDER = "Archive"
+ARCHIVE_DAYS = 14
+ARCHIVE_EPOCH = datetime.date(2024, 1, 1)  # a Monday
 
 # Photo kinds -> the word that starts the file name.
 PHOTO_KINDS = {"contents": "Contents", "packed": "Packed", "postoffice": "Post office"}
@@ -155,6 +168,56 @@ def unique_path(folder, name):
         path = os.path.join(folder, f"{stem} ({n}){ext}")
         n += 1
     return path
+
+
+def archive_period(when):
+    """The two-week Archive folder name for a file modified at `when` (seconds): "2026-11-09 to 2026-11-22"."""
+    day = datetime.date.fromtimestamp(when)
+    start = ARCHIVE_EPOCH + datetime.timedelta(days=(day - ARCHIVE_EPOCH).days // 14 * 14)
+    return f"{start:%Y-%m-%d} to {start + datetime.timedelta(days=13):%Y-%m-%d}"
+
+
+def archive_old(save_root, now=None, days=ARCHIVE_DAYS):
+    """Move files older than `days` (by their modified time) from Labels and Packing slips into
+    <folder>\\Archive\\<two-week period>. Files left loose in Archive (before the periods, 2026-11-26) are sorted in
+    too. A file that can't be moved (open in a PDF reader) stays for next time. Returns how many were moved."""
+    cutoff = (now if now is not None else time.time()) - days * 86400
+    moved = 0
+    for kind in ARCHIVE_KINDS:
+        folder = os.path.join(save_root, FOLDERS[kind])
+        archive = os.path.join(folder, ARCHIVE_FOLDER)
+        for where, old_only in ((folder, True), (archive, False)):
+            try:
+                entries = list(os.scandir(where))
+            except OSError:
+                continue
+            for e in entries:
+                try:
+                    if not e.is_file() or e.name.startswith(".") or e.name.lower() == "desktop.ini" or e.name.endswith(".tmp"):
+                        continue
+                    when = e.stat().st_mtime
+                    if old_only and when >= cutoff:
+                        continue
+                    dest = os.path.join(archive, archive_period(when))
+                    os.makedirs(dest, exist_ok=True)
+                    os.replace(e.path, unique_path(dest, e.name))
+                    moved += 1
+                except OSError:
+                    pass
+    return moved
+
+
+def find_saved(folder, name):
+    """folder/name, else the same name in one of its Archive period folders (or loose in Archive). None if not there."""
+    path = os.path.join(folder, name)
+    if os.path.isfile(path):
+        return path
+    archive = os.path.join(folder, ARCHIVE_FOLDER)
+    try:
+        subs = sorted((e.path for e in os.scandir(archive) if e.is_dir()), reverse=True)
+    except OSError:
+        return None
+    return next((p for p in (os.path.join(d, name) for d in [archive, *subs]) if os.path.isfile(p)), None)
 
 
 # On Windows a file can't be replaced while another request is reading it (and a read can meet the replace):
@@ -316,6 +379,13 @@ def backup_loop(save_root, first=60, every=BACKUP_EVERY):
     """Ship Desk's own timer: back up while switched on (checked each time, so the page's switch counts at once)."""
     time.sleep(first)
     while True:
+        try:
+            moved = archive_old(save_root)
+            if moved:
+                print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Moved {moved} labels / packing slips older than "
+                      f"{ARCHIVE_DAYS} days into their Archive folders")
+        except Exception as e:  # noqa: BLE001
+            print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} Archiving failed: {e}")
         try:
             if backup_status(save_root)["on"]:
                 st = run_backup(save_root)
@@ -685,7 +755,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return
             self.save_link()
             return
-        if url.path not in ("/api/save", "/api/open-folder", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
+        if url.path not in ("/api/save", "/api/open-folder", "/api/open-file", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
                             "/api/links-done", "/api/photos-rekey", "/api/photo-rotate", "/api/shutdown",
                             "/api/autostart", "/api/history-copy", "/api/backup", "/api/update",
                             "/api/tailscale-install", "/api/tailscale-login"):
@@ -778,6 +848,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.reply(200, {"ok": True, "folder": folder})
             return
         name = arg("name")
+        if url.path == "/api/open-file":
+            # Open a PDF Ship Desk saved (in its folder, or moved to Archive since) with the PC's PDF program.
+            if not kind or kind == "photos" or not NAME_OK.match(name) or not name.lower().endswith(".pdf"):
+                self.reply(400, {"ok": False, "error": "Bad file name."})
+                return
+            folder = os.path.join(self.save_root, FOLDERS[kind])
+            path = find_saved(folder, name)
+            if not path:
+                self.reply(404, {"ok": False, "error": "That file isn't there any more."})
+                return
+            self.open_file(path)
+            self.reply(200, {"ok": True})
+            return
         if not kind or kind == "photos" or not NAME_OK.match(name) or name.startswith("."):
             self.reply(400, {"ok": False, "error": "Bad file name."})
             return
@@ -794,8 +877,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except OSError as e:
             self.reply(500, {"ok": False, "error": f"Couldn't save the file: {e.strerror or e}"})
             return
+        opened = False
+        if arg("open") == "1" and path.lower().endswith(".pdf"):
+            try:
+                self.open_file(path)
+                opened = True
+            except OSError:
+                pass  # no PDF program: the page still says where it is
+        if kind in ARCHIVE_KINDS:
+            try:
+                archive_old(self.save_root)
+            except Exception:  # noqa: BLE001 - tidying up must never fail a save
+                pass
         rel = os.path.relpath(path, os.path.dirname(self.save_root))
-        self.reply(200, {"ok": True, "name": os.path.basename(path), "folder": FOLDERS[kind], "path": rel, "full": path})
+        self.reply(200, {"ok": True, "name": os.path.basename(path), "folder": FOLDERS[kind], "path": rel, "full": path,
+                         "opened": opened})
 
     def stop_server(self):
         self.server.shutdown()
@@ -873,6 +969,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def open_folder(self, folder):
         if hasattr(os, "startfile"):
             os.startfile(folder)  # Windows Explorer
+
+    def open_file(self, path):
+        if hasattr(os, "startfile"):
+            os.startfile(path)  # the PC's PDF program
 
     # ---------- phone pairing + Tailscale ----------
 

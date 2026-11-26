@@ -275,6 +275,7 @@ const tests = {
     ok(doc.querySelector("#phone-dialog").open, "window open");
     const on = await waitFor(() => doc.querySelector('#phone-body button[data-phone="on"]'), "Switch on button");
     ok(doc.querySelector("#phone-body").textContent.includes("only your own Tailscale devices"), "says who can open it");
+    ok(doc.querySelector("#phone-body").textContent.includes("public list of web certificates"), "says the PC's name becomes public");
     on.click();
     await waitFor(() => doc.querySelector("#phone-body svg.qr"), "QR code");
     const text = doc.querySelector("#phone-body").textContent;
@@ -905,6 +906,27 @@ Object.assign(tests, {
     eq([after.tracking, after.shippedAt, after.carrier], [before.tracking, before.shippedAt, before.carrier], "the already shipped order is left as it was");
     eq(app.state.shipped["SAMPLE-0005"].tracking, "9400111899223344559999", "its tracking is kept");
     eq(await app.takePhoneLinks(), 0, "taken once");
+    dropFrames();
+  },
+
+  "post office photo of an envelope label: its TCGplayer barcode number becomes the tracking number": async () => {
+    const { app, doc, phone } = await phoneWithOrders();
+    const o = app.state.orders.find((x) => x.id === "SAMPLE-0003");
+    ok(o && !(app.state.history["SAMPLE-0003"] || {}).shipped, "SAMPLE-0003 not shipped yet");
+    o.imb = { tracking: "00310123456900000003", routing: "900121234" }; // as read off its tracked slip
+    await app.syncPhoneOrders(true);
+    await phone.refresh();
+    phone.state.pick = new Set(["SAMPLE-0003"]);
+    phone.render();
+    doc.querySelector('#kinds button[data-kind="postoffice"]').click();
+    await phone.addFiles([await photoFile("counter.png", 600, 800)]);
+    await waitFor(async () => (await phone.queueAll()).length === 0, "the photo to reach the PC");
+    eq(await app.takePhoneLinks(), 1, "a shipped note");
+    const r = app.state.history["SAMPLE-0003"];
+    eq([r.shipped, r.tracking, r.carrier], [true, "00310123456900000003900121234", "USPS"], "History has the barcode number as tracking");
+    eq(app.state.shipped["SAMPLE-0003"].tracking, "00310123456900000003900121234", "step 4 too");
+    ok(/SAMPLE-0003[^\n]*Shipped/.test(app.importFile().csv), "the import file says Shipped (TCGplayer has the number already)");
+    ok(!app.importFile().csv.includes("00310123456900000003900121234"), "the number isn't sent");
     dropFrames();
   },
 

@@ -88,9 +88,10 @@ Tick boxes under the picker: **Packing slips too**, **Bold return address** (dar
 
 ## Your own packing slips
 
-Click **+ Add TCGplayer packing slips (PDF)** and pick the PDF from TCGplayer's Packing Slip button. Ship Desk
+Drag the PDF from TCGplayer's Packing Slip button onto the Ship Desk page (together with the CSV if you like), or
+click **+ Add TCGplayer packing slips (PDF)** and pick it. Ship Desk
 reads which cards are in each order and lists them on its own slips. Tick **Slips in label order** to print
-TCGplayer's own slip pages sorted to match your labels instead.
+TCGplayer's own slip pages sorted to match your labels instead. That box starts unticked every time you open Ship Desk.
 
 ## Paste addresses (eBay, Whatnot, PayPal, email)
 
@@ -129,11 +130,19 @@ TCGplayer's way is a window envelope with the slip showing through the window. S
      label** (one bigger label, no cutting) or **Letter paper, envelope labels to cut out**, click **Download PDF**
      and print. The **Print envelope labels** button under the slip message picks the first one and turns the slips off. Cut along the dashed lines and stick one label on each envelope.
      Each label has your return address top left, the order's QR code, the barcode, and the buyer's address under it.
-     TCGplayer's own slips print after the labels (**Slips in label order**), to go inside.
+     Tick **Slips in label order** to print TCGplayer's own slips after the labels, to go inside.
   The barcode also prints on the other formats (under the address), but not on Avery labels (too small).
 - Checked on a real tracked slip (2026-11-19): TCGplayer writes the barcode as text in a barcode font, so Ship Desk
   reads it exactly, and its numbers pass USPS's check. USPS's machines read the barcode on a label just as well
   (it sits in the address block, as USPS allows).
+- **Tracking number:** Ship Desk keeps each order's barcode number when you make its labels. When the order is marked
+  shipped (a post office photo after scanning the label's QR code, or the Shipped tick), that number goes in its
+  tracking box (the 20-digit barcode number + the buyer's ZIP, the way TCGplayer shows it), so you can see it in Ship Desk instead of looking it up on TCGplayer. The phone doesn't need to read
+  the barcode itself: the QR code next to it says which order it is. Orders marked shipped before this (2026-11-26) get
+  their number when you add their slip PDF again. The TCGplayer import file still says "Shipped" for these orders:
+  TCGplayer put that tracking on the order itself when it made the slip.
+  USPS's own tracking page doesn't find these numbers (tried 2026-11-26), so History's link for them is **Track on
+  TCGplayer**, which opens TCGplayer's tracking page (`tcgp.shipment.co/track/<number>`).
 - **TCGplayer's protection:** TCGplayer's help article (as quoted by other sellers' tools; it can't be read from here)
   says to put the tracked slip in a standard #10 window envelope and not to use it with a plain envelope. So a label on
   a plain envelope is your own choice: the tracking works, but TCGplayer may not count it for its "not received"
@@ -216,8 +225,17 @@ other downloads still go to Downloads as before.
 - Every file is named by what it holds and when (`Packing slips ...`, `TCGplayer import 2026-10-21 14-05 - 5 orders.csv`,
   `Pirate Ship ...`, `Ship Desk history ...`). Two files with the same name (same minute) are kept as `... (2).pdf`;
   nothing is overwritten.
-- After each save the message shows where the file is, with an **Open the folder** button. Under the Download PDF
-  button there is also **Open the Saved folder**.
+- A PDF opens by itself in your PDF program as soon as it's saved (labels, packing slips, proof packs), so there's
+  no hunting for it in the folder. Don't want that? Untick **Open each PDF once it's saved** under the Download PDF
+  button. CSV files don't open by themselves.
+- After each save the message shows where the file is, with **Open it** (for PDFs) and **Open the folder** buttons.
+  Under the Download PDF button there is also **Open the Saved folder**.
+- Labels and packing slips older than 2 weeks move into an **Archive** folder inside their own folder
+  (`Saved\Labels\Archive`, `Saved\Packing slips\Archive`), so the folder and the file picker only show the last two
+  weeks. That includes TCGplayer's packing-slip PDFs you downloaded into `Saved\Packing slips`. Inside `Archive` there
+  is one folder per two weeks, named by its dates (`2026-11-16 to 2026-11-29`, always Monday to the second Sunday), and
+  each file goes in the one for the day it was made. Nothing is deleted; Ship Desk tidies up each time it saves one of
+  these and once an hour. A PDF that is open at that moment moves next time.
 - Prefer your Downloads folder? Under the Download PDF button, **Where files go** -> **My Downloads folder**. Ship
   Desk remembers the choice.
 - Ship Desk running in the background does the saving. If it's off, files fall back to your Downloads folder and the
@@ -234,6 +252,7 @@ online, so it survives a broken drive (it does hold buyers' names, addresses and
 last backup; **Back up now** and **Open the backup folder** are there too. Picking the other place backs up there from
 then on; the old place keeps what it has until you delete it.
 - Nothing is ever deleted from the backup: a file you delete in `Saved` stays in OneDrive.
+- A label or slip that moves into `Archive` is copied again under `Archive` in the backup; its earlier copy stays too.
 - Left out: the phone's pairing code (the phone's key stays on this PC), Ship Desk's log, half-written files.
 - Getting files back: open the backup folder and copy what you need into `Saved`.
 

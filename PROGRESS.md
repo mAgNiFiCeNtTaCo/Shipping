@@ -4,10 +4,10 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-11-20)
+## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.4** (built 2026-11-19, published 2026-11-20), Windows installer for other people:
+- **Version 1.1.5** (built 2026-11-26, not published yet; 1.1.4 = latest on GitHub), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4 = latest; 1.1.2 skipped). A fresh install sets itself up
@@ -17,7 +17,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   18 checks).
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **206 passed, 0 failed** (2026-11-19: 199 in the browser + 7 server checks);
+- Tests: `python tools/test.py` = **222 passed, 0 failed** (2026-11-26: 204 in the browser + 18 server checks);
   `tools/test_installer.py` 17 checks.
 - TCGplayer's own Order List export dropped on the page is checked against Ship Desk (forgotten uploads go back in the
   import file, missed and canceled orders listed); History has a "Not sent to TCGplayer yet" filter.
@@ -37,9 +37,55 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   post office) into `Saved\Photos`, offline queue. Its camera screen scans order QR codes and mailer tracking
   barcodes and takes any number of photos in a row, turned upright by the tilt sensor. Post office photos mark
   orders shipped; unknown mailers become History entries (name + tracking, order # added later). Phone access is
-  on (tailnet only, https://taco.tail060b61.ts.net:5091/phone.html).
+  on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-26: top scrollbar, two-week Archive folders, PDFs open by themselves, envelope barcode = tracking number
+- **Second sideways scrollbar above wide tables** (History and step 2; user: "so i dont have to scroll all the way
+  down"): app.js `addTopScrollbar` mirrors the table box's scroll, shows only while the table is wider than its box,
+  hidden on phones (cards).
+- **Archive** (user: labels and packing slips clutter the folder and the file picker): serve.py `archive_old` moves
+  files in `Saved\Labels` and `Saved\Packing slips` older than 14 days (modified time; TCGplayer slip PDFs the user
+  downloads there too) into `Archive\<two-week period>` ("2026-10-19 to 2026-11-01"; periods start on a Monday from
+  `ARCHIVE_EPOCH` 2024-01-01, `archive_period`; user asked for one dated folder per two weeks). Runs on each label/slip
+  save and hourly in `backup_loop` (port 5091), before the backup. Never deletes; a file open in a PDF reader moves
+  next time. First run 2026-11-26: 26 labels + 1 slip -> `Archive\2026-10-19 to 2026-11-01`. The Dropbox backup gets
+  moved files again under their new path (old copies stay: the backup never deletes).
+- **PDFs open once saved** (labels, slips-only, proof packs): `POST /api/save?...&open=1` -> `open_file` (os.startfile;
+  .pdf only). Box "Open each PDF once it's saved" under Download PDF (`state.output.openPdf`, on by default). The saved
+  message has **Open it** (`POST /api/open-file?kind=&name=`, PC page only, .pdf only, also finds it in Archive via
+  `find_saved`). Tests fake `open_file` (recorded in `/__opened`).
+- **"Slips in label order" always starts unticked** (user's wish): no longer ticked by loading a slip PDF, not
+  remembered across reloads (`loadSettings` resets it).
+- **Envelope barcode = tracking number** (user: a scanned envelope is marked shipped but its tracking box stays empty,
+  so they look it up on TCGplayer): History keeps each order's barcode number (`r.barcode`, history.js `upsert` from
+  `order.imb`); a post office photo (`takePhoneLinks`), the step 4 Shipped tick (`setShipped`) or History's tick fill it
+  in as tracking (carrier USPS). Number = 20-digit IMb tracking code + the buyer's ZIP (`barcodeNumber`), as TCGplayer
+  shows it (user's example `tcgp.shipment.co/track/<29 digits>`). The phone doesn't read the IMb (zxing can't): the
+  label's QR code names the order. Loading a slip PDF again fills orders shipped earlier (`fillBarcodes`). A typed
+  20-digit (+5/9/11 ZIP) number on an envelope-label order counts as its barcode (`recordBarcode`). Link: **Track on
+  TCGplayer** (`barcodeTrackingUrl`); USPS's own tracking page found neither the 20- nor the 29-digit form (user
+  checked 2026-11-26). TCGplayer's help (via other sites; the article is behind Cloudflare) says the tracked slip puts
+  the tracking on the order itself, so the import file keeps "Shipped" for these orders (tracking.js compares to
+  `o.barcode`): whether TCGplayer's import accepts the number is untested.
+- First tracked envelope (its label of 2026-11-19): slip PDF gone; the barcode was read off the
+  saved label PDF (vector bars via PyMuPDF, decoded with imb.js in headless Edge) and its number put in History through
+  a note in `Saved\Phone\links.json` (as a phone scan would).
+- **Dragging the slip PDF** already worked anywhere on the page (also together with the CSV); hints added in step 1
+  and next to the slips button, plus a test. Only the first of several dropped PDFs is read (offered to change).
+- Restarted Ship Desk twice at the user's request (serve.py changes). Also in this commit, from before this session:
+  the phone address in this log made generic, and a note in the phone setup that the PC's name goes into the public
+  certificate list (app.js + phone test).
+- Writing checks (README, new on-screen text, release notes): 0 hits (AI_SlopAgent report 2026-11-26-Shipping.md).
+  Tests: 222 passed (204 browser + 18 server).
+- Save build: **1.1.5** (`dist/ShipDesk-Setup-1.1.5.exe` 13.1 MB + `dist/ShipDesk-1.1.5-portable.zip` 13.6 MB), browser
+  tests, `test_installer.py` and `test_portable.py` all good; `dist/release-notes-1.1.5.md` rewritten in plain words.
+  Publishing is the user's: `gh release create v1.1.5 "dist/ShipDesk-Setup-1.1.5.exe" "dist/ShipDesk-1.1.5-portable.zip"
+  --title "Ship Desk 1.1.5" --notes-file "dist/release-notes-1.1.5.md" --target main`.
+- Open: does TCGplayer's tracking page show the first envelope (user to look); read several dropped slip PDFs at once?
+- Resources 2026-11-26 02:53 (Ship Desk on 5091 + the installer build and its headless-Edge tests running): Shipping
+  21 processes, CPU 173% of a core, RAM 2435 MB (the build), disk 463 MB; whole PC CPU 11% of 32 threads, RAM 27.4 of
+  64 GB, GPU 50%.
 ### 2026-11-20: 1.1.4 published; a no-install zip for PCs that warn about the installer
 - 1.1.4 published on GitHub at the user's request (installer, latest release).
 - User: "build a version that wont flag windows defender" / "zip file?". Not knowable here what flagged it: this

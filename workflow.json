@@ -778,6 +778,32 @@
         "Ask what the warning actually said before fixing it: SmartScreen's 'unrecognized app' box and a Defender virus alarm need different fixes.",
         "The user cut the question short with a better idea (a zip): a zip of signed programs sidesteps the unsigned installer without paying for a certificate."
       ]
+    },
+    {
+      "title": "Top scrollbar, two-week Archive folders, PDFs open by themselves, envelope barcode = tracking number; 1.1.5",
+      "date": "2026-11-26",
+      "summary": "One session worked through the user's requests in a row: a scrollbar above wide tables, old labels/slips into dated two-week Archive folders, PDFs that open once saved, the slips box unticked, envelope barcodes as tracking numbers with a TCGplayer link, and a drag-the-slip hint; 1.1.5 built.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "ee592324",
+              "role": "Builder",
+              "start": "2026-11-23T00:50",
+              "end": "2026-11-26T02:53",
+              "did": "addTopScrollbar; serve.py archive_old/archive_period/find_saved, /api/save open=1, /api/open-file; openPdf box; slipsInLabelOrder reset; History barcode + barcodeOf/recordBarcode/fillBarcodes, Track on TCGplayer; first envelope's number read off its label PDF; 2 restarts; 222 tests; 1.1.5 built",
+              "outcome": "done",
+              "files": 12
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "Try a link before shipping it: USPS's tracking page doesn't find IMb numbers; the user's example link (TCGplayer's tracking page) showed the right number form (20 digits + ZIP).",
+        "Check what already works before building it: dropping the slip PDF on the page already worked; the page just never said so."
+      ]
     }
   ]
 }

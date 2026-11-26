@@ -97,7 +97,7 @@
         <button type="button" id="dropzone" class="dropzone">
           <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M24 30V8m0 0-8 8m8-8 8 8M8 30v6a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-6"/></svg>
           <strong>Drop your TCGplayer shipping CSV</strong>
-          <span>anywhere on this page, or tap here to choose the file</span>
+          <span>anywhere on this page (the packing-slip PDF too, at the same time if you like), or tap here to choose the files</span>
         </button>
         <input type="file" id="file-input" class="sr" accept=".csv,text/csv,.txt,.pdf,application/pdf,.xlsx" multiple tabindex="-1" aria-hidden="true">
         <div class="row">
@@ -222,7 +222,7 @@
       </div>
       <div class="out-slips">
         <p class="lbl">TCGplayer packing slips <em>optional</em></p>
-        <p class="muted small">Add the PDF from TCGplayer's Packing Slip button to list each order's cards on your slips.</p>
+        <p class="muted small">Add the PDF from TCGplayer's Packing Slip button to list each order's cards on your slips. You can also drag the PDF onto this page, even together with the CSV.</p>
         <button type="button" id="btn-slips" class="btn secondary">+ Add TCGplayer packing slips (PDF)</button>
         <input type="file" id="slip-input" class="sr" accept=".pdf,application/pdf" tabindex="-1" aria-hidden="true">
         <div id="slip-msg" class="msg" role="status" aria-live="polite" hidden></div>
@@ -277,6 +277,7 @@
       <legend class="lbl">Where files go</legend>
       <label class="check"><input type="radio" name="saveTo" value="folder" form="output-form"> <span>Ship Desk's <strong>Saved</strong> folder (keeps your Downloads tidy)</span></label>
       <label class="check"><input type="radio" name="saveTo" value="downloads" form="output-form"> My Downloads folder</label>
+      <label id="open-pdf-wrap" class="check"><input type="checkbox" id="open-pdf"> Open each PDF once it's saved</label>
       <button type="button" id="btn-open-folder" class="link">Open the Saved folder</button>
     </fieldset>
     <div id="print-msg" class="msg" role="status" aria-live="polite" hidden></div>

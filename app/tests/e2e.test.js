@@ -499,11 +499,51 @@ export const tests = {
     eq(r.pages.length, 5, "10 orders on 5 labels, no slip pages");
     near(r.pages[0].w, 4, 0.01, "4x6");
     ok(r.text.includes("LOS ANGELES, CA 90012-1234"), "the checked address from the slip");
+    // The barcode number is kept in History, so "shipped" later (slip PDF gone after a reload) still fills in tracking.
+    eq(app.state.history["SAMPLE-0001"].barcode, "00310123456900000001900121234", "History keeps the barcode number (20 digits + ZIP, as TCGplayer shows it)");
+    delete app.state.orders[0].imb;
+    doc.querySelector('#ship-list input[type=checkbox][data-id="SAMPLE-0001"]').click();
+    eq([app.state.shipped["SAMPLE-0001"].tracking, app.state.shipped["SAMPLE-0001"].carrier], ["00310123456900000001900121234", "USPS"], "Shipped tick fills in the barcode number");
+    eq(app.state.history["SAMPLE-0001"].tracking, "00310123456900000001900121234", "History shows it");
+    app.renderHistory();
+    const hrow = doc.querySelector('#history-table tr[data-key="SAMPLE-0001"]');
+    ok(hrow && !hrow.querySelector("a[href*='usps.com']"), "no USPS link for an envelope barcode (USPS doesn't find it)");
+    const tlink = hrow && hrow.querySelector("a[href*='tcgp.shipment.co']");
+    eq(tlink && [tlink.getAttribute("href"), tlink.textContent], ["https://tcgp.shipment.co/track/00310123456900000001900121234", "Track on TCGplayer ↗"], "links to TCGplayer's tracking page");
+    const row = parseCsv(app.importFile().csv).find((x) => x[0] === "SAMPLE-0001");
+    ok(row && row.includes("Shipped") && !row.includes("00310123456900000001900121234"), "the import file still says Shipped: " + row);
+    // Unticked and ticked again by hand with the number cleared: the user's choice stays.
+    doc.querySelector('#ship-list input[type=checkbox][data-id="SAMPLE-0001"]').click();
+    ok(!app.state.shipped["SAMPLE-0001"], "unticked");
+    // Labels made before Ship Desk kept the number: a 20-digit barcode number typed in by hand on an envelope-label
+    // order counts as the barcode (import says Shipped); a 22-digit package number on another one is sent as it is.
+    app.matchPasted("SAMPLE-0002 00310109900000000002531057209\nSAMPLE-0003 9400111899223344556677");
+    eq(app.state.history["SAMPLE-0002"].format, "thermalCut", "printed as envelope labels");
+    const rows2 = parseCsv(app.importFile().csv);
+    const r2 = rows2.find((x) => x[0] === "SAMPLE-0002"), r3 = rows2.find((x) => x[0] === "SAMPLE-0003");
+    ok(r2 && r2.includes("Shipped") && !r2.includes("00310109900000000002531057209"), "typed barcode number: Shipped " + r2);
+    ok(r3 && r3.includes("9400111899223344556677"), "a real package number goes in " + r3);
     // The landscape one picked once is what the button picks next time.
     setOutput(win, doc, "format", "thermalEnvelope");
     setOutput(win, doc, "format", "thermal4x6");
     app.useEnvelopeLabels();
     eq(app.state.output.format, "thermalEnvelope", "remembered");
+  },
+
+  "drop: the CSV and TCGplayer's packing-slip PDF dragged in together both load": async () => {
+    const { win, doc, app } = await openApp();
+    const { jsPDF } = window.jspdf;
+    const slip = new jsPDF({ unit: "pt", format: "letter" });
+    slip.text("Order Number: SAMPLE-0002", 56, 60);
+    const dt = new win.DataTransfer();
+    dt.items.add(new win.File([slip.output("arraybuffer")], "TCGplayer_PackingSlips_20261126_010612.pdf", { type: "application/pdf" }));
+    dt.items.add(new win.File([await sampleText()], "TCGplayer_ShippingExport.csv", { type: "text/csv" }));
+    for (const kind of ["dragenter", "dragover", "drop"]) {
+      doc.body.dispatchEvent(new win.DragEvent(kind, { dataTransfer: dt, bubbles: true, cancelable: true }));
+    }
+    await waitFor(() => app.state.orders.length === 10, "orders from the CSV");
+    await waitFor(() => app.state.slips && app.state.slips.byOrder["SAMPLE-0002"], "the slip, matched to its order");
+    ok(/Found slips for 1 of 10/.test(doc.querySelector("#slip-msg").textContent), doc.querySelector("#slip-msg").textContent);
   },
 
   "Pirate Ship CSV lists tracked orders that have no tracking yet": async () => {

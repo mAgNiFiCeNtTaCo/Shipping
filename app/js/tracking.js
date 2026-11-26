@@ -119,8 +119,12 @@ export function importFileCsv(orders, shippedState, { skipSent = false } = {}) {
   const rows = [], missingRequired = [], included = [], already = [];
   for (const o of fileOrders) {
     const st = state[o.id] || {};
-    const tracking = compact(st.tracking || o.tracking);
+    let tracking = compact(st.tracking || o.tracking);
     if (!tracking && !st.shipped) continue;
+    // TCGplayer's own tracked-slip barcode number: TCGplayer already has it on the order (its help, 2026-11), and
+    // whether its import takes that number is unknown, so the row says "Shipped" as for any envelope.
+    const barcode = compact(o.barcode || (o.imb && o.imb.tracking ? String(o.imb.tracking) + String(o.imb.routing || "") : ""));
+    if (tracking && barcode && tracking === barcode) tracking = "";
     const what = tracking || "Shipped";
     if (skipSent && st.sent && (st.sent.what === what || st.sent.tcg)) { already.push(o.id); continue; }
     included.push({ id: o.id, what });

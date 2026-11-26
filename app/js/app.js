@@ -11,7 +11,7 @@ import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText } from "./render.js
 import { readSlipPdf, attachSlips } from "./slips.js";
 import { readXlsx, isShipmentsHeader, readShipments, shipmentsFromCsv, matchShipments, isoDate } from "./pirate.js";
 import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
-  trackingUrl, formatName, historyKey, recordSeen, stamp, tcgSays, firstSentAt } from "./history.js";
+  trackingUrl, formatName, historyKey, recordSeen, stamp, tcgSays, firstSentAt, barcodeNumber, barcodeTrackingUrl } from "./history.js";
 import { orderListFromCsv, compareOrderList, listTime } from "./orderlist.js";
 
 // ---------- small helpers ----------
@@ -107,18 +107,19 @@ function downloadBlob(name, blob) {
  * browser way (jsPDF's doc.save or a download link). The browser download happens before any await, so a
  * click handler still counts as the user's action. Resolves to { where: "folder" | "downloads", name, path?, fellBack? }.
  */
-function deliver(name, kind, getBlob, download) {
+function deliver(name, kind, getBlob, download, { open = false } = {}) {
   if (state.output.saveTo === "downloads") {
     download();
     return Promise.resolve({ where: "downloads", name });
   }
+  const openIt = open && state.output.openPdf !== false;
   return (async () => {
     try {
-      const r = await fetch(`api/save?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, {
+      const r = await fetch(`api/save?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}${openIt ? "&open=1" : ""}`, {
         method: "POST", headers: { "X-Ship-Desk": "1", "Content-Type": "application/octet-stream" }, body: getBlob(),
       });
       const info = r.ok ? await r.json() : null;
-      if (info && info.ok) return { where: "folder", name: info.name, path: info.path, folder: info.folder, kind };
+      if (info && info.ok) return { where: "folder", name: info.name, path: info.path, folder: info.folder, kind, opened: !!info.opened, pdf: open };
     } catch { /* server not running: fall back to a normal download */ }
     download();
     return { where: "downloads", name, fellBack: true };
@@ -126,7 +127,18 @@ function deliver(name, kind, getBlob, download) {
 }
 
 const saveBlob = (name, kind, blob) => deliver(name, kind, () => blob, () => downloadBlob(name, blob));
-const savePdf = (doc, name, kind) => deliver(name, kind, () => doc.output("blob"), () => doc.save(name));
+const savePdf = (doc, name, kind) => deliver(name, kind, () => doc.output("blob"), () => doc.save(name), { open: true });
+
+/** Ask serve.py to open a PDF it saved (kind folder, or its Archive) in the PC's PDF program. */
+export async function openSavedFile(kind, name) {
+  try {
+    const r = await fetch(`api/open-file?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, { method: "POST", headers: { "X-Ship-Desk": "1" } });
+    if (r.ok) return true;
+    if (r.status === 404) { toast("That file isn't in the Saved folder any more."); return false; }
+  } catch { /* not running */ }
+  toast("The file couldn't be opened. Start Ship Desk with \"Start Ship Desk.bat\".");
+  return false;
+}
 
 /** Ask serve.py to open the Saved folder (or one kind's subfolder, or one order's photo folder) in Explorer. */
 export async function openSavedFolder(kind = "", order = "") {
@@ -142,6 +154,8 @@ export async function openSavedFolder(kind = "", order = "") {
 function savedLines(res) {
   if (res.where === "folder") {
     return [el("p", { class: "saved-where" }, "In ", el("code", { text: res.path }), " ",
+      res.pdf ? el("button", { type: "button", class: "link open-file", text: res.opened ? "Open it again" : "Open it", onclick: () => openSavedFile(res.kind, res.name) }) : null,
+      res.pdf ? " · " : null,
       el("button", { type: "button", class: "link", text: "Open the folder", onclick: () => openSavedFolder(res.kind) }))];
   }
   return [res.fellBack ? "Ship Desk's Saved folder couldn't be reached (is the Ship Desk window still open?), so it went to your Downloads folder." : "In your Downloads folder."];
@@ -150,7 +164,7 @@ function savedLines(res) {
 // ---------- state ----------
 
 const DEFAULT_DESIGN = { accent: "#136f63", font: "helvetica", logo: null, darkness: 0, note: "", qrUrl: "", slipMessage: "", orderQr: true };
-const DEFAULT_OUTPUT = { format: "", slips: true, boldReturn: false, noDivider: false, slipsInLabelOrder: false, saveTo: "folder" };
+const DEFAULT_OUTPUT = { format: "", slips: true, boldReturn: false, noDivider: false, slipsInLabelOrder: false, saveTo: "folder", openPdf: true };
 const ADDRESS_FIELDS = ["name", "phone", "street", "street2", "city", "state", "zip"];
 const formatList = asList(FORMATS);
 const filterList = asList(FILTERS);
@@ -193,6 +207,7 @@ function loadSettings() {
   state.activeProfile = state.profiles.some((p) => p.id === active) ? active : state.profiles[0].id;
   state.design = { ...DEFAULT_DESIGN, ...load(KEYS.design, {}) };
   state.output = { ...DEFAULT_OUTPUT, ...load(KEYS.output, {}) };
+  state.output.slipsInLabelOrder = false; // always starts unticked (the user's wish 2026-11-26); tick it per batch
   if (!formatList.some((f) => f.id === state.output.format)) state.output.format = formatList[0] ? formatList[0].id : "";
   state.plan = { ...DEFAULT_PLAN_SETTINGS, ...load(KEYS.plan, {}) };
   const shipped = load(KEYS.shipped, {});
@@ -560,6 +575,7 @@ async function loadSlipFile(file) {
     const res = await readSlipPdf(buf, state.orders.map((o) => o.id), { imb: !!planSettings().trackedEnvelopes });
     attachSlips(state.orders, res.byOrder || {});
     state.slips = { byOrder: res.byOrder || {}, unmatchedPages: res.unmatchedPages || [], fileName: file.name };
+    fillBarcodes();
     replan(); // the slips go in the envelopes: their weight counts
     const matched = state.orders.filter((o) => state.slips.byOrder[o.id]).length;
     const lines = [];
@@ -578,7 +594,6 @@ async function loadSlipFile(file) {
     showMsg(box, matched ? (lines.length ? "warn" : "ok") : "error",
       matched ? `Found slips for ${matched} of ${plural(state.orders.length, "order")}.` : "None of the pages matched your orders.",
       matched ? lines : ["Check that the PDF is for the same orders as your CSV."]);
-    if (matched) { state.output.slipsInLabelOrder = true; save(KEYS.output, state.output); }
   } catch (e) {
     showMsg(box, "error", `${file.name} couldn't be read as a packing-slip PDF.`, [e && e.message ? `Details: ${e.message}` : null]);
   }
@@ -782,6 +797,53 @@ function noteShipped(id) {
 // A new shipped entry for an order, keeping the note of what was already sent to TCGplayer (entry.sent).
 const withSent = (id, entry) => (state.shipped[id] && state.shipped[id].sent ? { ...entry, sent: state.shipped[id].sent } : entry);
 
+/**
+ * The USPS barcode number (20 digits + the buyer's ZIP, history.js barcodeNumber) TCGplayer put on an order's tracked slip (and Ship Desk on its envelope label):
+ * from the loaded slip PDF, else from History (kept when the labels were made). "" when there is none. An order
+ * marked shipped with no tracking gets this as its tracking number (the user's wish 2026-11-26), so it can be
+ * looked up here instead of on TCGplayer. The import file still says "Shipped" for it (tracking.js).
+ */
+/**
+ * A slip PDF was loaded: History keeps each order's barcode number, and orders already marked shipped with no
+ * tracking (scanned at the post office before Ship Desk kept the number) get it now.
+ */
+function fillBarcodes() {
+  if (state.source !== "csv") return;
+  let changed = false;
+  for (const o of state.orders) {
+    const bc = barcodeNumber(o.imb);
+    if (!bc) continue;
+    const r = own(state.history, o.id);
+    if (r) {
+      r.barcode = bc;
+      if (r.shipped && !r.tracking) Object.assign(r, { tracking: bc, carrier: "USPS" });
+      changed = true;
+    }
+    const st = own(state.shipped, o.id);
+    if (st && st.shipped && !st.tracking) { Object.assign(st, { tracking: bc, carrier: "USPS" }); changed = true; }
+  }
+  if (changed) { saveHistory(); saveShipped(); }
+}
+
+function barcodeOf(id) {
+  const o = state.orders.find((x) => x.id === id);
+  if (barcodeNumber(o && o.imb)) return barcodeNumber(o.imb);
+  return recordBarcode(own(state.history, id));
+}
+
+/**
+ * A History record's barcode number: the one kept from its slip, else (labels made before 2026-11-26 kept it) a
+ * tracking number typed in by hand that is shaped like one (20 digits, the 2nd 0-4, + a 5, 9 or 11 digit ZIP or
+ * none) on an order printed as an envelope label. Real USPS package numbers on such orders (a Pirate Ship label bought
+ * later) are 22 digits.
+ */
+function recordBarcode(r) {
+  if (!r) return "";
+  if (r.barcode) return String(r.barcode);
+  const t = String(r.tracking || "").replace(/\s/g, "");
+  return ENVELOPE_FORMATS.includes(r.format) && /^\d[0-4]\d{18}(\d{5}|\d{9}|\d{11})?$/.test(t) ? t : "";
+}
+
 function setTracking(id, tracking) {
   const t = String(tracking || "").trim();
   if (t) state.shipped[id] = withSent(id, { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true, at: today() });
@@ -792,7 +854,11 @@ function setTracking(id, tracking) {
 
 function setShipped(id, on) {
   const cur = state.shipped[id];
-  if (on) state.shipped[id] = { tracking: "", carrier: "", ...cur, shipped: true, at: today() };
+  if (on) {
+    state.shipped[id] = { tracking: "", carrier: "", ...cur, shipped: true, at: today() };
+    const bc = !(cur && cur.shipped) && !state.shipped[id].tracking && barcodeOf(id);
+    if (bc) Object.assign(state.shipped[id], { tracking: bc, carrier: "USPS" });
+  }
   else delete state.shipped[id];
   saveShipped();
   noteShipped(id);
@@ -885,7 +951,7 @@ function historyOnlyOrders() {
     const says = tcgSays(r);
     if (says === "shipped" || says === "canceled" || (says !== "open" && (when < since || (firstSent && when < firstSent)))) continue;
     const kept = own(rows, r.id);
-    out.push({ id: r.id, name: r.name, value: r.value, fromHistory: !kept, row: kept ? kept.row : rowFromHistory(r) });
+    out.push({ id: r.id, name: r.name, value: r.value, barcode: recordBarcode(r), fromHistory: !kept, row: kept ? kept.row : rowFromHistory(r) });
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -893,7 +959,7 @@ function historyOnlyOrders() {
 /** What the import file looks at: the loaded orders + History's shipped ones, and their shipped state. */
 function importCandidates() {
   const extra = historyOnlyOrders();
-  const orders = [...fileOrders(), ...extra];
+  const orders = [...fileOrders().map((o) => ({ ...o, barcode: barcodeOf(o.id) })), ...extra];
   const shipped = { ...state.shipped };
   for (const o of orders) {
     const r = own(state.history, o.id);
@@ -1043,6 +1109,8 @@ function renderOutput() {
   for (const k of ["slips", "boldReturn", "noDivider", "slipsInLabelOrder"]) f.elements[k].checked = !!state.output[k];
   for (const r of f.elements.saveTo) r.checked = r.value === (state.output.saveTo === "downloads" ? "downloads" : "folder");
   $("#btn-open-folder").hidden = state.output.saveTo === "downloads";
+  $("#open-pdf").checked = state.output.openPdf !== false;
+  $("#open-pdf-wrap").hidden = state.output.saveTo === "downloads";
   const slipOrder = $("#slip-order");
   slipOrder.disabled = !state.slips;
   $("#slip-order-wrap").classList.toggle("disabled", !state.slips);
@@ -1125,9 +1193,14 @@ function renderShipWarn() {
 
 // ---------- history ----------
 
+// An envelope barcode number (TCGplayer's tracked slip) isn't found on USPS's tracking page (tried 2026-11-26, both
+// the 20 digits and with the ZIP): it links to TCGplayer's own tracking page instead.
+const isBarcodeTracking = (r) => !!(r && r.tracking && r.tracking === recordBarcode(r));
+const trackingLink = (r) => (isBarcodeTracking(r) ? barcodeTrackingUrl(r.tracking) : trackingUrl(r.tracking, r.carrier));
+
 function historyRow(r) {
   const tid = "htrk-" + r.key.replace(/[^\w-]/g, "_");
-  const link = trackingUrl(r.tracking, r.carrier);
+  const link = trackingLink(r);
   const label = r.id || r.name;
   return el("tr", { "data-key": r.key },
     el("td", { class: "c-printed" },
@@ -1150,7 +1223,7 @@ function historyRow(r) {
           r.shipped ? ` Shipped ${String(r.shippedAt).slice(0, 10)}` : " Shipped"),
         el("label", { class: "sr", for: tid, text: `Tracking number for ${label}` }),
         el("input", { id: tid, class: "trk-input h-trk", type: "text", value: r.tracking || "", placeholder: "Tracking #", autocomplete: "off", spellcheck: "false" }),
-        link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", class: "small", text: `Track on ${r.carrier} ↗` }) : null,
+        link ? el("a", { href: link, target: "_blank", rel: "noopener noreferrer", class: "small", text: `Track on ${isBarcodeTracking(r) ? "TCGplayer" : r.carrier} ↗` }) : null,
         r.sentAt && tcgSays(r) !== "open" ? el("span", { class: "sent small", text: `Sent to TCGplayer ${String(r.sentAt).slice(0, 10)}` })
           : tcgSays(r) === "shipped" ? el("span", { class: "sent small", title: `TCGplayer's order list of ${r.tcg.at}`, text: "Shipped on TCGplayer" }) : null,
         r.shipped && tcgSays(r) === "open" ? el("span", { class: "tcg-open small", title: `TCGplayer's order list of ${r.tcg.at}`, text: "Still Ready to Ship on TCGplayer" }) : null,
@@ -1195,6 +1268,8 @@ export function renderHistory() {
 function updateHistoryShipped(key, entry) {
   const r = state.history[key];
   if (!r) return;
+  // Ticked shipped just now with no tracking: the envelope's barcode number, if it has one.
+  if (entry && entry.shipped && !r.shipped && !String(entry.tracking || "").trim() && r.barcode) entry = { ...entry, tracking: r.barcode, carrier: "USPS" };
   applyShipped(r, entry);
   saveHistory();
   if (r.source === "csv" && r.id) {
@@ -1703,8 +1778,11 @@ export async function takePhoneLinks() {
       tracked++;
     } else {
       if ((r && r.shipped) || (o && isShippedNow(o)) || now.shipped) continue;
-      const tracking = now.tracking || (r && r.tracking) || "";
-      entry = { tracking, carrier: tracking ? now.carrier || (r && r.carrier) || "" : "", shipped: true };
+      const kept = now.tracking || (r && r.tracking) || "";
+      // An envelope label carries TCGplayer's USPS barcode: its number becomes the tracking number.
+      const bc = !kept && source === "csv" && order.id ? barcodeOf(order.id) : "";
+      const tracking = kept || bc;
+      entry = { tracking, carrier: bc ? "USPS" : tracking ? now.carrier || (r && r.carrier) || "" : "", shipped: true };
       shipped++;
     }
     if (r && !o) applyShipped(r, entry, String(ln.taken || "").replace("T", " ").slice(0, 16) || undefined);
@@ -1824,6 +1902,7 @@ function renderPhone() {
       step(3, "Switch on phone access."),
       el("p", { class: "muted" }, "This gives Ship Desk's phone page an address that only your own Tailscale devices can open (not the internet): ",
         el("code", { text: p.address || "" }), ". The rest of Ship Desk stays on this PC only."),
+      el("p", { class: "muted small", text: "Tailscale puts this PC's name from that address in a public list of web certificates. Nobody can open it from outside your Tailscale devices, but a PC named after you shows your name there, so a plain PC name is better." }),
       phoneExtra.enableLink ? el("div", { class: "msg info" },
         el("p", { class: "msg-title", text: "One more thing: switch on secure addresses for your Tailscale network." }),
         el("p", { text: "Tailscale asks once per network. Open its page, click Enable, then come back and click Switch on phone access again." }),
@@ -1932,7 +2011,7 @@ export async function proofPack(key) {
   doc.text(t(r.id ? `Order ${r.id}` : r.source === "mailer" ? "Mailer (no order # yet)" : "Pasted address"), M, y);
   y += 0.5;
   const kinds = PHOTO_KINDS.map((k) => ({ ...k, list: ph.photos.filter((p) => p.kind === k.id).sort((a, b) => String(a.taken).localeCompare(String(b.taken))) }));
-  const link = trackingUrl(r.tracking, r.carrier);
+  const link = trackingLink(r);
   const facts = [
     ["Buyer", r.name],
     ["Ships to", `${r.city || ""}${r.city && r.state ? ", " : ""}${r.state || ""} ${r.zip || ""}`.trim()],
@@ -1941,7 +2020,7 @@ export async function proofPack(key) {
     ["Items", r.items ? String(r.items) : ""],
     ["Label made", r.printedAt ? `${r.lastPrintedAt || r.printedAt}${r.format ? ` (${formatName(r.format)})` : ""}` : ""],
     ["Shipped", r.shipped ? (r.shippedAt || "yes") : "not marked shipped"],
-    ["Tracking", r.tracking ? `${r.tracking}${r.carrier ? ` (${r.carrier})` : ""}` : "none"],
+    ["Tracking", r.tracking ? `${r.tracking}${isBarcodeTracking(r) ? " (USPS envelope barcode, tracked on TCGplayer)" : r.carrier ? ` (${r.carrier})` : ""}` : "none"],
     ["Sent to TCGplayer", r.sentAt || ""],
     ["Photos", ph.photos.length ? kinds.filter((k) => k.list.length).map((k) => `${k.list.length} ${k.short}`).join(", ") : "none"],
   ].filter(([, v]) => v);
@@ -2338,8 +2417,9 @@ function bindOutput() {
   $("#btn-open-folder").addEventListener("click", () => openSavedFolder());
   // The "Where files go" choice sits below the print bar, outside the form, so it has its own listener.
   $(".save-to").addEventListener("change", (e) => {
-    if (e.target.name !== "saveTo") return;
-    state.output.saveTo = e.target.value === "downloads" ? "downloads" : "folder";
+    if (e.target.id === "open-pdf") state.output.openPdf = e.target.checked;
+    else if (e.target.name === "saveTo") state.output.saveTo = e.target.value === "downloads" ? "downloads" : "folder";
+    else return;
     save(KEYS.output, state.output);
     renderOutput();
   });
@@ -2442,6 +2522,37 @@ function registerWorker() {
 let started = false;
 
 /** Start the app on index.html. Returns the test/automation API (also window.shipdesk). */
+/**
+ * A second sideways scrollbar above a wide table (the user's wish 2026-11-26: no scrolling to the bottom of a long
+ * History to reach the one under it). It mirrors the table box's own scrollbar and shows only while the table is
+ * wider than its box.
+ */
+function addTopScrollbar(wrap) {
+  const inner = el("div", { class: "top-scroll-inner" });
+  const bar = el("div", { class: "top-scroll", "aria-hidden": "true" }, inner);
+  wrap.before(bar);
+  // Each side copies the other only when they differ, so the echo of a copied scroll stops at once.
+  const follow = (from, to) => () => { if (Math.abs(to.scrollLeft - from.scrollLeft) >= 1) to.scrollLeft = from.scrollLeft; };
+  bar.addEventListener("scroll", follow(bar, wrap));
+  wrap.addEventListener("scroll", follow(wrap, bar));
+  const fit = () => {
+    const wide = wrap.scrollWidth > wrap.clientWidth + 1;
+    bar.hidden = !wide;
+    if (!wide) return;
+    // The bar is as wide as the table's box (border included), so add the border: both then scroll the same distance.
+    inner.style.width = `${wrap.scrollWidth + wrap.offsetWidth - wrap.clientWidth}px`;
+    bar.scrollLeft = wrap.scrollLeft;
+  };
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(fit);
+    ro.observe(wrap);
+    const table = wrap.querySelector("table");
+    if (table) ro.observe(table);
+  } else window.addEventListener("resize", fit);
+  fit();
+  return bar;
+}
+
 export function init() {
   if (started) return api;
   started = true;
@@ -2455,6 +2566,7 @@ export function init() {
   bindOutput();
   bindShip();
   bindHistory();
+  for (const wrap of document.querySelectorAll(".table-wrap")) addTopScrollbar(wrap);
   bindPhone();
   bindPower();
   bindBackup();
@@ -2480,7 +2592,7 @@ export const api = {
   state, init, loadCsvText, loadPastedText, setFilter, visibleOrders, printOrders, returnAddress, planSettings, useEnvelopeLabels,
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
   clearShipped, renderAll, handleFiles, loadSlipFile, today, restoreBatch, clearBatch, applyShipments,
-  renderHistory, historyFile, clearHistory, showView, openSavedFolder,
+  renderHistory, historyFile, clearHistory, showView, openSavedFolder, openSavedFile,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
   power, checkPower, turnOff, setAutostart, loadBackup, setBackup, setBackupPlace, backupNow,
   renderWelcome, welcomeItems, setWelcome, checkUpdates, setUpdates, update,

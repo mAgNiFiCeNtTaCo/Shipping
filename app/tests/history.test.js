@@ -1,7 +1,7 @@
 // History: history.js on its own, then the History page in the real app (iframe).
 import { ok, eq } from "./runner.js";
 import { parseCsv } from "../js/csv.js";
-import { KEYS, load, remove } from "../js/store.js";
+import { KEYS, load, save, remove } from "../js/store.js";
 import { historyKey, recordPrinted, recordShipped, historyCounts, historyList, historyCsv, trackingUrl,
   HISTORY_CSV_HEADER, MAX_RECORDS, HISTORY_FILTERS } from "../js/history.js";
 
@@ -236,6 +236,14 @@ tests["saved folder: every file goes to its own subfolder, not to the browser's 
   eq(ascii(await savedBytes(pdf.path), 5), "%PDF-", "a real PDF was written");
   ok(doc.querySelector("#print-msg").textContent.includes(pdf.path), "message says where");
   ok(doc.querySelector("#print-msg .saved-where button"), "Open the folder button");
+  // The PDF opens by itself (the test server only records it), and "Open it again" opens it once more.
+  ok(pdf.opened, "server opened the PDF");
+  const openedNow = async () => (await (await fetch("/__opened")).json()).opened;
+  ok((await openedNow()).some((p) => p.endsWith(pdf.name)), "asked to open the saved PDF");
+  ok(doc.querySelector("#open-pdf").checked, "Open each PDF box ticked by default");
+  const before = (await openedNow()).length;
+  ok(await app.openSavedFile("labels", pdf.name), "Open it again answered");
+  eq((await openedNow()).length, before + 1, "opened once more");
   // Same name again: kept, not overwritten.
   doc.querySelector("#btn-pdf").click();
   const again = await app.state.lastSave;
@@ -247,6 +255,7 @@ tests["saved folder: every file goes to its own subfolder, not to the browser's 
   const imp = await app.state.lastSave;
   ok(/TCGplayer import files[\\/]TCGplayer import \d{4}-/.test(imp.path), "import path: " + imp.path);
   ok(ascii(await savedBytes(imp.path), 7) === "Order #", "import file starts with the header");
+  ok(!imp.opened, "CSV files aren't opened");
   doc.querySelector("#btn-pirate").click();
   ok(/Pirate Ship[\\/]Pirate Ship \d{4}-/.test((await app.state.lastSave).path), "Pirate Ship path");
   app.showView("history");
@@ -285,6 +294,62 @@ tests["saved folder: the server refuses other websites and bad file names"] = as
   eq((await post("/api/save?kind=labels&name=evil.exe")).status, 400, "only .pdf / .csv");
   eq((await post("/api/save?kind=windows&name=a.pdf")).status, 400, "unknown kind");
   eq((await post("/api/open-folder?kind=..")).status, 400, "unknown folder");
+  eq((await post("/api/open-file?kind=labels&name=a.pdf", {})).status, 403, "open-file: no X-Ship-Desk header");
+  eq((await post("/api/open-file?kind=labels&name=..%2F..%2Fevil.pdf")).status, 400, "open-file: path in the name");
+  eq((await post("/api/open-file?kind=import&name=a.csv")).status, 400, "open-file: only PDFs");
+  eq((await post("/api/open-file?kind=labels&name=not-there.pdf")).status, 404, "open-file: missing file");
+};
+
+tests["saved folder: unticking 'Open each PDF' saves without opening, and it's remembered"] = async () => {
+  clearStore();
+  const { doc, app, win } = await openApp("", { folder: true });
+  const box = doc.querySelector("#open-pdf");
+  box.checked = false;
+  box.dispatchEvent(new win.Event("change", { bubbles: true }));
+  eq(load(KEYS.output, {}).openPdf, false, "saved setting");
+  app.loadCsvText(await sampleText(), "sample.csv");
+  doc.querySelector("#btn-pdf").click();
+  const pdf = await app.state.lastSave;
+  eq(pdf.where, "folder");
+  ok(!pdf.opened, "not opened");
+  eq(doc.querySelector("#print-msg .open-file").textContent, "Open it", "Open it button still there");
+  clearStore();
+  document.getElementById("history-frame").remove();
+};
+
+tests["slips in label order: always starts unticked, even if an older version saved it ticked"] = async () => {
+  clearStore();
+  save(KEYS.output, { slipsInLabelOrder: true, saveTo: "downloads" });
+  const { doc, app } = await openApp();
+  eq(app.state.output.slipsInLabelOrder, false, "setting starts off");
+  ok(!doc.querySelector("#slip-order").checked, "box unticked");
+  clearStore();
+  document.getElementById("history-frame").remove();
+};
+
+tests["history: a wide table gets a second scrollbar on top that moves with it"] = async () => {
+  clearStore();
+  const { doc, app, win } = await openApp("", { folder: true });
+  app.loadCsvText(await sampleText(), "sample.csv");
+  doc.querySelector("#btn-pdf").click();
+  await app.state.lastSave;
+  app.showView("history");
+  const frame = document.getElementById("history-frame");
+  const table = doc.querySelector("#history-table");
+  const wrap = table.closest(".table-wrap");
+  table.style.minWidth = "2000px"; // wider than the 1200 px window, whatever the columns hold
+  const bar = wrap.previousElementSibling;
+  ok(bar && bar.classList.contains("top-scroll"), "bar sits right above the table");
+  await waitFor(() => !bar.hidden && wrap.scrollWidth > wrap.clientWidth, "bar shows for a wide table");
+  eq(bar.scrollWidth - bar.clientWidth, wrap.scrollWidth - wrap.clientWidth, "both scroll the same distance");
+  bar.scrollLeft = 120;
+  await waitFor(() => wrap.scrollLeft === 120, "table followed the top bar");
+  wrap.scrollLeft = 40;
+  await waitFor(() => bar.scrollLeft === 40, "top bar followed the table");
+  table.style.minWidth = "";
+  await waitFor(() => bar.hidden, "bar goes away once the table fits");
+  clearStore();
+  frame.remove();
 };
 
 tests["security: the History CSV keeps buyer names that look like formulas as text (other files stay exact)"] = async () => {
