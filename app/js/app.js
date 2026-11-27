@@ -914,6 +914,29 @@ function recordBarcode(r) {
   return ENVELOPE_FORMATS.includes(r.format) && /^\d[0-4]\d{18}(\d{5}|\d{9}|\d{11})?$/.test(t) ? t : "";
 }
 
+// One label goes on one order. On 2026-11-27 a mailer's tracking number reached two orders (the phone gave it to the
+// wrong one): every way a tracking number comes in now checks whether another order already has it.
+const trackingKey = (t) => String(t || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+
+/** Another order (History or step 4) that already has this tracking number: { key, id, name }, else null. */
+export function trackingElsewhere(tracking, key) {
+  const t = trackingKey(tracking);
+  if (t.length < 10) return null;
+  for (const [k, r] of Object.entries(state.history)) {
+    if (k !== key && r && trackingKey(r.tracking) === t) return { key: k, id: r.id || "", name: r.name || "" };
+  }
+  for (const [id, x] of Object.entries(state.shipped)) {
+    if (id !== key && x && trackingKey(x.tracking) === t) {
+      const o = state.orders.find((y) => y.id === id) || own(state.history, id) || {};
+      return { key: id, id, name: o.name || "" };
+    }
+  }
+  return null;
+}
+
+const whose = (x) => [x.name, x.id ? `order ${x.id}` : ""].filter(Boolean).join(", ");
+const alsoOn = (tracking, x) => `Tracking ${tracking} is also on ${whose(x)}. One label goes on one order: clear it on the wrong one (untick Shipped there if it wasn't shipped).`;
+
 function setTracking(id, tracking) {
   const t = String(tracking || "").trim();
   if (t) state.shipped[id] = withSent(id, { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true, at: today() });
@@ -954,6 +977,7 @@ export function matchPasted(text) {
   saveShipped();
   for (const m of res.matches) noteShipped(m.orderId);
   const lines = [...(res.warnings || [])];
+  for (const m of res.matches) { const other = trackingElsewhere(m.tracking, m.orderId); if (other) lines.push(alsoOn(m.tracking, other)); }
   if (res.unmatched && res.unmatched.length) lines.push(el("div", {}, "Not matched: ", res.unmatched.map((u) => el("code", { text: u }))));
   showMsg(box, res.matches.length ? (lines.length ? "warn" : "ok") : "error",
     res.matches.length ? `Matched ${plural(res.matches.length, "tracking number")}.` : "No tracking numbers matched your orders.", lines);
@@ -1407,6 +1431,8 @@ function bindHistory() {
       const t = e.target.value.trim();
       const r = state.history[key];
       updateHistoryShipped(key, t ? { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true } : (r && r.shipped ? { shipped: true } : null));
+      const other = t && trackingElsewhere(t, key);
+      if (other) toast(alsoOn(t, other));
     }
   });
   body.addEventListener("click", (e) => {
@@ -1834,6 +1860,7 @@ export async function takePhoneLinks() {
   } catch { return 0; }
   if (!links.length) return 0;
   let tracked = 0, shipped = 0;
+  const clashes = [];
   for (const ln of links) {
     // A note for "__proto__" & co. would reach every record at once: skip anything that isn't an order key.
     if (!safeKey(ln.order) || (ln.orderId && !safeKey(ln.orderId))) continue;
@@ -1843,6 +1870,8 @@ export async function takePhoneLinks() {
     const r = own(state.history, ln.order);
     const now = (source === "csv" && order.id && own(state.shipped, order.id)) || {};
     let entry;
+    const other = ln.tracking && trackingElsewhere(ln.tracking, ln.order);
+    if (other) { clashes.push({ ln, other }); continue; } // one label, one order: left off this one
     if (ln.tracking) {
       entry = { tracking: ln.tracking, carrier: ln.carrier || detectCarrier(ln.tracking) || "USPS", shipped: true };
       tracked++;
@@ -1867,6 +1896,11 @@ export async function takePhoneLinks() {
   renderAll();
   const said = [tracked ? `${plural(tracked, "tracking number")} added` : "", shipped ? `${plural(shipped, "order")} marked shipped (post office photo)` : ""].filter(Boolean);
   if (said.length) toast(`From your phone: ${said.join(", ")}.`);
+  if (clashes.length) {
+    showMsg($("#match-msg"), "warn", `Your phone gave ${plural(clashes.length, "tracking number")} to the wrong order (left off)`,
+      clashes.map(({ ln, other }) => `${ln.tracking} was put on ${ln.name || ln.orderId || ln.order} on the phone, but it is already on ${whose(other)}. Nothing changed on ${ln.name || "that order"}.`));
+    toast("A tracking number from your phone is already on another order: see step 4.");
+  }
   return links.length;
 }
 
@@ -2554,6 +2588,8 @@ function bindShip() {
     const box = row.querySelector('.ship-check input');
     if (e.target.classList.contains("trk-input")) {
       setTracking(id, e.target.value);
+      const other = e.target.value.trim() && trackingElsewhere(e.target.value, id);
+      if (other) showMsg($("#match-msg"), "warn", "Same tracking number on two orders", [alsoOn(e.target.value.trim(), other)]);
       const has = !!(state.shipped[id] && state.shipped[id].tracking);
       box.checked = has || !!(state.shipped[id] && state.shipped[id].shipped);
       box.disabled = has;
@@ -2662,7 +2698,7 @@ export function init() {
 export const api = {
   state, init, loadCsvText, loadPastedText, setFilter, visibleOrders, printOrders, returnAddress, planSettings, useEnvelopeLabels,
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
-  clearShipped, renderAll, handleFiles, loadSlipFile, openSlipPicker, loadSlipFromFolder, today, restoreBatch, clearBatch, applyShipments,
+  clearShipped, renderAll, handleFiles, loadSlipFile, openSlipPicker, loadSlipFromFolder, trackingElsewhere, today, restoreBatch, clearBatch, applyShipments,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder, openSavedFile,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
   power, checkPower, turnOff, setAutostart, loadBackup, setBackup, setBackupPlace, backupNow,

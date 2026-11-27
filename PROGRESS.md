@@ -7,7 +7,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.7** built 2026-11-27 (slip list; not published yet, 1.1.6 is the latest on GitHub), Windows installer for other people:
+- **Version 1.1.10** built 2026-11-27 (slip list, one label one order, ZIP-only reads ignored; not published yet, 1.1.6 is the latest on GitHub; never publish 1.1.9), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6 = latest; 1.1.2 skipped). A fresh install sets itself up
@@ -40,6 +40,56 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-27: second wrong-order mailer fixed; ZIP part of a barcode no longer counts as tracking
+- User (two phone screenshots): a second Pirate Ship label (buyer C) picked another order (buyer D). Phone links file:
+  D was linked by a tap on the phone's which-order list at 16:21. Cause found: on 2026-11-26 the phone read only
+  "420" + a ZIP+4 (the routing part of the barcode) off C's label and took it as a tracking number, then C's order got
+  another number; so on 2026-11-27 C's real number was unknown to the phone, it asked, and D (an envelope order printed
+  2026-11-25, near the top of the list) was tapped. The phone then picks the first order with a number: D, "already
+  scanned".
+- The user confirmed which orders the labels belong to (both already had the right number) and unticked Shipped on the
+  two wrong orders (B and D) in History, which clears their tracking; checked in the History copy at 16:52: no tracking
+  number on more than one order in all of History.
+- D's copy of C's packed photo (16:21, byte-identical to C's) moved to `Saved\Photos taken off the wrong order` and its
+  photos.json entry removed (C keeps his).
+- phone.js `parseScan`: "420" + a 5 or 9 digit ZIP alone = `{ type: "zip" }`; the scanner says to get the whole long
+  barcode in the frame. 2 test lines (made-up ZIPs); phone-sw v15. A first try put the new branch after the last `else`
+  (a syntax error): the test run then only timed out, so a TIMEOUT there can mean a JS file that doesn't load.
+- **Buyer data reached the public GitHub repo:** commit 5d80d98 (this day's earlier save) had two buyers' names, three
+  order numbers and one real tracking number (PROGRESS.md, phone.test.js). The next push was refused by auto mode
+  (sensitive data); all of it is now replaced (buyers A-D, made-up numbers in tests). Rule kept on the card: no real
+  names, order #s, tracking numbers or ZIPs in the project, its log or commit messages.
+- **1.1.10 built** (`dist\ShipDesk-Setup-1.1.10.exe` 13.1 MB + portable zip 13.6 MB; has 1.1.7 to 1.1.9 too): 226 tests,
+  installer test over 1.1.9 and zip test all good; nothing left in Downloads. 1.1.9 was built first, then rebuilt because
+  a code comment in it held part of a buyer's ZIP: **never publish 1.1.9**. 1.1.10 not published yet.
+- At the user's choice, the two pushed commits with buyer data (5d80d98, d88d86e) were replaced on GitHub by one
+  cleaned commit (force push). GitHub may keep the old commit reachable by its exact link until it cleans up;
+  GitHub Support can purge it.
+- Resources (2026-11-27, during the build): Shipping 18 processes, 138% of a core (tests), 2573 MB RAM, ports
+  5091 22922, disk 562 MB; whole PC CPU 9% of 32 threads, RAM 28.5 of 64 GB, GPU 38%.
+
+### 2026-11-27: one label, one order (a mailer's tracking went on the wrong order)
+- User (phone screenshot): scanning a Pirate Ship label (buyer A) picked another order (buyer B), "already scanned".
+  The phone links file showed the phone itself linked A's tracking to B at 16:25 (the "isn't on an order yet" list, a
+  tap on B); A's order got the same number on the PC at about the same time (typed or pasted). Likely cause: the list
+  redrew on a background refresh (A dropped out once he had tracking) and the tap landed on the next order. Not
+  proven. B had no `sentAt`: TCGplayer never got the wrong number. B fixed by the user (History, untick Shipped).
+- Phone (phone.js): the list is drawn once per question/search (`scan.askDrawn`); a tap asks first (`scan.askPick`,
+  `#scan-ask-confirm`: buyer, city, ZIP, order #; Yes, this order / Pick another); `answerAskFromList` closes the question
+  and picks the order when the PC's list brings the number; `linkTracking` refuses a number another order has.
+  phone-sw v14.
+- PC (app.js): `trackingElsewhere(tracking, key)`; `takePhoneLinks` leaves a clashing link off and says so in step 4
+  (`#match-msg`); typed (step 4, History) and pasted tracking warn. Pirate Ship matching already skipped these. sw v40.
+- Tests: the old mailer test now confirms first; 2 new (list holds still + answers itself + refusal; the PC leaves a
+  clash off) -> 226 passed.
+- tools/test.py: Edge gets a Preferences file so test downloads stay in the temp profile. Test runs had left 36
+  "TCGplayer import ... - 1 order.csv" files (made-up SAMPLE orders only, checked one by one) in the user's Downloads
+  since October; deleted at the user's request.
+- **1.1.8 built** (`dist\ShipDesk-Setup-1.1.8.exe` 13.1 MB + portable zip 13.6 MB; includes 1.1.7's slip list): 226 tests,
+  installer test over 1.1.7 and zip test all good; no file left in Downloads. Not published yet.
+- Resources (2026-11-27 16:39, during the build): Shipping 13 processes, 110% of a core (tests), 2593 MB RAM, ports
+  5091 22345, disk 549 MB; whole PC CPU 8% of 32 threads, RAM 28.9 of 64 GB, GPU 32%.
+
 ### 2026-11-27: "+ Add TCGplayer packing slips" lists the Packing slips folder
 - User: the slip button should "always default to the folder that holds the packing slips, never anything else even if
   i change to a different folder". A web page can't set the Windows file box's starting folder by path (and Windows

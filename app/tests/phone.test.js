@@ -541,6 +541,9 @@ Object.assign(tests, {
     eq(parseScan("1Z999AA10123456784"), { type: "tracking", tracking: "1Z999AA10123456784", carrier: "UPS" });
     eq(parseScan("https://example.com/store").type, "text");
     eq(parseScan(""), null);
+    // "420" + ZIP alone is the routing part, not a tracking number (read as one on 2026-11-26)
+    eq(parseScan("420123459876"), { type: "zip", zip: "123459876" }, "420 + ZIP+4 alone");
+    eq(parseScan("42012345"), { type: "zip", zip: "12345" }, "420 + ZIP alone");
   },
 
   "scan: the order QR code on every printed format reads back as the order (sideways labels too)": async () => {
@@ -681,6 +684,13 @@ Object.assign(tests, {
     const choice = doc.querySelector('#scan-ask-list button[data-link="SAMPLE-0006"]');
     ok(choice, "unshipped orders are offered");
     choice.click();
+    ok(!doc.querySelector("#scan-ask-confirm").hidden && doc.querySelector("#scan-ask").classList.contains("confirming"), "asks to confirm first");
+    eq(phone.scan.found, [], "nothing linked before Yes");
+    ok(doc.querySelector("#scan-ask-who").textContent.includes(phone.state.orders.find((o) => o.key === "SAMPLE-0006").name), "names the buyer");
+    doc.querySelector("#scan-ask-back").click();
+    ok(doc.querySelector("#scan-ask-confirm").hidden && doc.querySelector('#scan-ask-list button[data-link="SAMPLE-0006"]'), "Pick another: the list again");
+    doc.querySelector('#scan-ask-list button[data-link="SAMPLE-0006"]').click();
+    doc.querySelector("#scan-ask-yes").click();
     await waitFor(() => phone.scan.found.includes("SAMPLE-0006"), "the order to be picked");
     ok(doc.querySelector("#scan-ask").hidden, "question answered");
     const waiting = await phone.queueAll();
@@ -706,6 +716,51 @@ Object.assign(tests, {
     eq((await (await fetch("/api/links", { headers: PC })).json()).links.length, 0, "taken once");
     eq(await app.takePhoneLinks(), 0, "nothing left to take");
     ok(app.phoneOrders().find((o) => o.key === "SAMPLE-0006").tracking === "9400111899223344550001", "the phone's list carries it");
+    dropFrames();
+  },
+
+  "scan: the which-order list holds still, and answers itself when the PC gets the tracking number (2026-11-27)": async () => {
+    const { app, win, doc, phone } = await phoneWithOrders();
+    win.navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no camera", "NotFoundError"));
+    await phone.openScanner();
+    const T = "9300100000000000000001";
+    phone.handleScan("420123459876" + T);
+    ok(!doc.querySelector("#scan-ask").hidden, "asks which order");
+    const first = doc.querySelector("#scan-ask-list button[data-link]");
+    await phone.refresh(); // a background refresh with nothing new
+    ok(first.isConnected, "the list isn't redrawn under the finger");
+    // On the PC, the tracking number goes on SAMPLE-0008 (typed in step 4); the phone hears about it.
+    app.state.shipped["SAMPLE-0008"] = { tracking: T, carrier: "USPS", shipped: true, at: app.today() };
+    ok(await app.syncPhoneOrders(true), "order list sent again");
+    await phone.refresh();
+    ok(doc.querySelector("#scan-ask").hidden, "question closed");
+    eq(phone.scan.found, ["SAMPLE-0008"], "the order with that tracking number is picked");
+    eq((await phone.queueAll()).filter((q) => q.link).length, 0, "no link made");
+    // linkTracking itself refuses a number another order has (a stale tap)
+    eq(await phone.linkTracking("SAMPLE-0001", T, "USPS"), false, "refused for another order");
+    eq((await phone.queueAll()).filter((q) => q.link).length, 0, "still no link");
+    phone.closeScanner(true);
+    dropFrames();
+  },
+
+  "scan: the PC leaves a phone's tracking number off an order when another order already has it": async () => {
+    const { app, pcDoc } = await phoneWithOrders();
+    const T = "9300100000000000000002";
+    app.state.shipped["SAMPLE-0008"] = { tracking: T, carrier: "USPS", shipped: true, at: app.today() };
+    const { code } = await link();
+    const r = await fetch("/api/phone/link", { method: "POST", headers: { "X-Ship-Desk-Key": code.replace(/-/g, ""), "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "clash-" + Date.now(), order: "SAMPLE-0002", name: "Brenna O'Callahan", tracking: T, carrier: "USPS", taken: "2026-11-27T16:25:36" }) });
+    ok(r.ok, "the phone's link reached the PC");
+    eq(await app.takePhoneLinks(), 1, "taken");
+    ok(!(app.state.shipped["SAMPLE-0002"] && app.state.shipped["SAMPLE-0002"].tracking === T), "not put on the second order");
+    const h = app.state.history["SAMPLE-0002"];
+    ok(!(h && h.tracking === T), "History unchanged for it");
+    const msg = pcDoc.querySelector("#match-msg");
+    ok(!msg.hidden && /already on/.test(msg.textContent) && msg.textContent.includes(T), "step 4 says so: " + msg.textContent);
+    eq((await (await fetch("/api/links", { headers: PC })).json()).links.length, 0, "the link is done (not taken again)");
+    const other = app.trackingElsewhere(T, "SAMPLE-0002");
+    eq(other && other.id, "SAMPLE-0008", "trackingElsewhere finds the order that has it");
+    eq(app.trackingElsewhere(T, "SAMPLE-0008"), null, "but not the order itself");
     dropFrames();
   },
 

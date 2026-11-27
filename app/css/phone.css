@@ -191,6 +191,14 @@ body.scanning { overflow: hidden; }
 .scan-ask-text { font-weight: 650; }
 .scan-ask-list { max-height: 42vh; overflow-y: auto; }
 .scan-ask h3 { margin: 0; font-size: 1rem; }
+/* After a tap on an order: one question, nothing else (a wrong tap marks the wrong order shipped). */
+.scan-ask.confirming > :not(#scan-ask-text):not(#scan-ask-confirm) { display: none; }
+.scan-ask-confirm { display: grid; gap: 8px; }
+.scan-ask-confirm[hidden] { display: none; }
+.scan-ask-q { margin: 0; }
+.scan-ask-who { margin: 0; font-size: 1.25rem; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.scan-ask-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.scan-ask-btns .btn { flex: 1 1 140px; }
 .scan-new { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--brand-line); border-radius: 14px; background: var(--brand-soft); }
 .scan-new .field { display: grid; gap: 4px; font-weight: 650; font-size: .92rem; }
 .scan-new .field em { font-style: normal; font-weight: 400; color: var(--muted); }

@@ -233,6 +233,12 @@ def main():
     if suites:
         url += "?suites=" + ",".join(suites)
     profile = tempfile.mkdtemp(prefix="shipdesk-edge-")
+    # A test that lets a file through to the browser's own download would otherwise land in the user's real
+    # Downloads folder (sample "TCGplayer import" CSVs were found there on 2026-11-27): downloads go in the profile.
+    os.makedirs(os.path.join(profile, "Default"), exist_ok=True)
+    with open(os.path.join(profile, "Default", "Preferences"), "w", encoding="utf-8") as f:
+        json.dump({"download": {"default_directory": os.path.join(profile, "downloads"), "prompt_for_download": False,
+                                "directory_upgrade": True}, "savefile": {"default_directory": os.path.join(profile, "downloads")}}, f)
     proc = subprocess.Popen(
         [edge, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
          f"--user-data-dir={profile}", url],

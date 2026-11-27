@@ -74,6 +74,13 @@ explain in plain words and finish jobs end to end.
   `POST /api/links-done`) into History + `state.shipped`. A mailer with no order in the list becomes a new entry
   keyed `mailer:<tracking>` (history source "mailer"); typing its order # in History (`setOrderNumber`) re-keys it and
   `POST /api/photos-rekey` moves its photos (`Saved/Phone/rekeys.json` sends late uploads to the order).
+- One label, one order (2026-11-27: a mailer's tracking reached two orders). Phone "which order?" list (`scan.ask`):
+  drawn once per question/search (`scan.askDrawn`, never on a background refresh: the list moved under the finger),
+  a tap asks first (`scan.askPick`, `#scan-ask-confirm`, Yes / Pick another), `answerAskFromList` picks the order by
+  itself when the PC's list brings the number, `linkTracking` refuses a number another order has. PC: app.js
+  `trackingElsewhere(tracking, key)`: `takePhoneLinks` leaves such a link off (message in `#match-msg`); typed (step 4,
+  History) and pasted tracking warn. Pirate Ship's `matchShipments` already skipped them (`already`). phone.js `parseScan`: "420" +
+  a ZIP alone = `{ type: "zip" }` (only the routing part; one was once taken as a tracking number, 2026-11-26), not tracking.
 - Phone "To do" view (default filter `todo`, phone.js `nextPhoto` / `todoGroups` / `todoRows`): not-shipped orders that are
   in the PC batch, labelled in the last `TODO_DAYS` = 14, or have photos waiting; grouped by the next photo (packed
   skips contents; a post office photo ends it), counting saved + waiting photos. Row camera button (`data-shoot`) picks,
@@ -220,6 +227,8 @@ the zip), and run it only when they ask (blocked in auto mode before; ran fine o
 
 ## Gotchas
 - No Node on this PC: JS tests only run through `tools/test.py` (headless Edge).
+- tools/test.py gives Edge a Preferences file so a browser download in a test lands in the temp profile: before
+  2026-11-27 test runs left sample "TCGplayer import ... - 1 order.csv" files in the user's real Downloads.
 - Testing the installer on this PC: install silently to a temp folder with `/MERGETASKS="!desktopicon,!autostart"
   /NOICONS /DATADIR=...` (both tasks are ticked by default: a plain silent install would point the user's "Start with
   Windows" at the test copy), run it on another port, never on 5091. On 2026-10-26 a test `--stop` turned off the

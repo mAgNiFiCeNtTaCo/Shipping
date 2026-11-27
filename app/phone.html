@@ -95,6 +95,15 @@
     <p id="scan-msg" class="scan-msg" role="status" aria-live="polite"></p>
     <div id="scan-ask" class="scan-ask" hidden>
       <p id="scan-ask-text" class="scan-ask-text"></p>
+      <div id="scan-ask-confirm" class="scan-ask-confirm" hidden>
+        <p class="scan-ask-q">Put this tracking number on</p>
+        <p id="scan-ask-who" class="scan-ask-who"></p>
+        <p class="muted small">Check that the name and city match the label.</p>
+        <div class="scan-ask-btns">
+          <button type="button" id="scan-ask-yes" class="btn primary">Yes, this order</button>
+          <button type="button" id="scan-ask-back" class="btn secondary">Pick another</button>
+        </div>
+      </div>
       <form id="scan-new" class="scan-new">
         <h3>Make a new entry</h3>
         <label class="field"><span>Buyer's name</span>

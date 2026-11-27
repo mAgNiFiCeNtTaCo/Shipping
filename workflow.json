@@ -848,6 +848,50 @@
           ]
         }
       ]
+    },
+    {
+      "title": "One label, one order: a mailer's tracking went on the wrong order",
+      "date": "2026-11-27",
+      "summary": "The same session traced a mailer scan that picked the wrong order to a tap on the phone's which-order list, made the list hold still, added a confirm step and duplicate-tracking checks on phone and PC, and stopped test runs leaving files in Downloads.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-27T16:29",
+              "end": "2026-11-27T16:50",
+              "did": "Read links.json/History to find the wrong link; phone.js askDrawn/askPick/answerAskFromList, linkTracking guard; app.js trackingElsewhere in takePhoneLinks/step 4/History/paste; 2 tests (226 pass); test.py download folder; 36 sample files deleted",
+              "outcome": "done",
+              "files": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Second wrong-order mailer fixed; ZIP part of a barcode no longer counts as tracking",
+      "date": "2026-11-27",
+      "summary": "The same session traced a buyer's label to a 2026-11-26 misread (only the barcode's ZIP part), guided the user's History fix for the two wrong orders, moved a misfiled photo, and made the phone ignore a ZIP-only reading.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-27T16:40",
+              "end": "2026-11-27T17:05",
+              "did": "links.json/History/backups read; a misfiled photo moved out; parseScan zip type + tests (226 pass); checked the History copy after the user's unticks",
+              "outcome": "done",
+              "files": 4
+            }
+          ]
+        }
+      ]
     }
   ]
 }

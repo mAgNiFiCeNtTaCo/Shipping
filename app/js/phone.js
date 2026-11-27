@@ -189,6 +189,7 @@ export async function refresh() {
       state.updated = data.updated || "";
       lsSet(LS.orders, { orders: state.orders, photos: state.photos, updated: state.updated });
       state.link = "ok";
+      answerAskFromList();
     } else state.link = "down";
   } catch {
     state.link = "down";
@@ -343,7 +344,8 @@ const compact = (s) => String(s || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase(
 
 /**
  * What a scanned code means: { type: "order", key } (Ship Desk's own QR), { type: "tracking", tracking, carrier }
- * (a shipping label's barcode; USPS labels hold "420" + ZIP in front of the number) or { type: "text", text }.
+ * (a shipping label's barcode; USPS labels hold "420" + ZIP in front of the number), { type: "zip", zip } (that "420"
+ * + ZIP alone: not a tracking number) or { type: "text", text }.
  */
 export function parseScan(text) {
   const raw = String(text || "").trim();
@@ -356,6 +358,10 @@ export function parseScan(text) {
   const t = compact(raw.replace(/^\]C1/, "")); // "]C1" = some readers' GS1-128 marker
   const usps = /^420(?:\d{5}|\d{9})(9\d{19,21})$/.exec(t);
   if (usps) return { type: "tracking", tracking: usps[1], carrier: "USPS" };
+  // "420" + a ZIP and nothing more is only the routing part of a USPS barcode (a part read, or a separate ZIP code):
+  // one was once taken as a tracking number (2026-11-26).
+  const zipOnly = /^420(\d{5}|\d{9})$/.exec(t);
+  if (zipOnly) return { type: "zip", zip: zipOnly[1] };
   if (/^9\d{19,21}$/.test(t) || /^[A-Z]{2}\d{9}US$/.test(t)) return { type: "tracking", tracking: t, carrier: "USPS" };
   if (/^1Z[0-9A-Z]{16}$/.test(t)) return { type: "tracking", tracking: t, carrier: "UPS" };
   if (/^\d{12,34}$/.test(t)) return { type: "tracking", tracking: t, carrier: "" };
@@ -624,6 +630,8 @@ export const scan = {
   posted: [],       // ... that got a post office photo on this visit (shown with a tick)
   steps: [],        // "Step through the pile": these orders get a post office photo each, one after the other
   ask: null,        // { tracking, carrier }: a tracking number no order has yet
+  askPick: null,    // ... the order tapped for it, waiting for "Yes, this order"
+  askDrawn: "",     // ... which question + search the list was drawn for
   askSearch: "",
   msg: "",
   stream: null,     // the camera, kept a while after Done (see KEEP_CAMERA_MS)
@@ -680,10 +688,14 @@ export function handleScan(text) {
     else if (!scan.ask || scan.ask.tracking !== s.tracking) {
       scan.ask = { tracking: s.tracking, carrier: s.carrier };
       scan.askSearch = "";
+      scan.askPick = null;
+      scan.askDrawn = "";
       hit();
       scanSay("");
       renderScan();
     }
+  } else if (s.type === "zip") {
+    scanSay("That's only the ZIP part of the barcode: hold the camera so the whole long barcode is in the frame.");
   } else {
     const id = compact(s.text);
     const o = id && state.orders.find((x) => x.id && compact(x.id) === id);
@@ -709,17 +721,36 @@ export async function newMailerEntry(tracking, carrier = "", name = "", orderId 
   return o.key;
 }
 
+/** The open "which order?" question, when the order list now has its tracking number (the PC got it meanwhile). */
+function answerAskFromList() {
+  if (!scan.ask) return false;
+  const o = orderForTracking(scan.ask.tracking);
+  if (!o) return false;
+  scan.ask = null; scan.askPick = null; scan.askDrawn = "";
+  addFound(o);
+  scanSay(`Got ${orderLabel(o)}${o.name ? " · " + o.name : ""}: your PC has this tracking number now.`);
+  renderScan();
+  return true;
+}
+
 /** Give a scanned tracking number to an order: kept on the phone until the PC has it, like a photo. */
 export async function linkTracking(key, tracking, carrier = "") {
   const o = state.orders.find((x) => x.key === key);
   if (!o) return false;
+  const other = orderForTracking(tracking);
+  if (other && other.key !== key) { // one label, one order
+    scan.ask = null; scan.askPick = null; scan.askDrawn = "";
+    addFound(other);
+    scanSay(`That tracking number is already on ${orderLabel(other)}${other.name ? " · " + other.name : ""}: picked that order instead.`);
+    return false;
+  }
   const id = newId();
   await queuePut({ qid: "link|" + id, link: true, id, order: key, name: o.name || "", label: orderLabel(o), tracking, carrier,
     taken: localStamp(), created: Date.now(), error: "" });
   o.tracking = tracking;
   o.shipped = o.shipped || localStamp().slice(0, 10);
   lsSet(LS.orders, { orders: state.orders, photos: state.photos, updated: state.updated });
-  scan.ask = null;
+  scan.ask = null; scan.askPick = null; scan.askDrawn = "";
   addFound(o);
   toast(`Tracking number added to ${orderLabel(o)}.`);
   await loadQueue();
@@ -893,7 +924,7 @@ export async function openScanner(startWith = [], { steps = false } = {}) {
   scan.steps = steps ? [...startWith] : [];
   if (steps) nextStep();
   scan.shots = [];
-  scan.ask = null;
+  scan.ask = null; scan.askPick = null; scan.askDrawn = "";
   scan.last = "";
   $("#scanner").hidden = false;
   document.body.classList.add("scanning");
@@ -927,7 +958,7 @@ export function closeScanner(keep = true) {
     lsSet(LS.pick, [...state.pick]);
     toast(`${plural(scan.found.length, "order")} picked. ${KINDS.find((k) => k.id === state.kind).label} photo next.`);
   }
-  scan.ask = null;
+  scan.ask = null; scan.askPick = null; scan.askDrawn = "";
   render();
 }
 
@@ -987,6 +1018,20 @@ function renderScan() {
     $("#scan-new-name").value = "";
     $("#scan-new-order").value = "";
   }
+  const pick = scan.askPick && state.orders.find((o) => o.key === scan.askPick);
+  ask.classList.toggle("confirming", !!pick);
+  $("#scan-ask-confirm").hidden = !pick;
+  if (pick) {
+    const where = [[pick.city, pick.state].filter(Boolean).join(", "), pick.zip].filter(Boolean).join(" ");
+    $("#scan-ask-who").replaceChildren(el("span", { text: pick.name || idText(pick) }), el("br"),
+      el("small", { text: [where, pick.id && pick.name ? "order " + pick.id : ""].filter(Boolean).join(" · ") }));
+    return;
+  }
+  // Drawn once per question and per search, never on a background refresh: a list that redraws (an order drops out
+  // when the PC gives it tracking) moves under the finger, and the tap lands on the next order (2026-11-27).
+  const drawn = `${scan.ask.tracking}|${scan.askSearch}`;
+  if (scan.askDrawn === drawn) return;
+  scan.askDrawn = drawn;
   const list = askChoices();
   $("#scan-ask-list").replaceChildren(...list.map((o) => el("li", {},
     el("button", { type: "button", class: "order ask-pick", "data-link": o.key },
@@ -1255,8 +1300,12 @@ function bind() {
   });
   $("#scan-ask-list").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-link]");
-    if (b && scan.ask) linkTracking(b.dataset.link, scan.ask.tracking, scan.ask.carrier);
+    if (b && scan.ask) { scan.askPick = b.dataset.link; renderScan(); $("#scan-ask-yes").focus(); }
   });
+  $("#scan-ask-yes").addEventListener("click", () => {
+    if (scan.ask && scan.askPick) linkTracking(scan.askPick, scan.ask.tracking, scan.ask.carrier);
+  });
+  $("#scan-ask-back").addEventListener("click", () => { scan.askPick = null; scan.askDrawn = ""; renderScan(); });
   $("#scan-ask-search").addEventListener("input", (e) => { scan.askSearch = e.target.value; renderScan(); });
   $("#scan-new").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1265,7 +1314,7 @@ function bind() {
     if (!name) { toast("Type the buyer's name from the label first."); $("#scan-new-name").focus(); return; }
     await newMailerEntry(scan.ask.tracking, scan.ask.carrier, name, $("#scan-new-order").value);
   });
-  $("#scan-ask-skip").addEventListener("click", () => { scan.ask = null; scanSay("Skipped. Scan the next code."); renderScan(); });
+  $("#scan-ask-skip").addEventListener("click", () => { scan.ask = null; scan.askPick = null; scan.askDrawn = ""; scanSay("Skipped. Scan the next code."); renderScan(); });
   $("#recent").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-forget]");
     if (b && window.confirm("Delete this photo from the phone? It hasn't reached your PC yet.")) forget(b.dataset.forget);
