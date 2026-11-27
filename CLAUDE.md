@@ -52,6 +52,12 @@ explain in plain words and finish jobs end to end.
   "Shipped" for them (tracking.js compares with `o.barcode`; TCGplayer has the number already).
   "Slips in label order" always starts unticked (`loadSettings`), never auto-ticked.
 - `app/js/render.js` (all PDF formats, `FORMATS`), `app/js/slips.js` (reads TCGplayer's packing-slip PDF).
+- Slip picker (2026-11-27, user: always start in the Packing slips folder, never the last-browsed one): `#btn-slips` ->
+  app.js `openSlipPicker` = `#slips-dialog` listing serve.py `GET /api/slip-files` (`slip_files`: PDFs in
+  `Saved\Packing slips` itself, newest first, max 60, not Ship Desk's own "Packing slip(s) <date>" files), **Load this
+  slip** -> `loadSlipFromFolder` (`GET /api/slip-file?name=`, `send_slip`, `SLIP_NAME_OK`, also finds it in Archive) ->
+  `loadSlipFile`. "Pick a file somewhere else…" = the old `#slip-input`; no server -> straight to `#slip-input`.
+  A browser page can't set the Windows file box's starting folder by path, hence the list.
 - Loaded batch kept across reloads: `KEYS.batch` holds the CSV/pasted text + ticks (app.js `keepBatch` / `restoreBatch` /
   `clearBatch`, "Clear these orders" in step 1, 14 days at most; full addresses, this browser only; slips not kept).
 - `app/js/history.js`: the History page's records (`shipdesk.history` in localStorage: name/city/ZIP only, no street).

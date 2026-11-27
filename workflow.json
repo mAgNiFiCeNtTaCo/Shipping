@@ -826,6 +826,28 @@
           ]
         }
       ]
+    },
+    {
+      "title": "\"+ Add TCGplayer packing slips\" lists the Packing slips folder",
+      "date": "2026-11-27",
+      "summary": "The same session (continued) replaced the slip button's Windows file box with Ship Desk's own list of the Packing slips folder (user's pick of two options), with a server list/fetch API and 2 new tests (224 pass).",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-27T15:16",
+              "end": "2026-11-27T15:55",
+              "did": "serve.py slip_files + /api/slip-files, /api/slip-file (send_slip); app.js openSlipPicker/loadSlipFromFolder, #slips-dialog; README; 2 History tests; screenshots light/dark",
+              "outcome": "done",
+              "files": 7
+            }
+          ]
+        }
+      ]
     }
   ]
 }

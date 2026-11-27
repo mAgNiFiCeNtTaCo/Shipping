@@ -300,6 +300,63 @@ tests["saved folder: the server refuses other websites and bad file names"] = as
   eq((await post("/api/open-file?kind=labels&name=not-there.pdf")).status, 404, "open-file: missing file");
 };
 
+// "+ Add TCGplayer packing slips" lists the Packing slips folder (the user's wish 2026-11-27).
+const putSlip = async (name, body) => {
+  const r = await fetch(`/api/save?kind=slips&name=${encodeURIComponent(name)}`, { method: "POST", headers: { "X-Ship-Desk": "1" }, body });
+  ok(r.ok, "saved " + name);
+  return (await r.json()).name;
+};
+const slipStamp = () => new Date().toISOString().replace(/\D/g, "").slice(0, 14) + String(Math.random()).slice(2, 6);
+
+tests["packing slip list: the server lists TCGplayer's slip PDFs newest first and hands one out"] = async () => {
+  const stamp = slipStamp();
+  const older = await putSlip(`TCGplayer_PackingSlips_${stamp}_a.pdf`, "%PDF-older");
+  await new Promise((r) => setTimeout(r, 30));
+  const newer = await putSlip(`TCGplayer_PackingSlips_${stamp}_b.pdf`, "%PDF-newer");
+  const own = await putSlip(`Packing slips 2026-11-27 10-15 - 2 orders - Test ${stamp}.pdf`, "%PDF-own");
+  const list = await (await fetch("/api/slip-files", { headers: { "X-Ship-Desk": "1" } })).json();
+  const names = list.files.map((f) => f.name);
+  ok(names.indexOf(newer) >= 0 && names.indexOf(newer) < names.indexOf(older), "newest first: " + names.join(", "));
+  ok(!names.includes(own), "Ship Desk's own slip PDFs are left out");
+  ok(/Packing slips$/.test(list.folder), "says which folder: " + list.folder);
+  const get = (q, headers = { "X-Ship-Desk": "1" }) => fetch(`/api/slip-file?name=${q}`, { headers });
+  const r = await get(encodeURIComponent(newer));
+  eq([r.status, r.headers.get("Content-Type"), await r.text()], [200, "application/pdf", "%PDF-newer"], "hands out the file");
+  eq((await get(encodeURIComponent(newer), {})).status, 403, "only Ship Desk's own page");
+  eq((await fetch(`/api/slip-files`)).status, 403, "the list too");
+  eq((await get("..%2F..%2Fserve.py")).status, 400, "no paths");
+  eq((await get("..%5CHistory%5Cx.pdf")).status, 400, "no Windows paths");
+  eq((await get("a.exe")).status, 400, "only PDFs");
+  eq((await get("not-there.pdf")).status, 404, "missing file");
+};
+
+tests["packing slip list: the button shows the folder's slips and loads the one picked"] = async () => {
+  clearStore();
+  const { doc, app } = await openApp("", { folder: true });
+  doc.querySelector("#btn-slips").click();
+  await waitFor(() => !doc.querySelector("#slip-msg").hidden, "the no-orders message");
+  ok(!doc.querySelector("#slips-dialog").open, "no list before the orders are in");
+  ok(/orders first/.test(doc.querySelector("#slip-msg").textContent), "asks for the orders first");
+  app.loadCsvText(await sampleText(), "sample.csv");
+  const name = await putSlip(`TCGplayer_PackingSlips_${slipStamp()}.pdf`, new Blob([app.buildPdf().output("arraybuffer")]));
+  doc.querySelector("#btn-slips").click();
+  await waitFor(() => doc.querySelector("#slips-dialog").open && doc.querySelector('#slips-body input[name="slip-pick"]'), "the slip list");
+  const first = doc.querySelector('#slips-body input[name="slip-pick"]');
+  eq([first.value, first.checked], [name, true], "the newest slip comes first, already picked");
+  ok(doc.querySelector('#slips-body [data-slip="browse"]'), "a way to pick a file somewhere else");
+  doc.querySelector('#slips-body [data-slip="load"]').click();
+  await waitFor(() => app.state.slips && app.state.slips.fileName === name && Object.keys(app.state.slips.byOrder).length >= 5, "the picked slip to be read");
+  ok(!doc.querySelector("#slips-dialog").open, "the list closes");
+  ok(/Found slips for/.test(doc.querySelector("#slip-msg").textContent), "says what it found");
+  doc.querySelector("#btn-slips").click();
+  await waitFor(() => doc.querySelector("#slips-dialog").open && doc.querySelector('#slips-body input[name="slip-pick"]'), "the list again");
+  ok(/loaded now/.test(doc.querySelector("#slips-body .slip-row small").textContent), "marks the slip that's loaded");
+  doc.querySelector('#slips-dialog [data-close]').click();
+  ok(!doc.querySelector("#slips-dialog").open, "closes");
+  clearStore();
+  document.getElementById("history-frame").remove();
+};
+
 tests["saved folder: unticking 'Open each PDF' saves without opening, and it's remembered"] = async () => {
   clearStore();
   const { doc, app, win } = await openApp("", { folder: true });

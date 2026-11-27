@@ -564,7 +564,7 @@ export function applyOrderList(list, fileName = "TCGplayer's order list", modifi
 
 async function loadSlipFile(file) {
   const box = $("#slip-msg");
-  if (!state.orders.length) {
+  if (!file || !state.orders.length) {
     showMsg(box, "warn", "Add your orders first.", ["Drop the shipping CSV in step 1, then add the packing-slip PDF."]);
     showMsg($("#load-msg"), "warn", "That's the packing-slip PDF. Add your orders CSV first, then the slips.");
     return;
@@ -598,6 +598,76 @@ async function loadSlipFile(file) {
     showMsg(box, "error", `${file.name} couldn't be read as a packing-slip PDF.`, [e && e.message ? `Details: ${e.message}` : null]);
   }
   renderAll();
+}
+
+// "+ Add TCGplayer packing slips" lists the PDFs in the Packing slips folder on the page (serve.py /api/slip-files),
+// so it always starts there, whatever folder the Windows file box last showed (the user's wish 2026-11-27). The
+// browser's own file box stays one click away for a PDF kept somewhere else.
+const slipWhen = (ms) => { const d = new Date(ms); return `${today(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+export async function openSlipPicker() {
+  if (!state.orders.length) { loadSlipFile(null); return; } // says "Add your orders first"
+  let res = null;
+  try {
+    const r = await shipdeskFetch("api/slip-files");
+    res = r.ok ? await r.json() : null;
+  } catch { res = null; }
+  // No Ship Desk server behind the page (opened some other way): the browser's own file box.
+  if (!res || !res.ok) { $("#slip-input").click(); return; }
+  const files = res.files || [];
+  const pickElsewhere = el("button", { type: "button", class: "btn ghost", "data-slip": "browse", text: "Pick a file somewhere else…" });
+  const openFolder = el("button", { type: "button", class: "btn ghost", "data-slip": "folder", text: "Open the folder" });
+  const msg = el("div", { id: "slips-pick-msg", class: "msg", role: "status", hidden: true });
+  const intro = el("p", { class: "muted dlg-intro" }, "The PDFs in your Packing slips folder, newest first. Slips older than two weeks are in its Archive folder. ",
+    el("code", { text: res.folder || "" }));
+  let body;
+  if (files.length) {
+    const loaded = state.slips && state.slips.fileName;
+    const list = el("ul", { class: "slip-list" }, files.map((f, i) => el("li", {},
+      el("label", { class: "slip-row" },
+        el("input", { type: "radio", name: "slip-pick", value: f.name, checked: i === 0 }),
+        el("span", {}, el("b", { text: f.name }),
+          el("small", { text: `${slipWhen(f.modified)} · ${kb(f.size)}${f.name === loaded ? " · loaded now" : ""}` }))))));
+    body = [intro, list, el("div", { class: "slip-actions" },
+      el("button", { type: "button", class: "btn primary", "data-slip": "load", text: "Load this slip" }), pickElsewhere, openFolder), msg];
+  } else {
+    body = [intro, el("p", { class: "msg warn", text: "No TCGplayer packing slips in this folder from the last two weeks. Save the PDF from TCGplayer's Packing Slip button into it, or pick it from where it is." }),
+      el("div", { class: "slip-actions" }, pickElsewhere, openFolder), msg];
+  }
+  $("#slips-body").replaceChildren(...body);
+  const dlg = $("#slips-dialog");
+  if (!dlg.open) dlg.showModal();
+  const first = dlg.querySelector('input[name="slip-pick"]:checked') || pickElsewhere;
+  first.focus();
+}
+
+export async function loadSlipFromFolder(name) {
+  const msg = $("#slips-pick-msg");
+  try {
+    const r = await shipdeskFetch(`api/slip-file?name=${encodeURIComponent(name)}`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `The server said ${r.status}.`);
+    const blob = await r.blob();
+    $("#slips-dialog").close();
+    await loadSlipFile(new File([blob], name, { type: "application/pdf" }));
+  } catch (e) {
+    showMsg(msg, "error", `${name} couldn't be opened.`, [e && e.message ? e.message : null]);
+  }
+}
+
+function bindSlipPicker() {
+  const dlg = $("#slips-dialog");
+  const pick = () => { const r = dlg.querySelector('input[name="slip-pick"]:checked'); if (r) loadSlipFromFolder(r.value); };
+  dlg.addEventListener("click", (e) => {
+    if (e.target === dlg || e.target.closest("[data-close]")) { dlg.close(); return; }
+    const b = e.target.closest("button[data-slip]");
+    if (!b) return;
+    if (b.dataset.slip === "load") pick();
+    else if (b.dataset.slip === "browse") { dlg.close(); $("#slip-input").click(); }
+    else if (b.dataset.slip === "folder") openSavedFolder("slips");
+  });
+  dlg.addEventListener("dblclick", (e) => { if (e.target.closest(".slip-row")) pick(); });
+  dlg.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.name === "slip-pick") { e.preventDefault(); pick(); } });
 }
 
 /** The user's own slip pages for these orders, in the same order as the labels. */
@@ -2411,7 +2481,8 @@ function bindOutput() {
     renderAll();
   });
   const slipInput = $("#slip-input");
-  $("#btn-slips").addEventListener("click", () => slipInput.click());
+  $("#btn-slips").addEventListener("click", () => openSlipPicker());
+  bindSlipPicker();
   slipInput.addEventListener("change", () => { if (slipInput.files[0]) loadSlipFile(slipInput.files[0]); slipInput.value = ""; });
   $("#btn-pdf").addEventListener("click", downloadPdf);
   $("#btn-open-folder").addEventListener("click", () => openSavedFolder());
@@ -2591,7 +2662,7 @@ export function init() {
 export const api = {
   state, init, loadCsvText, loadPastedText, setFilter, visibleOrders, printOrders, returnAddress, planSettings, useEnvelopeLabels,
   pdfOptions, buildPdf, downloadPdf, matchPasted, importFile, downloadImportFile, pirateFile, downloadPirateShip,
-  clearShipped, renderAll, handleFiles, loadSlipFile, today, restoreBatch, clearBatch, applyShipments,
+  clearShipped, renderAll, handleFiles, loadSlipFile, openSlipPicker, loadSlipFromFolder, today, restoreBatch, clearBatch, applyShipments,
   renderHistory, historyFile, clearHistory, showView, openSavedFolder, openSavedFile,
   phoneOrders, syncPhoneOrders, refreshPhotos, takePhoneLinks, setOrderNumber, openPhone, openPhotos, rotatePhoto,
   power, checkPower, turnOff, setAutostart, loadBackup, setBackup, setBackupPlace, backupNow,

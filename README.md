@@ -152,8 +152,10 @@ Tick boxes under the picker: **Packing slips too**, **Bold return address** (dar
 ## Your own packing slips
 
 Drag the PDF from TCGplayer's Packing Slip button onto the Ship Desk page (together with the CSV if you like), or
-click **+ Add TCGplayer packing slips (PDF)** and pick it. Ship Desk
-reads which cards are in each order and lists them on its own slips. Tick **Slips in label order** to print
+click **+ Add TCGplayer packing slips (PDF)**. That button always shows the PDFs in Ship Desk's `Packing slips`
+folder, newest first, whatever folder you last browsed: pick one and click **Load this slip** (or double-click it).
+So save TCGplayer's slip PDFs into that folder. A PDF kept somewhere else: **Pick a file somewhere else…** opens the
+usual Windows file box. Ship Desk reads which cards are in each order and lists them on its own slips. Tick **Slips in label order** to print
 TCGplayer's own slip pages sorted to match your labels instead. That box starts unticked every time you open Ship Desk.
 
 ## Paste addresses (eBay, Whatnot, PayPal, email)

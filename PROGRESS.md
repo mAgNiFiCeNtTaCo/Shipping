@@ -7,7 +7,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.6** (built and published 2026-11-26, latest on GitHub; GitHub page change only, app as in 1.1.5), Windows installer for other people:
+- **Version 1.1.7** built 2026-11-27 (slip list; not published yet, 1.1.6 is the latest on GitHub), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6 = latest; 1.1.2 skipped). A fresh install sets itself up
@@ -40,6 +40,31 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-27: "+ Add TCGplayer packing slips" lists the Packing slips folder
+- User: the slip button should "always default to the folder that holds the packing slips, never anything else even if
+  i change to a different folder". A web page can't set the Windows file box's starting folder by path (and Windows
+  remembers the last folder), so the user chose (from two options) Ship Desk's own list over a fixed Windows box that
+  needs a one-time folder grant.
+- **Slip list** (`#slips-dialog`, app.js `openSlipPicker` / `loadSlipFromFolder` / `bindSlipPicker`): the PDFs in
+  `Saved\Packing slips` itself, newest first, the newest already picked; date/time + size per file, "loaded now" on the
+  loaded one; **Load this slip** (or double-click / Enter), **Pick a file somewhere else…** (the old file box),
+  **Open the folder**. No orders yet -> the usual "Add your orders first" message, no list. No server -> the file box.
+- **Server** (serve.py): `GET /api/slip-files` (`slip_files`: max 60, skips Ship Desk's own "Packing slip(s) <date>"
+  PDFs) and `GET /api/slip-file?name=` (`send_slip`: `SLIP_NAME_OK`, no paths, also finds a file moved to Archive since);
+  both only for Ship Desk's own page (403 otherwise, phone side too).
+- Page hint text, README "Your own packing slips", `sw.js` VERSION v39. Tests: 2 new History tests (server list order,
+  own files left out, 403/400/404 refusals; the button shows the list and loads the picked slip) -> 224 passed.
+  Looked at the window in light and dark on a private copy (port 5098) against the real folder: today's two slips on top.
+- Also this session (2026-11-26/27): answered Whatnot's stampless envelopes (FCML: a prepaid label with printed postage
+  bought through Whatnot; Ship Desk can't print postage) and where to buy Forever stamps online (USPS store, $2.10
+  handling per order; Ship Desk's 82¢ is current). "Update my Ship Desk": the running copy said 1.1.4 (started before
+  1.1.5); a restart from this session was blocked by auto mode, the user did Turn off / Turn on (then 1.1.6). The slip
+  list needs one more restart.
+- **1.1.7 built** (`dist\ShipDesk-Setup-1.1.7.exe` 13.1 MB + `ShipDesk-1.1.7-portable.zip` 13.6 MB): 224 tests,
+  installer test over 1.1.6 and zip test all good. Not published yet: the `gh release create v1.1.7 ...` line is the user's.
+- Resources (2026-11-27 15:50, during the build): Shipping 10 processes, 0% CPU, 2938 MB RAM (test browsers), ports
+  5091 21073, disk 555 MB; whole PC CPU 11% of 32 threads, RAM 33.4 of 64 GB, GPU 28%.
+
 ### 2026-11-26: GitHub page with banner, screenshots and a "How a batch goes" picture
 - User: "make the git super fancy with visuals". Read as the public GitHub page
   (https://github.com/mAgNiFiCeNtTaCo/Shipping); the app itself is unchanged.

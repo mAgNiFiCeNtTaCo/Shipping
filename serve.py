@@ -40,6 +40,8 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
                                               Tailscale's enable link)
               POST /api/tailscale-install     download Tailscale's signed installer and start it (setup for new PCs)
               POST /api/tailscale-login       sign in / connect Tailscale (gives the sign-in link)
+              GET  /api/slip-files            the TCGplayer slip PDFs in Saved/Packing slips, newest first
+              GET  /api/slip-file?name=       one of them (the page reads it like a dropped PDF)
               GET  /api/update                this version, the newest release, whether to check (Saved/update.json)
               POST /api/update?now=1 | ?on=1|0   check GitHub now (once a day from the page), or switch checking
               POST /api/phone-key             make a new pairing code (old phones must scan again)
@@ -80,7 +82,7 @@ import urllib.parse
 import webbrowser
 import datetime
 
-APP_VERSION = "1.1.6"
+APP_VERSION = "1.1.7"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "app")
 
@@ -205,6 +207,34 @@ def archive_old(save_root, now=None, days=ARCHIVE_DAYS):
                 except OSError:
                     pass
     return moved
+
+
+# "+ Add TCGplayer packing slips" lists the PDFs in the Packing slips folder on the page itself, so it always starts
+# there whatever folder the Windows file box was in last (the user's wish 2026-11-27). Only the folder itself: older
+# slips are in Archive. Ship Desk's own slip PDFs ("Packing slip(s) <date> ...", app.js fileName) aren't TCGplayer's.
+OWN_SLIP = re.compile(r"^Packing slips? \d{4}-\d{2}-\d{2} ", re.I)
+SLIP_NAME_OK = re.compile(r"^[^\\/:*?\"<>|\x00-\x1f]{1,200}\.pdf$", re.I)
+SLIP_LIST_MAX = 60
+
+
+def slip_files(save_root):
+    """The TCGplayer slip PDFs in the Packing slips folder, newest first: [{name, size, modified (ms)}]."""
+    folder = os.path.join(save_root, FOLDERS["slips"])
+    files = []
+    try:
+        entries = list(os.scandir(folder))
+    except OSError:
+        return folder, files
+    for e in entries:
+        try:
+            if not e.is_file() or not SLIP_NAME_OK.match(e.name) or e.name.startswith(".") or OWN_SLIP.match(e.name):
+                continue
+            st = e.stat()
+            files.append({"name": e.name, "size": st.st_size, "modified": round(st.st_mtime * 1000)})
+        except OSError:
+            pass
+    files.sort(key=lambda f: f["modified"], reverse=True)
+    return folder, files[:SLIP_LIST_MAX]
 
 
 def find_saved(folder, name):
@@ -736,8 +766,37 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.reply(200, {"ok": True, **backup_status(self.save_root, self.backup_folder_for)})
         elif path == "/api/update":
             self.reply(200, {"ok": True, **update_status(self.save_root)})
+        elif path == "/api/slip-files":
+            folder, files = slip_files(self.save_root)
+            self.reply(200, {"ok": True, "folder": folder, "files": files})
+        elif path == "/api/slip-file":
+            self.send_slip(arg("name"))
         else:
             self.send_error(404)
+
+    def send_slip(self, name):
+        """One PDF from the Packing slips folder (or its Archive, if it moved there since the list was shown)."""
+        if not SLIP_NAME_OK.match(name) or name.startswith(".") or os.path.basename(name) != name:
+            self.reply(400, {"ok": False, "error": "Bad file name."})
+            return
+        path = find_saved(os.path.join(self.save_root, FOLDERS["slips"]), name)
+        if not path:
+            self.reply(404, {"ok": False, "error": "That file isn't there any more."})
+            return
+        try:
+            if os.path.getsize(path) > MAX_BYTES:
+                self.reply(413, {"ok": False, "error": "That file is too big."})
+                return
+            with open(path, "rb") as f:
+                data = f.read()
+        except OSError as e:
+            self.reply(500, {"ok": False, "error": f"Couldn't read the file: {e.strerror or e}"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         url = urllib.parse.urlsplit(self.path)

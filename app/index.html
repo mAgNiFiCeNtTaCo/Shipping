@@ -222,7 +222,7 @@
       </div>
       <div class="out-slips">
         <p class="lbl">TCGplayer packing slips <em>optional</em></p>
-        <p class="muted small">Add the PDF from TCGplayer's Packing Slip button to list each order's cards on your slips. You can also drag the PDF onto this page, even together with the CSV.</p>
+        <p class="muted small">Add the PDF from TCGplayer's Packing Slip button to list each order's cards on your slips. The button lists the PDFs in Ship Desk's Packing slips folder; you can also drag the PDF onto this page, even together with the CSV.</p>
         <button type="button" id="btn-slips" class="btn secondary">+ Add TCGplayer packing slips (PDF)</button>
         <input type="file" id="slip-input" class="sr" accept=".pdf,application/pdf" tabindex="-1" aria-hidden="true">
         <div id="slip-msg" class="msg" role="status" aria-live="polite" hidden></div>
@@ -388,6 +388,11 @@
   <div class="dlg-head"><h2 id="phone-h">Phone photos</h2><button type="button" class="dlg-x" data-close aria-label="Close">&times;</button></div>
   <p class="muted dlg-intro">Use your phone to photograph each order: what's inside, the packed mail, and the post office drop-off. The photos are saved on this PC in <code>Saved\Photos</code>, one folder per order, and show in History.</p>
   <div id="phone-body"></div>
+</dialog>
+
+<dialog id="slips-dialog" class="dlg" aria-labelledby="slips-h">
+  <div class="dlg-head"><h2 id="slips-h">TCGplayer packing slips</h2><button type="button" class="dlg-x" data-close aria-label="Close">&times;</button></div>
+  <div id="slips-body"></div>
 </dialog>
 
 <dialog id="photos-dialog" class="dlg wide" aria-labelledby="photos-h">
