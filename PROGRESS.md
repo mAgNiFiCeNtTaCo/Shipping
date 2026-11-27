@@ -7,10 +7,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.10** built 2026-11-27 (slip list, one label one order, ZIP-only reads ignored; not published yet, 1.1.6 is the latest on GitHub; never publish 1.1.9), Windows installer for other people:
+- **Version 1.1.10** built 2026-11-27 (slip list, one label one order, ZIP-only reads ignored; published 2026-11-27, latest on GitHub; never publish 1.1.9), Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
-  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6 = latest; 1.1.2 skipped). A fresh install sets itself up
+  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice. Since 2026-11-20 every build also
   makes `dist\ShipDesk-<version>-portable.zip` (no installer: unzip, double-click "Start Ship Desk"), for PCs where
   Windows or an antivirus objects to the unsigned installer; 1.1.4's zip is on the release (`tools/test_portable.py`
@@ -61,7 +61,8 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   names, order #s, tracking numbers or ZIPs in the project, its log or commit messages.
 - **1.1.10 built** (`dist\ShipDesk-Setup-1.1.10.exe` 13.1 MB + portable zip 13.6 MB; has 1.1.7 to 1.1.9 too): 226 tests,
   installer test over 1.1.9 and zip test all good; nothing left in Downloads. 1.1.9 was built first, then rebuilt because
-  a code comment in it held part of a buyer's ZIP: **never publish 1.1.9**. 1.1.10 not published yet.
+  a code comment in it held part of a buyer's ZIP: **never publish 1.1.9**. 1.1.10 published 2026-11-27 at the user's
+  request (installer + zip uploaded, checked for buyer data first; latest).
 - At the user's choice, the two pushed commits with buyer data (5d80d98, d88d86e) were replaced on GitHub by one
   cleaned commit (force push). GitHub may keep the old commit reachable by its exact link until it cleans up;
   GitHub Support can purge it.
