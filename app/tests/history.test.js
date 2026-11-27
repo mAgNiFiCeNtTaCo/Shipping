@@ -3,7 +3,7 @@ import { ok, eq } from "./runner.js";
 import { parseCsv } from "../js/csv.js";
 import { KEYS, load, save, remove } from "../js/store.js";
 import { historyKey, recordPrinted, recordShipped, historyCounts, historyList, historyCsv, trackingUrl,
-  HISTORY_CSV_HEADER, MAX_RECORDS, HISTORY_FILTERS } from "../js/history.js";
+  HISTORY_CSV_HEADER, MAX_RECORDS, HISTORY_FILTERS, historyPeriod, historyPeriods } from "../js/history.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(fn, what, ms = 8000) {
@@ -65,6 +65,32 @@ const tests = {
     eq(historyList(h, { search: "boston" }).map((r) => r.id), ["C-2"]);
     eq(historyList(h, { search: "1z999" }).map((r) => r.id), ["C-1"]);
   },
+  "two-week periods: the same as the Archive folders, and search, unshipped and not-sent look at every date": async () => {
+    // (expected names from serve.py archive_period, so History and the Archive folders agree)
+    eq(historyPeriod("2026-11-27 16:25").label, "2026-11-16 to 2026-11-29");
+    eq(historyPeriod("2026-11-16").label, "2026-11-16 to 2026-11-29", "a period starts on its Monday");
+    eq(historyPeriod("2026-11-15").label, "2026-11-02 to 2026-11-15", "and ends on the Sunday 13 days later");
+    eq(historyPeriod("2024-01-01").label, "2024-01-01 to 2024-01-14");
+    eq(historyPeriod("2023-12-31").label, "2023-12-18 to 2023-12-31", "before the first period too");
+    eq(historyPeriod("2026-10-20").label, "2026-10-19 to 2026-11-01");
+    eq(historyPeriod(""), null);
+    const h = {};
+    recordPrinted(h, [order("P-1")], { when: "2026-10-20 09:00" });          // old, shipped
+    recordShipped(h, order("P-1"), { tracking: "", shipped: true }, { when: "2026-10-21 09:00" });
+    recordPrinted(h, [order("P-2", { name: "Old Unshipped" })], { when: "2026-10-22 09:00" }); // old, not shipped
+    recordPrinted(h, [order("P-3")], { when: "2026-11-27 10:00" });          // latest
+    recordShipped(h, order("P-3"), { tracking: "", shipped: true }, { when: "2026-11-27 11:00" });
+    const periods = historyPeriods(h);
+    eq(periods.map((p) => [p.label, p.count]), [["2026-11-16 to 2026-11-29", 1], ["2026-10-19 to 2026-11-01", 2]], "newest first, with counts");
+    eq(historyList(h, { period: "2026-11-16" }).map((r) => r.id), ["P-3"], "All: the latest two weeks only");
+    eq(historyList(h, { period: "2026-10-19" }).map((r) => r.id), ["P-2", "P-1"], "an older period");
+    eq(historyList(h, { period: "" }).length, 3, "every order");
+    eq(historyList(h, { filter: "shipped", period: "2026-11-16" }).map((r) => r.id), ["P-3"], "Shipped follows the period");
+    eq(historyList(h, { filter: "waiting", period: "2026-11-16" }).map((r) => r.id), ["P-2"], "unshipped: every date");
+    eq(historyList(h, { search: "old unshipped", period: "2026-11-16" }).map((r) => r.id), ["P-2"], "search: every date");
+    eq(historyList(h, { search: "P-1", period: "2026-11-16" }).map((r) => r.id), ["P-1"], "an order # from weeks ago");
+  },
+
   "Not sent to TCGplayer yet: shipped orders with no import file, or still Ready to Ship on TCGplayer's list": async () => {
     const h = {};
     const ship = (id, when, extra = {}) => { recordShipped(h, order(id), { shipped: true }, { when }); Object.assign(h[id], extra); };
@@ -353,6 +379,39 @@ tests["packing slip list: the button shows the folder's slips and loads the one 
   ok(/loaded now/.test(doc.querySelector("#slips-body .slip-row small").textContent), "marks the slip that's loaded");
   doc.querySelector('#slips-dialog [data-close]').click();
   ok(!doc.querySelector("#slips-dialog").open, "closes");
+  clearStore();
+  document.getElementById("history-frame").remove();
+};
+
+tests["history page: shows the latest two weeks, the menu picks another period, and search finds any date"] = async () => {
+  clearStore();
+  const hist = {};
+  recordPrinted(hist, [order("OLD-1", { name: "Wilma Oldfield" })], { when: "2026-10-20 09:00" });
+  recordShipped(hist, order("OLD-1", { name: "Wilma Oldfield" }), { tracking: "", shipped: true }, { when: "2026-10-21 09:00" });
+  recordPrinted(hist, [order("NEW-1")], { when: "2026-11-27 10:00" });
+  recordShipped(hist, order("NEW-1"), { tracking: "", shipped: true }, { when: "2026-11-27 11:00" });
+  save(KEYS.history, hist);
+  const { doc, app, win } = await openApp("#history");
+  await waitFor(() => doc.querySelector("#history-table tbody tr[data-key]"), "the History table");
+  const keys = () => [...doc.querySelectorAll("#history-table tbody tr[data-key]")].map((tr) => tr.dataset.key);
+  eq(keys(), ["NEW-1"], "only the latest two weeks");
+  const sel = doc.querySelector("#history-period");
+  ok(/2026-11-16 to 2026-11-29 \(1 order\)/.test(sel.options[0].textContent), "menu names the period: " + sel.options[0].textContent);
+  ok(/Every order \(2 orders\)/.test(sel.options[sel.options.length - 1].textContent), "and every order");
+  sel.value = "2026-10-19";
+  sel.dispatchEvent(new win.Event("change", { bubbles: true }));
+  eq(keys(), ["OLD-1"], "an older period");
+  sel.value = "";
+  sel.dispatchEvent(new win.Event("change", { bubbles: true }));
+  eq(keys().length, 2, "every order");
+  sel.value = "2026-11-16";
+  sel.dispatchEvent(new win.Event("change", { bubbles: true }));
+  const search = doc.querySelector("#history-search");
+  search.value = "oldfield";
+  search.dispatchEvent(new win.Event("input", { bubbles: true }));
+  eq(keys(), ["OLD-1"], "search finds an order from weeks ago");
+  ok(sel.disabled && /every order/i.test(doc.querySelector("#history-period-note").textContent), "and says it searches every date");
+  ok(app.state.history["OLD-1"], "nothing was removed");
   clearStore();
   document.getElementById("history-frame").remove();
 };

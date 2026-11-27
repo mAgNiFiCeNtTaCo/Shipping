@@ -61,6 +61,10 @@ explain in plain words and finish jobs end to end.
 - Loaded batch kept across reloads: `KEYS.batch` holds the CSV/pasted text + ticks (app.js `keepBatch` / `restoreBatch` /
   `clearBatch`, "Clear these orders" in step 1, 14 days at most; full addresses, this browser only; slips not kept).
 - `app/js/history.js`: the History page's records (`shipdesk.history` in localStorage: name/city/ZIP only, no street).
+  Two-week view (2026-11-27): `historyPeriod` (Monday periods from `PERIOD_EPOCH` 2024-01-01 = serve.py ARCHIVE_EPOCH, so
+  the same names as the Archive folders), `recordDay` (last labels/shipping, else order date), `historyPeriods`;
+  `historyList({ period })` limits only `PERIOD_FILTERS` (all, shipped) and never while searching. app.js
+  `renderHistoryPeriod` = `#history-period` menu (null = newest period, "" = every order) + `#history-period-note`.
 - `app/phone.html` + `js/phone.js` + `css/phone.css` + `phone-sw.js` (scope `./phone`, network-first): the iPhone page for
   order photos (contents / packed / post office). Photos wait in the phone's IndexedDB (`shipdesk-phone`) until
   `POST /api/phone/photo` succeeds; saved to `Saved/Photos/<order # buyer>/`, listed in `Saved/Photos/photos.json`.

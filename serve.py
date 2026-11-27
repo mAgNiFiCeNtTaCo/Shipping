@@ -82,7 +82,7 @@ import urllib.parse
 import webbrowser
 import datetime
 
-APP_VERSION = "1.1.11"
+APP_VERSION = "1.1.12"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "app")
 

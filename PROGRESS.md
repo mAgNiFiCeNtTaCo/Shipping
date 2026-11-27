@@ -7,7 +7,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.11** (built and published 2026-11-27, latest on GitHub; guide text only, app as in 1.1.10); never publish 1.1.9. Windows installer for other people:
+- **Version 1.1.12** built 2026-11-27 (History two weeks at a time; not published yet, 1.1.11 is the latest on GitHub); never publish 1.1.9. Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10, v1.1.11 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
@@ -40,6 +40,23 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-27: History shows two weeks at a time; search still finds every order
+- User: "can we archive history too? dont need to see every order ever, just every 2 weeks but when we need to lookup a
+  name or order we should always be able to find it". Nothing is moved or removed: History's All and Shipped show one
+  two-week period (newest by default); the new **Showing** menu (`#history-period`) lists every period with its count
+  plus Every order. Search, "Labels made, not shipped" and "Not sent to TCGplayer yet" always look at every date
+  (`#history-period-note` says so). Periods = Monday periods from 2024-01-01, the same as serve.py's Archive folders
+  (history.js `historyPeriod` checked against `archive_period` for 6 dates). A record's day = last labels/shipping,
+  else its order date (`recordDay`). MAX_RECORDS stays 5000 (82 orders since October: about ten years).
+- Tests: 2 new (periods + filters + search; the page's menu and search in the real app) -> 228 passed. Looked at the
+  page with made-up orders on a private copy (port 5098; the real History copy untouched, still 82). README History
+  section, sw v41. Slop scan clean.
+- Answered: 40 post office photos don't need backing out: each post office photo goes to the orders scanned since
+  the last one (phone.js `shoot`, `scan.fresh`); scanning all 40 then one photo gives that photo to all 40.
+- **1.1.12 built**: 228 tests, installer test over 1.1.11 and zip test all good. Not published yet.
+- Resources (2026-11-27, during the build): Shipping 18 processes, 150% of a core (tests), 2470 MB RAM, ports
+  4450 5091, disk 644 MB; whole PC CPU 11% of 32 threads, RAM 29.0 of 64 GB, GPU 39%.
+
 ### 2026-11-27: README explains the no-install zip
 - The README (GitHub page + the guide in the installer) never mentioned `ShipDesk-<version>-portable.zip`. New
   "Without installing" paragraph under "Install and start it": Unblock, Extract All, Start/Stop Ship Desk, Saved inside

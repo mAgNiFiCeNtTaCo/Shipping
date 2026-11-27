@@ -190,11 +190,53 @@ export function historyCounts(hist) {
   };
 }
 
-/** Records matching a HISTORY_FILTERS id and a search text, newest activity first. */
-export function historyList(hist, { filter = "all", search = "" } = {}) {
+// ---------- two-week periods ----------
+// The History page shows one two-week period at a time (the user's wish 2026-11-27: "just every 2 weeks, but when we
+// need to look up a name or order we should always be able to find it"): search, "Labels made, not shipped" and "Not
+// sent to TCGplayer yet" always look at every date. Periods start on a Monday counted from PERIOD_EPOCH, the same as the
+// Archive folders for labels and slips (serve.py archive_period), so "2026-11-16 to 2026-11-29" means the same in both.
+export const PERIOD_EPOCH = "2024-01-01"; // a Monday (serve.py ARCHIVE_EPOCH)
+export const PERIOD_FILTERS = ["all", "shipped"]; // the filters a period limits
+const DAY_MS = 86400000;
+const utcDay = (ymd) => Date.UTC(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10));
+const ymdOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+/** The two-week period a "YYYY-MM-DD..." date falls in: { start, end, label }, or null for no date. */
+export function historyPeriod(date) {
+  const d = String(date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const epoch = utcDay(PERIOD_EPOCH);
+  const start = epoch + Math.floor((utcDay(d) - epoch) / DAY_MS / 14) * 14 * DAY_MS;
+  const s = ymdOf(start), e = ymdOf(start + 13 * DAY_MS);
+  return { start: s, end: e, label: `${s} to ${e}` };
+}
+
+/** The day a record belongs to: its last labels or shipping, else its order date. */
+export const recordDay = (r) => (lastActivity(r) || r.orderDate || r.sentAt || r.printedAt || "").slice(0, 10);
+
+/** Every period that has records, newest first: [{ start, end, label, count }]. Records without any date: start "". */
+export function historyPeriods(hist) {
+  const by = new Map();
+  for (const r of Object.values(hist || {})) {
+    const p = historyPeriod(recordDay(r)) || { start: "", end: "", label: "No date" };
+    const cur = by.get(p.start) || { ...p, count: 0 };
+    cur.count++;
+    by.set(p.start, cur);
+  }
+  return [...by.values()].sort((a, b) => b.start.localeCompare(a.start));
+}
+
+/**
+ * Records matching a HISTORY_FILTERS id and a search text, newest activity first. `period` (a period's start date)
+ * limits "all" and "shipped" to that two weeks, only while not searching; "" = every date.
+ */
+export function historyList(hist, { filter = "all", search = "", period = "" } = {}) {
   const q = String(search || "").trim().toLowerCase();
   const first = filter === "notsent" ? firstSentAt(hist) : "";
+  const inPeriod = period && !q && PERIOD_FILTERS.includes(filter)
+    ? (r) => ((historyPeriod(recordDay(r)) || { start: "" }).start === (period === "nodate" ? "" : period)) : () => true;
   return Object.values(hist || {})
+    .filter(inPeriod)
     .filter((r) => (filter === "shipped" ? r.shipped : filter === "waiting" ? !r.shipped : filter === "notsent" ? notSentYet(r, first) : true))
     .filter((r) => !q || [r.id, r.name, r.city, r.state, r.zip, r.tracking].some((v) => String(v || "").toLowerCase().includes(q)))
     .sort((a, b) => lastActivity(b).localeCompare(lastActivity(a)) || String(b.id).localeCompare(String(a.id)));

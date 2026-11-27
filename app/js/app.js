@@ -11,7 +11,8 @@ import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText } from "./render.js
 import { readSlipPdf, attachSlips } from "./slips.js";
 import { readXlsx, isShipmentsHeader, readShipments, shipmentsFromCsv, matchShipments, isoDate } from "./pirate.js";
 import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
-  trackingUrl, formatName, historyKey, recordSeen, stamp, tcgSays, firstSentAt, barcodeNumber, barcodeTrackingUrl } from "./history.js";
+  trackingUrl, formatName, historyKey, recordSeen, stamp, tcgSays, firstSentAt, barcodeNumber, barcodeTrackingUrl,
+  historyPeriods, PERIOD_FILTERS } from "./history.js";
 import { orderListFromCsv, compareOrderList, listTime } from "./orderlist.js";
 
 // ---------- small helpers ----------
@@ -189,6 +190,7 @@ export const state = {
   history: {},         // history.js records, by key
   historyFilter: "all",
   historySearch: "",
+  historyPeriod: null, // the two-week period History shows (a start date); null = the newest; "" = every order
   importAgain: false,    // step 4: put orders already sent to TCGplayer in the next import file too
   historyCopy: null,     // the saved copy in Saved\History when this browser should be asked about it
   historySavedAt: "",    // when the copy was last written
@@ -1351,10 +1353,31 @@ export function renderHistory() {
   }
   $("#history-totals").textContent = `${plural(counts.all, "order")} · ${counts.printed} with labels made here · ${counts.shipped} shipped · ${counts.waiting} not shipped yet`
     + (state.historySavedAt && load(KEYS.historyCopy, "") === "on" ? ` · copy in Saved\\History (${state.historySavedAt})` : "");
-  const rows = historyList(state.history, { filter: state.historyFilter, search: state.historySearch });
+  const period = renderHistoryPeriod();
+  const rows = historyList(state.history, { filter: state.historyFilter, search: state.historySearch, period });
   const body = $("#history-table tbody");
   body.replaceChildren(...(rows.length ? rows.map(historyRow)
     : [el("tr", { class: "none" }, el("td", { colspan: "9", text: state.historySearch ? "No orders match your search." : "No orders here." }))]));
+}
+
+/**
+ * The "Showing" menu: one two-week period at a time, newest first, or every order. Searching, "Labels made, not
+ * shipped" and "Not sent to TCGplayer yet" always look at every date (the note says so). Returns the period to show.
+ */
+function renderHistoryPeriod() {
+  const periods = historyPeriods(state.history);
+  const keyOf = (p) => p.start || "nodate";
+  if (state.historyPeriod !== "" && !periods.some((p) => keyOf(p) === state.historyPeriod)) state.historyPeriod = periods.length ? keyOf(periods[0]) : "";
+  const sel = $("#history-period");
+  sel.replaceChildren(...periods.map((p, i) => el("option", { value: keyOf(p), text: `${i === 0 && p.start ? "Latest two weeks: " : ""}${p.label} (${plural(p.count, "order")})` })),
+    el("option", { value: "", text: `Every order (${plural(Object.keys(state.history).length, "order")})` }));
+  sel.value = state.historyPeriod;
+  const searching = !!String(state.historySearch || "").trim();
+  const limited = PERIOD_FILTERS.includes(state.historyFilter);
+  sel.disabled = searching || !limited;
+  $("#history-period-note").textContent = searching ? "Searching every order, any date."
+    : !limited ? "This list shows every date." : state.historyPeriod ? "Search finds every order, any date." : "";
+  return state.historyPeriod;
 }
 
 // A Shipped tick or tracking number changed on the History page. TCGplayer orders also update the
@@ -1417,6 +1440,7 @@ function bindHistory() {
     renderHistory();
   });
   $("#history-search").addEventListener("input", (e) => { state.historySearch = e.target.value; renderHistory(); });
+  $("#history-period").addEventListener("change", (e) => { state.historyPeriod = e.target.value; renderHistory(); });
   const body = $("#history-table tbody");
   body.addEventListener("change", (e) => {
     const tr = e.target.closest("tr[data-key]");

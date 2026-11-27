@@ -340,6 +340,10 @@ Click **History** at the top to see every order you made labels for or marked sh
   order then also counts as shipped in step 4, so it goes in the import file next time you load its CSV.
 - Buttons: **All / Labels made, not shipped / Shipped / Not sent to TCGplayer yet**, a search box (order #, buyer, city or tracking),
   **Download history (CSV)** for Excel or Google Sheets, **Remove** on a row, and **Clear history**.
+- **Two weeks at a time:** **All** and **Shipped** show the latest two weeks (Monday to the Sunday after next, the same
+  periods as the Archive folders for labels and slips). The **Showing** menu picks an older two weeks or **Every
+  order**. Nothing is removed: the **search box always looks through every order, any date**, and **Labels made, not
+  shipped** and **Not sent to TCGplayer yet** always list every date, so nothing unfinished hides in an older period.
 - **A copy on this PC:** History is also saved in `Saved\History\ship-desk-history.json` after every change, plus one
   dated copy per day (last 30) in `Saved\History\Backups`. If the browser loses its History (cleared browsing data,
   another browser), History shows **"A saved copy of your History is on this PC"** with **Restore the saved copy**

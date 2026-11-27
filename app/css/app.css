@@ -359,6 +359,10 @@ table.orders { width: 100%; border-collapse: collapse; font-size: .93rem; }
 .history-intro { margin: -6px 0 14px; }
 .history-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; }
 .history-bar .filters { margin-bottom: 8px; }
+.history-period { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 6px; }
+.history-period label { font-weight: 650; }
+.history-period select { width: auto; flex: 0 1 auto; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; max-width: 100%; }
+.history-period select:disabled { opacity: .55; }
 .history-search { flex: 0 1 340px; min-width: 0; }
 .history-search input { width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); }
 .history .c-printed { white-space: nowrap; }

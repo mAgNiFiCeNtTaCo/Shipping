@@ -917,6 +917,28 @@
           ]
         }
       ]
+    },
+    {
+      "title": "History shows two weeks at a time; search still finds every order",
+      "date": "2026-11-27",
+      "summary": "The same session gave History a two-week view with a period menu (same periods as the Archive folders), while search and the unfinished-order filters keep looking at every date.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-27T17:55",
+              "end": "2026-11-27T18:30",
+              "did": "history.js historyPeriod/recordDay/historyPeriods, historyList period; app.js renderHistoryPeriod + #history-period menu; 2 tests (228 pass); README; screenshot check",
+              "outcome": "done",
+              "files": 8
+            }
+          ]
+        }
+      ]
     }
   ]
 }
