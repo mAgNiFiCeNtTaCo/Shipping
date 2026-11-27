@@ -88,6 +88,13 @@ To remove it: **Settings → Apps → Installed apps → Ship Desk → Uninstall
 made too (No keeps them). It only offers that for Ship Desk's own files folder (the one with `Ship Desk files.txt` in
 it), so folders of yours are never deleted.
 
+**Without installing** (`ShipDesk-<version>-portable.zip`, on the same release page): for a PC where Windows or an
+antivirus won't let the installer run. Right-click the zip, choose **Properties**, tick **Unblock** and click OK. Then
+choose **Extract All**, put the folder anywhere (Documents is fine) and double-click **Start Ship Desk** in it;
+**Stop Ship Desk** turns it off. It brings its own Python, and its files go in the **Saved** folder inside that folder.
+There's no Start menu entry; **READ ME FIRST.txt** in the zip says how to add a desktop icon, update and remove it.
+To update, turn the old one off, unzip the new version and move your **Saved** folder into it.
+
 **From the source folder** (the GitHub copy): double-click **`Start Ship Desk.bat`** (it needs Python 3), and
 **`Stop Ship Desk.bat`** to turn it off. Files then go to the `Saved` folder next to it.
 

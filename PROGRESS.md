@@ -40,6 +40,12 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-27: README explains the no-install zip
+- The README (GitHub page + the guide in the installer) never mentioned `ShipDesk-<version>-portable.zip`. New
+  "Without installing" paragraph under "Install and start it": Unblock, Extract All, Start/Stop Ship Desk, Saved inside
+  the folder, no Start menu entry, update = move Saved into the new folder (same as the zip's READ ME FIRST.txt).
+  Slop scan clean. The next build (1.1.11) only changes the guide text.
+
 ### 2026-11-27: second wrong-order mailer fixed; ZIP part of a barcode no longer counts as tracking
 - User (two phone screenshots): a second Pirate Ship label (buyer C) picked another order (buyer D). Phone links file:
   D was linked by a tap on the phone's which-order list at 16:21. Cause found: on 2026-11-26 the phone read only
