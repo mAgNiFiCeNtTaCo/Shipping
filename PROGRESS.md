@@ -7,7 +7,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.11** built 2026-11-27 (guide text only, not published); 1.1.10 (published 2026-11-27) is the latest on GitHub; never publish 1.1.9
+- **Version 1.1.11** built 2026-11-27 (guide text only, not published); 1.1.10 (published 2026-11-27) is the latest on GitHub; never publish 1.1.9. Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
