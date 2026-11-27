@@ -872,9 +872,9 @@
       ]
     },
     {
-      "title": "Second wrong-order mailer fixed; ZIP part of a barcode no longer counts as tracking",
+      "title": "Second wrong-order mailer fixed; ZIP part no longer counts as tracking; buyer data scrubbed; 1.1.10 published",
       "date": "2026-11-27",
-      "summary": "The same session traced a buyer's label to a 2026-11-26 misread (only the barcode's ZIP part), guided the user's History fix for the two wrong orders, moved a misfiled photo, and made the phone ignore a ZIP-only reading.",
+      "summary": "The same session traced a buyer's label to a 2026-11-26 misread (only the barcode's ZIP part), guided the user's History fix for the two wrong orders, moved a misfiled photo, and made the phone ignore a ZIP-only reading. Buyer data that an earlier save had pushed to the public repo was scrubbed and the two commits replaced (force push, user's choice); 1.1.10 rebuilt clean and published.",
       "stages": [
         {
           "name": "Solo",
@@ -884,13 +884,16 @@
               "id": "e41cb2ca",
               "role": "Builder",
               "start": "2026-11-27T16:40",
-              "end": "2026-11-27T17:05",
-              "did": "links.json/History/backups read; a misfiled photo moved out; parseScan zip type + tests (226 pass); checked the History copy after the user's unticks",
+              "end": "2026-11-27T17:30",
+              "did": "links.json/History/backups read; a misfiled photo moved out; parseScan zip type + tests (226 pass); checked the History copy after the user's unticks; buyer data scrubbed from PROGRESS/tests/comments, history rewritten (43dc764), 1.1.10 published",
               "outcome": "done",
               "files": 4
             }
           ]
         }
+      ],
+      "lessons": [
+        "The repo is public: describe real orders as buyer A/B and use made-up numbers in tests; grep each change for names and numbers seen in the session before committing."
       ]
     }
   ]
