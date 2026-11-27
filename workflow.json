@@ -895,6 +895,28 @@
       "lessons": [
         "The repo is public: describe real orders as buyer A/B and use made-up numbers in tests; grep each change for names and numbers seen in the session before committing."
       ]
+    },
+    {
+      "title": "README explains the no-install zip",
+      "date": "2026-11-27",
+      "summary": "The same session added a 'Without installing' section to the README (GitHub page and installed guide) matching the zip's own read-me; 1.1.11 built for the guide text.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-27T17:35",
+              "end": "2026-11-27T17:50",
+              "did": "README 'Without installing' paragraph, checked against PORTABLE_README and the built guide; slop scan clean",
+              "outcome": "done",
+              "files": 2
+            }
+          ]
+        }
+      ]
     }
   ]
 }
