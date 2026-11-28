@@ -7,7 +7,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-28)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.13** built 2026-11-28 (review fixes rounds 0-2; not published yet, 1.1.12 is the latest on GitHub); never publish 1.1.9. Windows installer for other people:
+- **Version 1.1.14** built 2026-11-28 (review fixes rounds 0-2 + own window / browser choice; 1.1.13 and 1.1.14 not published, 1.1.12 is the latest on GitHub); never publish 1.1.9. Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10, v1.1.11, v1.1.12 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
@@ -17,7 +17,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   18 checks).
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **242 passed, 0 failed** (2026-11-28: 219 in the browser + 23 server checks);
+- Tests: `python tools/test.py` = **243 passed, 0 failed** (2026-11-28: 220 in the browser + 23 server checks);
   `tools/test_installer.py` 17 checks.
 - TCGplayer's own Order List export dropped on the page is checked against Ship Desk (forgotten uploads go back in the
   import file, missed and canceled orders listed); History has a "Not sent to TCGplayer yet" filter.
@@ -40,6 +40,23 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-28: open Ship Desk in its own window or a tab, in the browser you pick; 1.1.14
+- User: "can we have this optionally be installed as a standalone app or a web browser app or both", then asked
+  whether it must be a browser at all (like TacoSort) and whether it can use any browser ("mine runs fine in opera
+  gx"). Answered: the page, PDF and scanning code are web code, so a Tk rewrite or a bundled browser engine isn't
+  worth it; an own window through the browser's `--app` mode looks the same. Tried on this PC first: **Opera GX
+  opens a Speed Dial window for `--app`** (no own-window mode), Edge opens a window titled "Ship Desk". Windows'
+  default browser here is Edge. User chose option 3: a browser list plus an own-window box.
+- Built (61fe602): serve.py `open_page` (replaces `webbrowser.open`), `browsers()` / `default_browser()` from the
+  registry, `Saved/open.json`, `GET/POST /api/open-mode`, `--window` / `--tab`; History page `#open-row`; installer
+  task `ownwindow` (install.json "ownWindow") and Start menu "Ship Desk (own window)" / "(browser tab)".
+  Caveat told to the user: History and settings are per browser (History has Restore the saved copy).
+- Tests: **243 passed** (1 new: the setting with stand-in browsers). Slop scan of README clean.
+- **1.1.14 built**: installer test over 1.1.13 and zip test all good. Not published (1.1.13 wasn't either; 1.1.14's
+  notes carry both). The installer's new question compiled; clicking through it by hand is still open.
+- Open: round 3 of the review (unchanged). User: restart Ship Desk to get the setting.
+- Resources: see the brain's RESOURCES.md for this save's snapshot.
+
 ### 2026-11-28: whole-app review; fixes in rounds 0-2 (privacy, post office phone flow, PC page); flexible envelopes; 1.1.13
 - User: "review app and see what changes should be added or made to make this better". Three read-only review
   agents (PC page; phone + server; code, tests, tooling) reported about 25 problems; the main ones were checked in the

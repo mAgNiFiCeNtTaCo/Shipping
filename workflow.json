@@ -999,6 +999,28 @@
         "A confirm() nobody answers hangs headless Edge: tests stub win.confirm, also after a reload.",
         "The test runner now posts each line as it happens, so a hang names its test."
       ]
+    },
+    {
+      "title": "Own window or browser tab, in the browser you pick",
+      "date": "2026-11-28",
+      "summary": "The same session tried the browsers' own-window mode on this PC (Edge yes, Opera GX no) and added a browser list with an own-window box, shortcuts and an installer question (243 tests, 1.1.14).",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-28T00:40",
+              "end": "2026-11-28T01:30",
+              "did": "serve.py open_page/browsers/open-mode API, History page #open-row, --window/--tab, installer task; 1 test; README",
+              "outcome": "done",
+              "files": 9
+            }
+          ]
+        }
+      ]
     }
   ]
 }
