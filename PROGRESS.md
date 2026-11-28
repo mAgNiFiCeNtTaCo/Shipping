@@ -7,10 +7,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-28)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.14** built 2026-11-28 (review fixes rounds 0-2 + own window / browser choice; 1.1.13 and 1.1.14 not published, 1.1.12 is the latest on GitHub); never publish 1.1.9. Windows installer for other people:
+- **Version 1.1.14** (built and published 2026-11-28, latest on GitHub: review fixes rounds 0-2 + own window / browser choice; 1.1.13 was built but never published); never publish 1.1.9. Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
-  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10, v1.1.11, v1.1.12 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
+  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10, v1.1.11, v1.1.12, v1.1.14 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice. Since 2026-11-20 every build also
   makes `dist\ShipDesk-<version>-portable.zip` (no installer: unzip, double-click "Start Ship Desk"), for PCs where
   Windows or an antivirus objects to the unsigned installer; 1.1.4's zip is on the release (`tools/test_portable.py`
@@ -52,7 +52,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   task `ownwindow` (install.json "ownWindow") and Start menu "Ship Desk (own window)" / "(browser tab)".
   Caveat told to the user: History and settings are per browser (History has Restore the saved copy).
 - Tests: **243 passed** (1 new: the setting with stand-in browsers). Slop scan of README clean.
-- **1.1.14 built**: installer test over 1.1.13 and zip test all good. Not published (1.1.13 wasn't either; 1.1.14's
+- **1.1.14 built**: installer test over 1.1.13 and zip test all good. Published 2026-11-28 at the user's request (checked for buyer data first; 1.1.13 never was; 1.1.14's
   notes carry both). The installer's new question compiled; clicking through it by hand is still open.
 - Open: round 3 of the review (unchanged). User: restart Ship Desk to get the setting.
 - Resources: see the brain's RESOURCES.md for this save's snapshot.
