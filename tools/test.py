@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -28,6 +29,10 @@ EDGE_PATHS = [
 
 result = {}
 done = threading.Event()
+progress = []           # result lines as the page sends them
+last_line = [0.0]       # when the newest one came in
+IDLE_SECONDS = 150      # no line for this long = the page is stuck (one test may take 60 s: runner.js TEST_MS)
+RUN_SECONDS = 1800      # the whole run, at most
 opened = []  # folders the app asked to open (never really opened during tests)
 # Stands in for Tailscale and GitHub: tests never change the real Tailscale or reach the internet.
 # POST /__tailnet {...} changes it (installed, running, needsLogin, stopped, needEnable, latest, offline).
@@ -126,6 +131,13 @@ class Handler(serve.Handler):
             tailnet.update({k: v for k, v in body.items() if k in TAILNET})
             self.reply(200, dict(tailnet))
             return
+        if self.path == "/__test-line":
+            n = int(self.headers.get("Content-Length") or 0)
+            if 0 < n < 100_000:
+                progress.append(self.rfile.read(n).decode("utf-8", "replace"))
+                last_line[0] = time.time()
+            self.reply(200, {"ok": True})
+            return
         if self.path != "/__test-result":
             super().do_POST()
             return
@@ -147,6 +159,35 @@ def free_port():
     return p
 
 
+def upload_checks():
+    """An upload that stops part-way must never be taken for the whole photo (serve.Handler.body)."""
+    import io
+
+    class Fake:
+        def __init__(self, said, sent):
+            self.headers = {"Content-Length": str(said)}
+            self.rfile = io.BytesIO(b"x" * sent)
+
+    whole, cut, big = Fake(100, 100), Fake(100, 40), Fake(5000, 5000)
+    root = tempfile.mkdtemp(prefix="shipdesk-json-")
+    try:
+        bad = os.path.join(root, "photos.json")
+        with open(bad, "w", encoding="utf-8") as f:
+            f.write('{"photos": [{"id": "a')
+        got = serve.read_json(bad, {})
+        kept = os.path.isfile(bad + ".bad")
+        serve.write_json(bad, {"photos": []})
+        return {
+            "a whole upload is taken": serve.Handler.body(whole, 1000) == b"x" * 100 and not whole.cut_short,
+            "an upload cut off part-way is refused": serve.Handler.body(cut, 1000) is None and cut.cut_short,
+            "one over the size limit is refused": serve.Handler.body(big, 1000) is None and not big.cut_short,
+            "a damaged list is read as empty, with a copy kept as .bad": got == {} and kept,
+            "a list is written whole": serve.read_json(bad, None) == {"photos": []},
+        }
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def server_checks():
     """Checks of serve.py itself that need no browser: -> lines like the page's ("ok   server > ...")."""
     real = ("CN=Tailscale Inc., O=Tailscale Inc., L=Toronto, S=Ontario, C=CA, SERIALNUMBER=1131559-5, "
@@ -162,6 +203,7 @@ def server_checks():
         "PowerShell is called by its full path": os.path.isabs(serve.POWERSHELL),
     }
     lines = [f"{'ok  ' if good else 'FAIL'} server > signature check: {name}" for name, good in checks.items()]
+    lines += [f"{'ok  ' if good else 'FAIL'} server > uploads: {name}" for name, good in upload_checks().items()]
     return lines + [f"{'ok  ' if good else 'FAIL'} server > archive: {name}" for name, good in archive_checks().items()]
 
 
@@ -245,9 +287,15 @@ def main():
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:
-        if not done.wait(120):
-            print("TIMEOUT: the test page never reported (open the URL in Edge to see why): " + url)
-            return 1
+        began = last_line[0] = time.time()
+        while not done.wait(1):
+            now = time.time()
+            if now - last_line[0] > IDLE_SECONDS or now - began > RUN_SECONDS:
+                for line in progress:
+                    print(line)
+                print("TIMEOUT: the test page stopped reporting" + (" after the line above" if progress else " before its first test (a file that doesn't load?)")
+                      + ". Open the URL in Edge to see why: " + url)
+                return 1
     finally:
         proc.kill()
         srv.shutdown()

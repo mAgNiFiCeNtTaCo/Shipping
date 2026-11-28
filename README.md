@@ -402,7 +402,13 @@ itself as each is done:
   shooting. **Done** goes back. (**iPhone camera** takes one photo with the iPhone's own camera app instead.)
 - **Post office: one photo per order.** Scan an order's label, take its photo, scan the next, take its photo: each
   post office photo goes only to the order(s) scanned since the previous one (ticked ✓ on screen). Another photo
-  without a new scan goes to the same order again (a retake).
+  without a new scan goes to the same order again (a retake). The orders the next photo is for are outlined, and a
+  line above them counts how many have their photo ("12 of 40 have their post office photo"). The phone beeps on
+  every scan (not with the ring switch off). If the screen locks or you leave the page, open the camera again:
+  orders that already have their post office photo stay done.
+- **Undo last photo** (under the small pictures) takes the newest photo back, also when it already reached the PC:
+  there it moves to `Saved\Photos\Taken back on the phone`, and its orders wait for their photo again. If the PC had
+  already marked an order shipped, the phone says so: untick Shipped on the PC if that's wrong.
 - **Turned the right way:** the phone's tilt sensor tells which way you hold it, so photos taken sideways are saved
   turned upright. Shooting straight down at the desk keeps the way you last held it. The button on the picture
   ("Photo upright (auto)") shows what the next photo gets; tap it to turn by hand. The first time, the iPhone asks to

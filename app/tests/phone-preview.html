@@ -92,7 +92,7 @@ if (mode === "proof") {
   document.body.append(frame);
   await until(() => frame.contentWindow.shipdeskPhone && frame.contentWindow.shipdeskPhone.state.orders.length);
   const win = frame.contentWindow, phone = win.shipdeskPhone;
-  if (mode === "scan") {
+  if (mode === "scan" || mode === "pile") {
     // A fake camera: an envelope on a desk with Ship Desk's order QR code on its label.
     const doc = frame.contentDocument, cam = doc.createElement("canvas");
     cam.width = 960; cam.height = 1280;
@@ -118,6 +118,13 @@ if (mode === "proof") {
     phone.render();
     await phone.openScanner();
     await until(() => phone.scan.found.length);
+    if (mode === "pile") {
+      // A post office visit with a pile of orders: 25 chips, 10 done, the last two waiting for the next photo.
+      for (let i = 1; i <= 24; i++) { phone.scan.last = ""; phone.handleScan("SHIPDESK:PILE-" + String(i).padStart(4, "0") + "-A1B2C3-D4E5F"); }
+      phone.scan.posted = phone.scan.found.slice(0, 10);
+      phone.scan.fresh = phone.scan.found.slice(-2);
+      frame.contentDocument.querySelector('#cam-kinds button[data-kind="postoffice"]').click();
+    }
     await sleep(500);
   } else if (mode === "ask") {
     win.navigator.mediaDevices.getUserMedia = () => Promise.reject(new Error("no camera"));

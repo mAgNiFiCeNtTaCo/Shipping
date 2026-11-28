@@ -54,6 +54,9 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
                                               its photos move to the order (later uploads under the old key too)
     Phone:    GET  /api/phone/orders          the order list + photo counts
               POST /api/phone/photo?order=&name=&kind=&id=&taken=   body = the picture
+              POST /api/phone/photo-delete?id=   take a photo back (the camera screen's "Undo last photo"): only one
+                                              received in the last UNDO_MINUTES; the file moves to the Photos folder's
+                                              "Taken back on the phone", and its "shipped" note goes when the PC hasn't used it yet
               POST /api/phone/link            {id, order, name, tracking, carrier, taken}: a mailer label's
                                               tracking number scanned and given to an order (or to a
                                               new entry "mailer:<tracking>" with the buyer's name)
@@ -129,6 +132,7 @@ ARCHIVE_EPOCH = datetime.date(2024, 1, 1)  # a Monday
 # Photo kinds -> the word that starts the file name.
 PHOTO_KINDS = {"contents": "Contents", "packed": "Packed", "postoffice": "Post office"}
 PHOTO_ID_OK = re.compile(r"^[A-Za-z0-9-]{6,40}$")
+UNDO_MINUTES = 120  # how long after it arrived the phone may take a photo back
 TAKEN_OK = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$")
 ORDER_FIELDS = ("key", "id", "source", "name", "city", "state", "zip", "labelled", "format", "shipped", "inBatch", "tracking")
 TRACKING_OK = re.compile(r"^[0-9A-Z]{8,40}$")
@@ -262,7 +266,17 @@ def read_json(path, default):
                 return json.load(f)
         except PermissionError:
             time.sleep(0.025)
-        except (OSError, ValueError):
+        except ValueError:
+            # Damaged (a power cut mid-write): keep what's there as <name>.bad before anything writes a new file
+            # over it, so the photo list or the phone's tracking numbers can still be rescued by hand.
+            try:
+                if os.path.getsize(path) > 0:
+                    shutil.copy2(path, path + ".bad")
+                    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {os.path.basename(path)} couldn't be read; kept a copy as {os.path.basename(path)}.bad")
+            except OSError:
+                pass
+            return default
+        except OSError:
             return default
     return default
 
@@ -272,6 +286,8 @@ def write_json(path, data):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
+        f.flush()
+        os.fsync(f.fileno())  # on the disk before it replaces the old file: a power cut leaves one whole file
     for i in range(RETRIES):
         try:
             os.replace(tmp, path)
@@ -642,6 +658,7 @@ def save_update(save_root, **changes):
 class Handler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, **TYPES}
     save_root = SAVE_ROOT
+    timeout = 120  # a connection that goes silent this long (a phone that walked out of range mid-upload) is dropped
 
     def end_headers(self):
         # Always fresh files: the service worker does the offline caching.
@@ -707,9 +724,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or -1)
         except ValueError:
             n = -1
+        self.cut_short = False
         if n < 0 or n > limit:
             return None
-        return self.rfile.read(n)
+        try:
+            data = self.rfile.read(n)
+        except OSError:  # timed out or dropped
+            data = b""
+        if len(data) != n:
+            # The upload stopped part-way (the phone lost signal). Half a photo must never be saved as the photo.
+            self.cut_short = True
+            self.close_connection = True
+            return None
+        return data
 
     # ---------- routing ----------
 
@@ -813,6 +840,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.reply(403, {"ok": False, "error": "code"})
                 return
             self.save_link()
+            return
+        if url.path == "/api/phone/photo-delete":
+            if not self.from_paired_phone():
+                self.reply(403, {"ok": False, "error": "code"})
+                return
+            self.take_photo_back(arg("id"))
             return
         if url.path not in ("/api/save", "/api/open-folder", "/api/open-file", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
                             "/api/links-done", "/api/photos-rekey", "/api/photo-rotate", "/api/shutdown",
@@ -1202,7 +1235,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         data = self.body(MAX_PHOTO_BYTES)
         if not data:
-            self.reply(400, {"ok": False, "error": "The photo is missing or too big."})
+            if self.cut_short:
+                self.reply(503, {"ok": False, "error": "The upload was cut off; send it again."})
+            else:
+                self.reply(400, {"ok": False, "error": "The photo is missing or too big."})
             return
         ext = image_ext(data)
         if not ext:
@@ -1232,12 +1268,78 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             rel = os.path.relpath(path, self.photo_dir()).replace("\\", "/")
             photos.append({"id": pid, "order": key, "name": name, "kind": kind, "taken": taken,
                            "received": time.strftime("%Y-%m-%dT%H:%M:%S"), "file": rel})
-            write_json(index_path, {"photos": photos})
-            if kind == "postoffice":
-                # Handed in at the post office: the PC page marks the order shipped (if it isn't already).
-                note = "ship-" + pid + "-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
-                self.record_link(note, key, "", "", taken, name)
+            try:
+                write_json(index_path, {"photos": photos})
+                if kind == "postoffice":
+                    # Handed in at the post office: the PC page marks the order shipped (if it isn't already).
+                    self.record_link(self.ship_note(pid, key), key, "", "", taken, name)
+            except OSError as e:
+                # Not listed, so the phone's next try must be able to save it again: take the file away.
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                self.reply(500, {"ok": False, "error": f"Couldn't save the photo: {e.strerror or e}"})
+                return
         self.reply(200, {"ok": True, "file": rel})
+
+    @staticmethod
+    def ship_note(pid, key):
+        """The id of the "it was shipped" note a post office photo leaves for the PC page."""
+        return "ship-" + pid + "-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
+
+    def take_photo_back(self, pid):
+        """The phone's "Undo last photo": a photo that arrived in the last UNDO_MINUTES comes off its orders. The file
+        isn't deleted: it moves to the Photos folder's "Taken back on the phone". A post office photo's "shipped" note goes too when
+        the PC page hasn't used it yet; orders it already marked shipped are named in the reply."""
+        if not PHOTO_ID_OK.match(pid):
+            self.reply(400, {"ok": False, "error": "Bad photo id."})
+            return
+        since = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - UNDO_MINUTES * 60))
+        with lock:
+            photos = self.photo_index()
+            mine = [p for p in photos if p.get("id") == pid]
+            if not mine:
+                self.reply(200, {"ok": True, "removed": 0, "shipped": []})
+                return
+            if any(str(p.get("received", "")) < since for p in mine):
+                self.reply(400, {"ok": False, "error": "That photo is too old to take back from the phone. Remove it on the PC."})
+                return
+            away = os.path.join(self.photo_dir(), "Taken back on the phone")
+            try:
+                for p in mine:
+                    path = self.photo_path(p)
+                    if path:
+                        os.makedirs(away, exist_ok=True)
+                        os.replace(path, unique_path(away, os.path.basename(os.path.dirname(path)) + " - " + os.path.basename(path)))
+                write_json(os.path.join(self.photo_dir(), "photos.json"), {"photos": [p for p in photos if p.get("id") != pid]})
+                kept = []
+                posted = [p for p in mine if p.get("kind") == "postoffice"]
+                if posted:
+                    notes = {self.ship_note(pid, str(p.get("order", ""))): str(p.get("order", "")) for p in posted}
+                    links = self.links()
+                    kept = [notes[ln.get("id")] for ln in links if ln.get("id") in notes and ln.get("applied")]
+                    left = [ln for ln in links if not (ln.get("id") in notes and not ln.get("applied"))]
+                    if len(left) != len(links):
+                        write_json(self.links_path(), {"links": left})
+                    # The phone's list: not shipped any more, unless something else says so.
+                    gone = {notes[ln.get("id")] for ln in links if ln.get("id") in notes and not ln.get("applied")}
+                    still = {ln.get("order") for ln in left}
+                    orders_path = os.path.join(self.phone_dir(), "orders.json")
+                    data = read_json(orders_path, {})
+                    rows = data.get("orders") if isinstance(data, dict) and isinstance(data.get("orders"), list) else []
+                    changed = False
+                    for row in rows:
+                        if isinstance(row, dict) and row.get("key") in gone and row.get("key") not in still and not row.get("tracking") \
+                                and str(row.get("shipped") or "") in {str(p.get("taken", ""))[:10] for p in posted}:
+                            row["shipped"] = ""
+                            changed = True
+                    if changed:
+                        write_json(orders_path, data)
+            except OSError as e:
+                self.reply(500, {"ok": False, "error": f"Couldn't take the photo back: {e.strerror or e}"})
+                return
+        self.reply(200, {"ok": True, "removed": len(mine), "shipped": kept})
 
     # ---------- tracking numbers scanned on the phone ----------
 
@@ -1396,8 +1498,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not path:
             self.send_error(404)
             return
-        with open(path, "rb") as f:
-            data = f.read()
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except OSError:
+            self.send_error(404)
+            return
         ctype = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".heic": "image/heic"}.get(
             os.path.splitext(path)[1].lower(), "application/octet-stream")
         self.send_response(200)

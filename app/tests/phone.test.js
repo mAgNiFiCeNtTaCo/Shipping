@@ -938,6 +938,96 @@ Object.assign(tests, {
     dropFrames();
   },
 
+  "camera: a busy post office visit (a label scanned while a photo saves, the screen locking, stepping, undo)": async () => {
+    const { win, doc, phone } = await phoneWithOrders();
+    const cam = doc.createElement("canvas");
+    cam.width = 640; cam.height = 480;
+    const paint = () => { const g = cam.getContext("2d"); g.fillStyle = "#d8d2c4"; g.fillRect(0, 0, 640, 480); };
+    paint();
+    const painter = setInterval(paint, 100);
+    win.navigator.mediaDevices.getUserMedia = async () => cam.captureStream(10);
+    win.confirm = () => true;
+    const count = async (key) => (((await photosOnPc())[key] || {}).postoffice || 0);
+    const said = () => doc.querySelector("#scan-msg").textContent;
+    const A = "SAMPLE-0001", B = "SAMPLE-0006", C = "SAMPLE-0007", D = "SAMPLE-0009";
+    const before = { a: await count(A), b: await count(B), c: await count(C) };
+    try {
+      phone.openScanner();
+      await waitFor(() => phone.scan.stream && doc.querySelector("#scan-video").videoWidth, "the camera to start");
+      doc.querySelector('#cam-kinds button[data-kind="postoffice"]').click();
+      phone.handleScan("SHIPDESK:" + A);
+      await waitFor(() => !doc.querySelector("#cam-shutter").disabled, "the shutter");
+      // The next label is read while the photo is still being kept, and the shutter is tapped twice.
+      const first = phone.shoot();
+      eq(await phone.shoot(), 0, "a second tap while the photo saves takes nothing");
+      phone.handleScan("SHIPDESK:" + B);
+      eq(await first, 1, "photo for the first order");
+      ok(new RegExp("saved for " + A + " ").test(said()), said());
+      eq([phone.scan.posted, phone.scan.fresh], [[A], [B]], "the label scanned meanwhile waits for the next photo");
+      ok(/1 of 2 have their post office photo\. The next photo is for the outlined order/.test(doc.querySelector("#scan-count").textContent), doc.querySelector("#scan-count").textContent);
+      eq([...doc.querySelectorAll("#scan-found .chip.next")].map((c) => c.textContent.replace("×", "")), [B], "outlined");
+      eq(await phone.shoot(), 1);
+      ok(new RegExp("saved for " + B + " ").test(said()), "the next photo goes to the order scanned meanwhile: " + said());
+      phone.handleScan("SHIPDESK:" + A);
+      ok(/already has its post office photo/.test(said()), said());
+      // The screen locks: the camera closes. Opening it again doesn't make the finished orders wait for a photo again.
+      phone.closeScanner(true);
+      eq([...phone.state.pick].sort(), [A, B], "the visit's orders stay picked");
+      doc.querySelector("#btn-cam").click();
+      await waitFor(() => phone.scan.stream && doc.querySelector("#scan-video").videoWidth && !doc.querySelector("#scanner").hidden, "the camera again");
+      eq([phone.scan.posted.slice().sort(), phone.scan.fresh], [[A, B], []], "both are done, nothing waits");
+      phone.scan.last = "";
+      phone.handleScan("SHIPDESK:" + C);
+      eq(phone.scan.fresh, [C]);
+      eq(await phone.shoot(), 1);
+      ok(new RegExp("saved for " + C + " ").test(said()), "only the new order gets it: " + said());
+      await waitFor(async () => (await phone.queueAll()).length === 0, "the photos to reach the PC");
+      eq([await count(A) - before.a, await count(B) - before.b, await count(C) - before.c], [1, 1, 1], "one post office photo each");
+      // Undo last photo: off the PC again, and the order waits for its photo again.
+      ok(!doc.querySelector("#cam-undo").hidden, "Undo is offered");
+      eq(await phone.undoLast(), true, said());
+      eq(await count(C) - before.c, 0, "taken back on the PC");
+      eq([phone.scan.posted.includes(C), phone.scan.fresh, phone.scan.shots.length], [false, [C], 0], "waits for its photo again");
+      ok(/Photo taken back/.test(said()), said());
+      // A photo still waiting on the phone is simply dropped.
+      phone.state.code = "WRONGWRONG12"; // (the PC refuses: the photo stays on the phone)
+      eq(await phone.shoot(), 1);
+      await waitFor(async () => (await phone.queueAll()).length === 1 && !phone.state.sending, "the photo to wait");
+      eq(await phone.undoLast(), true);
+      eq((await phone.queueAll()).length, 0, "dropped from the phone");
+      eq(phone.scan.fresh, [C]);
+      // Stepping through the pile: the label of the package in hand jumps to that order, whatever the list's order.
+      phone.closeScanner(false);
+      phone.openScanner([B, C, D], { steps: true });
+      eq(phone.scan.fresh, [B], "the first of the pile");
+      phone.scan.last = "";
+      phone.handleScan("SHIPDESK:" + D);
+      eq(phone.scan.fresh, [D], "scanned: the current one");
+      ok(new RegExp("Post office photo for " + D).test(said()), said());
+    } finally {
+      clearInterval(painter);
+      phone.closeScanner(false);
+    }
+    dropFrames();
+  },
+
+  "server: a photo can be taken back for a while; an unknown one is fine, a bad id is refused": async () => {
+    const key = (await link()).code;
+    const H = { "X-Ship-Desk-Key": key };
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7, 6]);
+    const q = { order: "SAMPLE-0002", name: "Test Buyer", kind: "postoffice", id: "undo123abc", taken: "2026-10-20T10:11:12" };
+    const was = ((await photosOnPc())["SAMPLE-0002"] || {}).postoffice || 0;
+    ok((await (await fetch("/api/phone/photo?" + new URLSearchParams(q), { method: "POST", headers: H, body: jpeg })).json()).ok, "saved");
+    eq(((await photosOnPc())["SAMPLE-0002"] || {}).postoffice || 0, was + 1);
+    eq((await fetch("/api/phone/photo-delete?id=undo123abc", { method: "POST" })).status, 403, "needs the pairing code");
+    const back = await (await fetch("/api/phone/photo-delete?id=undo123abc", { method: "POST", headers: H })).json();
+    eq([back.ok, back.removed, Array.isArray(back.shipped)], [true, 1, true]);
+    eq(((await photosOnPc())["SAMPLE-0002"] || {}).postoffice || 0, was, "off the order");
+    const again = await (await fetch("/api/phone/photo-delete?id=undo123abc", { method: "POST", headers: H })).json();
+    eq([again.ok, again.removed], [true, 0], "nothing left to take back");
+    eq((await fetch("/api/phone/photo-delete?id=..%2Fx", { method: "POST", headers: H })).status, 400, "bad id");
+  },
+
   "post office photo: the order is marked shipped on the PC, unless it already was": async () => {
     const { app, win, doc, phone } = await phoneWithOrders();
     app.matchPasted("SAMPLE-0005 9400111899223344559999");

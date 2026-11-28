@@ -83,13 +83,13 @@ function db() {
   dbOpen = dbOpen || new Promise((resolve, reject) => {
     const r = indexedDB.open("shipdesk-phone", 1);
     r.onupgradeneeded = () => r.result.createObjectStore("queue", { keyPath: "qid" });
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
+    r.onsuccess = () => { r.result.onclose = () => { dbOpen = null; }; resolve(r.result); };
+    r.onerror = () => { dbOpen = null; reject(r.error); };
   });
   return dbOpen;
 }
 
-async function tx(mode, fn) {
+async function tx1(mode, fn) {
   const d = await db();
   return new Promise((resolve, reject) => {
     const t = d.transaction("queue", mode);
@@ -100,6 +100,17 @@ async function tx(mode, fn) {
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error);
   });
+}
+
+// iPhones sometimes drop the storage connection while the page waits in the background: open it again and try
+// once more before giving up (a photo must never vanish because of that).
+async function tx(mode, fn) {
+  try {
+    return await tx1(mode, fn);
+  } catch {
+    dbOpen = null;
+    return tx1(mode, fn);
+  }
 }
 
 export const queueAll = async () => ((await tx("readonly", (s) => s.getAll())) || []).sort((a, b) => a.created - b.created);
@@ -181,7 +192,7 @@ export async function refresh() {
           if (state.pick.delete(o.key)) state.pick.add(now.key);
           continue;
         }
-        if ((o.local || o.scanned) && (state.pick.has(o.key) || state.queue.some((q) => q.order === o.key))) keep.push(o);
+        if ((o.local || o.scanned) && (state.pick.has(o.key) || scan.found.includes(o.key) || state.queue.some((q) => q.order === o.key))) keep.push(o);
       }
       state.orders = [...fresh, ...keep];
       lsSet(LS.pick, [...state.pick]);
@@ -199,6 +210,9 @@ export async function refresh() {
   return state.link;
 }
 
+const RETRY_MS = 30000, RETRY_MAX_MS = 15 * 60 * 1000; // a photo the PC refused is tried again after this long, doubling
+const undone = new Set(); // photos taken back with "Undo last photo" while they were on their way
+
 /** Send the waiting photos, oldest first. Stops at the first sign the PC can't be reached. */
 export async function pump() {
   // Photos added while a round is sending are picked up by one more round straight after it (not at the next timer).
@@ -209,6 +223,8 @@ export async function pump() {
   render();
   try {
     for (const item of await queueAll()) {
+      if (undone.has(item.id)) { await queueDel(item.qid); continue; }
+      if (item.retryAt && item.retryAt > Date.now()) continue;
       let r;
       try {
         if (item.link) {
@@ -228,18 +244,30 @@ export async function pump() {
         state.link = "ok";
       } else if (r.ok) {
         await queueDel(item.qid);
+        if (undone.has(item.id)) { // taken back while it was on its way: off the PC again
+          call("api/phone/photo-delete?id=" + encodeURIComponent(item.id), { method: "POST" }).catch(() => {});
+          continue;
+        }
         const counts = state.photos[item.order] || (state.photos[item.order] = { contents: 0, packed: 0, postoffice: 0, total: 0 });
         counts[item.kind] = (counts[item.kind] || 0) + 1;
         counts.total = (counts.total || 0) + 1;
         state.link = "ok";
       } else if (r.status === 400) {
-        // The PC refused this one photo (not a picture it can save): keep it, say why, carry on with the rest.
+        // The PC refused this one photo (not a picture it can save): keep it, say why, carry on with the rest, and
+        // try it again later (less and less often: it is up to 30 MB each time).
         let msg = item.link ? "The PC couldn't use this tracking number." : "The PC couldn't save this photo.";
         try { msg = (await r.json()).error || msg; } catch { /* keep the default */ }
-        if (item.error !== msg) await queuePut({ ...item, error: msg });
+        const tries = (item.tries || 0) + 1;
+        await queuePut({ ...item, error: msg, tries, retryAt: Date.now() + Math.min(RETRY_MAX_MS, RETRY_MS * 2 ** (tries - 1)) });
       } else {
-        state.link = "down";
-        break;
+        // Ship Desk itself answered "couldn't save" (its disk is full, the upload was cut off): keep the photo, carry
+        // on with the rest, try again next round. Any other answer comes from the network: the PC can't be reached.
+        let own = null;
+        try { own = await r.json(); } catch { /* not Ship Desk's answer */ }
+        if (!own || own.ok !== false) { state.link = "down"; break; }
+        const msg = r.status === 503 ? "" : own.error || "The PC couldn't save this one yet.";
+        if ((item.error || "") !== msg) await queuePut({ ...item, error: msg });
+        state.link = "ok";
       }
     }
   } finally {
@@ -253,10 +281,14 @@ export async function pump() {
 async function loadQueue() {
   try {
     state.queue = (await queueAll()).map(({ bytes, ...rest }) => ({ ...rest, size: bytes ? bytes.byteLength : 0 }));
+    state.queueError = false;
   } catch {
-    state.queue = [];
+    // Couldn't read this phone's storage: keep the last list we had and say so (never "all saved").
+    state.queueError = true;
   }
 }
+
+const STORAGE_TROUBLE = "Photo NOT saved: this phone's storage has a problem. Close this page, open it again and take the photo again.";
 
 // ---------- taking photos ----------
 
@@ -294,32 +326,43 @@ const orderLabel = (o) => (!o ? "" : o.id ? o.id
 const idText = (o) => o.id || (o.source === "mailer" ? "No order # yet" : "Pasted address");
 
 /** Put photos in the queue for every picked order, then try to send them (wait = until sent or failed). */
-export async function addFiles(files, { wait = true } = {}) {
-  const orders = state.orders.filter((o) => state.pick.has(o.key));
+export async function addFiles(files, { wait = true, kind = state.kind, keys = null } = {}) {
+  // kind / keys: the camera screen says which photo and which orders at the moment of the tap (the type and the
+  // scanned orders can change while the picture is being saved).
+  const orders = state.orders.filter((o) => (keys ? keys.includes(o.key) : state.pick.has(o.key)));
   if (!orders.length) { toast("Tap the orders in the photo first."); return 0; }
-  let added = 0;
+  let added = 0, trouble = false;
   for (const file of [...(files || [])]) {
     let prepared;
     try { prepared = await prepare(file); } catch { toast(`${file.name || "That file"} isn't a photo.`); continue; }
     const bytes = await prepared.blob.arrayBuffer();
     const id = newId(), taken = localStamp(), now = Date.now();
-    for (const [i, o] of orders.entries()) {
-      await queuePut({ qid: `${id}|${o.key}`, id, order: o.key, name: o.name || "", label: orderLabel(o), kind: state.kind, taken,
-        type: prepared.blob.type || "image/jpeg", bytes, created: now + i, error: "" });
+    try {
+      for (const [i, o] of orders.entries()) {
+        await queuePut({ qid: `${id}|${o.key}`, id, order: o.key, name: o.name || "", label: orderLabel(o), kind, taken,
+          type: prepared.blob.type || "image/jpeg", bytes, created: now + i, error: "" });
+      }
+    } catch {
+      // Not (all) kept: better no photo than one that is on some of its orders only.
+      for (const o of orders) await queueDel(`${id}|${o.key}`).catch(() => {});
+      trouble = true;
+      continue;
     }
-    state.recent.unshift({ id, kind: state.kind, taken, thumb: prepared.thumb, labels: orders.map(orderLabel).join(", "), n: orders.length });
+    state.recent.unshift({ id, kind, taken, thumb: prepared.thumb, labels: orders.map(orderLabel).join(", "), n: orders.length });
     added++;
   }
+  state.storageTrouble = trouble;
   state.recent = state.recent.slice(0, MAX_RECENT);
   lsSet(LS.recent, state.recent.map((r, i) => (i < 20 ? r : { ...r, thumb: "" })));
-  if (added && state.kind === "postoffice") {
+  if (added && kind === "postoffice") {
     // Handed in: the PC marks these orders shipped when the photo arrives. Show it here already.
     for (const o of orders) if (!o.shipped) o.shipped = localStamp().slice(0, 10);
     lsSet(LS.orders, { orders: state.orders, photos: state.photos, updated: state.updated });
   }
   await loadQueue();
   render();
-  if (added) toast(`${plural(added, "photo")} added for ${plural(orders.length, "order")}.`);
+  if (trouble) toast(STORAGE_TROUBLE);
+  else if (added) toast(`${plural(added, "photo")} added for ${plural(orders.length, "order")}.`);
   if (wait) await pump(); else pump();
   return added;
 }
@@ -565,6 +608,7 @@ function read1D(Z, canvas) {
 const WASM_JS = new URL("../vendor/zxing-wasm-3.1.6/reader.js", import.meta.url).href;
 const WASM_BIN = new URL("../vendor/zxing-wasm-3.1.6/zxing_reader.wasm", import.meta.url).href;
 const FRAME_SIDE = 1920;  // longest side of the picture the main reader looks at
+const CENTRE = 0.7;       // a code counts as "in the middle" when its centre is within this share of the picture
 let wasmLoad = null;
 // wasm: tests switch the main reader off to check the JavaScript one. used: which one read the last picture.
 export const readers = { wasm: true, used: "" };
@@ -594,17 +638,40 @@ async function readAll(src, w, h) {
   try {
     const found = await W.readBarcodes(c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height),
       { formats: ["QRCode", "Code128"], tryHarder: true, maxNumberOfSymbols: 4 });
-    return found.filter((r) => r.isValid !== false && r.text).map((r) => r.text);
+    return found.filter((r) => r.isValid !== false && r.text).map((r) => ({ text: r.text, off: offCentre(r.position, c.width, c.height) }));
   } catch {
     return null;
   }
+}
+
+// How far a code's middle is from the middle of the picture: 0 = dead centre, 1 = at the edge (2 = unknown).
+function offCentre(pos, w, h) {
+  const pts = pos && [pos.topLeft, pos.topRight, pos.bottomRight, pos.bottomLeft].filter((p) => p && isFinite(p.x) && isFinite(p.y));
+  if (!pts || !pts.length || !w || !h) return 2;
+  const x = pts.reduce((s, p) => s + p.x, 0) / pts.length, y = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+  return Math.max(Math.abs(x / w - 0.5), Math.abs(y / h - 0.5)) * 2;
+}
+
+// Does this code belong to an order that still needs something on the camera screen (not scanned yet, or, stepping
+// through the pile, still without its post office photo)?
+function stillToDo(text) {
+  const s = parseScan(text);
+  const o = !s ? null : s.type === "order" ? { key: s.key } : s.type === "tracking" ? orderForTracking(s.tracking) || { key: "" } : null;
+  if (!o) return false;
+  return !scan.found.includes(o.key) || (scan.steps.length > 0 && !scan.posted.includes(o.key));
 }
 
 /** The code in one picture (a video frame, photo or canvas of w x h): a tracking barcode or a QR code, or "". */
 export async function decodeFrame(src, w, h) {
   const all = await readAll(src, w, h);
   readers.used = all ? "wasm" : "js";
-  if (all) return all.find(useful) || all[0] || "";
+  if (all) {
+    // A pile of packages puts several labels in the picture. Take the one nearest the middle that isn't done yet
+    // (the label in hand), so a package that is already done can't keep winning; otherwise as before.
+    const mid = scan.open ? all.filter((r) => r.off <= CENTRE && useful(r.text) && stillToDo(r.text)).sort((a, b) => a.off - b.off)[0] : null;
+    const texts = all.map((r) => r.text);
+    return (mid && mid.text) || texts.find(useful) || texts[0] || "";
+  }
   const Z = await loadZxing();
   for (const across of [true, false]) {
     const text = read1D(Z, strip(src, w, h, across));
@@ -646,10 +713,37 @@ function scanSay(msg) {
   if (m) m.textContent = msg;
 }
 
+// A short beep on every scan: iPhones don't vibrate for web pages, and with a pile of packages the eyes are on
+// the labels, not on the screen. (Silent when the phone's ring switch is off.)
+let audio = null;
+function soundOn() {
+  try {
+    const A = window.AudioContext || window.webkitAudioContext;
+    if (!A) return null;
+    audio = audio || new A();
+    if (audio.state === "suspended") audio.resume().catch(() => {});
+    return audio;
+  } catch { return null; }
+}
+function beep() {
+  try {
+    const a = soundOn();
+    if (!a || a.state !== "running") return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 1320;
+    g.gain.value = 0.2;
+    o.connect(g);
+    g.connect(a.destination);
+    o.start();
+    o.stop(a.currentTime + 0.09);
+  } catch { /* no sound: the green frame still shows */ }
+}
+
 function hit() {
   const v = $("#scanner .scan-view");
   if (v) { v.classList.add("hit"); setTimeout(() => v.classList.remove("hit"), 450); }
   try { if (navigator.vibrate) navigator.vibrate(60); } catch { /* not on iPhone */ }
+  beep();
 }
 
 // An order the phone's list doesn't have yet (printed after the phone last heard from the PC).
@@ -663,7 +757,17 @@ function orderFromKey(key) {
 
 function addFound(o) {
   if (!state.orders.some((x) => x.key === o.key)) state.orders.push(o);
-  if (scan.found.includes(o.key)) { scanSay(`${orderLabel(o)} is already scanned.`); return false; }
+  if (scan.found.includes(o.key)) {
+    if (scan.steps.includes(o.key) && !scan.posted.includes(o.key)) {
+      // Stepping through the pile: the package in hand becomes the current one, whatever the list's order.
+      if (scan.fresh[0] !== o.key) { scan.fresh = [o.key]; hit(); }
+      scanSay(stepText());
+      renderScan();
+      return true;
+    }
+    scanSay(scan.posted.includes(o.key) ? `${orderLabel(o)} already has its post office photo.` : `${orderLabel(o)} is already scanned.`);
+    return false;
+  }
   scan.found.push(o.key);
   if (scan.steps.length) scan.fresh = [o.key]; else scan.fresh.push(o.key);
   hit();
@@ -879,48 +983,118 @@ function stepText() {
 
 export async function shoot() {
   const video = $("#scan-video");
+  if (scan.shooting) return 0; // the last photo is still being kept: one at a time
   if (!scan.found.length) { scanSay("Scan a label first, or pick the orders on the main screen."); return 0; }
   if (!scan.stream || !video.videoWidth) { scanSay("The camera isn't ready yet."); return 0; }
   // Contents and packed photos go to every order on screen. A post office photo goes to its own order only: the
   // ones scanned since the last post office photo, or (nothing new scanned) the same ones again, for a retake.
-  const post = state.kind === "postoffice";
+  // The kind of photo and its orders are fixed here, at the tap: the camera keeps reading labels while the picture
+  // is being kept, and the next label must wait for the next photo (2026-11-27: it was wiped, and the next post
+  // office photo went to the order before).
+  const kind = state.kind, post = kind === "postoffice";
   const onScreen = (keys) => keys.filter((k) => scan.found.includes(k));
-  const target = !post ? scan.found : onScreen(scan.fresh).length ? onScreen(scan.fresh) : onScreen(scan.lastPost);
+  const target = [...(!post ? scan.found : onScreen(scan.fresh).length ? onScreen(scan.fresh) : onScreen(scan.lastPost))];
   if (!target.length) { scanSay("Scan the next order's label, then take its post office photo."); return 0; }
-  const deg = photoTurn();
-  const blob = await new Promise((r) => grab(video, deg).toBlob(r, "image/jpeg", 0.92));
-  const v = $("#scanner .scan-view");
-  v.classList.add("flash");
-  setTimeout(() => v.classList.remove("flash"), 120);
-  if (!blob) return 0;
-  state.pick = new Set(target);
-  lsSet(LS.pick, [...state.pick]);
-  const added = await addFiles([new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" })], { wait: false });
-  if (added) {
+  scan.shooting = true;
+  try {
+    const deg = photoTurn();
+    const blob = await new Promise((r) => grab(video, deg).toBlob(r, "image/jpeg", 0.92));
+    const v = $("#scanner .scan-view");
+    v.classList.add("flash");
+    setTimeout(() => v.classList.remove("flash"), 120);
+    if (!blob) return 0;
+    state.pick = new Set(target);
+    lsSet(LS.pick, [...state.pick]);
+    // Orders this photo marks shipped on the phone's list (for "Undo last photo").
+    const opened = post ? target.filter((key) => { const o = state.orders.find((x) => x.key === key); return o && !o.shipped; }) : [];
+    const added = await addFiles([new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" })], { wait: false, kind, keys: target });
+    if (!added) {
+      if (state.storageTrouble) scanSay(STORAGE_TROUBLE);
+      return 0;
+    }
     const r = state.recent[0];
-    scan.shots.unshift({ id: r.id, kind: r.kind, thumb: r.thumb });
-    const k = KINDS.find((x) => x.id === state.kind);
-    const n = scan.shots.filter((s) => s.kind === state.kind).length;
+    scan.shots.unshift({ id: r.id, kind, thumb: r.thumb, keys: target, opened });
+    const k = KINDS.find((x) => x.id === kind);
+    const n = scan.shots.filter((s) => s.kind === kind).length;
     if (post) {
       scan.lastPost = target;
-      scan.fresh = [];
+      scan.fresh = scan.fresh.filter((key) => !target.includes(key)); // a label scanned meanwhile stays for the next photo
       for (const key of target) if (!scan.posted.includes(key)) scan.posted.push(key);
-      if (scan.steps.length) scanSay(`Saved for ${r.labels} (marked shipped). ` + (nextStep() ? stepText() : stepText().replace(". Tap", ": tap")));
-      else scanSay(`Post office photo saved for ${r.labels} (marked shipped). Scan the next order, then take its photo.`);
+      if (scan.steps.length) {
+        const next = onScreen(scan.fresh).length ? scan.fresh[0] : nextStep();
+        scanSay(`Saved for ${r.labels} (marked shipped). ` + (next ? stepText() : stepText().replace(". Tap", ": tap")));
+      } else scanSay(`Post office photo saved for ${r.labels} (marked shipped). Scan the next order, then take its photo.`);
     } else scanSay(`${k.label} photo ${n} saved for ${r.labels}. Take another, or switch the type above.`);
     renderScan();
+    return added;
+  } finally {
+    scan.shooting = false;
   }
-  return added;
+}
+
+/** "Undo last photo" on the camera screen: the newest photo comes off its orders, also when the PC has it already. */
+export async function undoLast() {
+  const s = (scan.shots || [])[0];
+  if (!s) return false;
+  const keys = s.keys || [];
+  const waiting = state.queue.filter((q) => q.id === s.id && !q.link);
+  let kept = [];
+  if (waiting.length < keys.length) {
+    // (Some of) it reached the PC: take it back there first. If that can't be done, nothing changes here either.
+    let r = null, d = {};
+    try {
+      r = await call("api/phone/photo-delete?id=" + encodeURIComponent(s.id), { method: "POST" });
+      d = await r.json().catch(() => ({}));
+    } catch { r = null; }
+    if (!r || !r.ok) {
+      scanSay((r && d.error) || "Your PC can't be reached right now, and it already has that photo. Try Undo again when it says Connected, or remove the photo on the PC (History, Photos).");
+      return false;
+    }
+    kept = Array.isArray(d.shipped) ? d.shipped : [];
+  }
+  undone.add(s.id); // a copy on its way right now is taken back when it lands
+  for (const item of waiting) await queueDel(item.qid).catch(() => {});
+  const sent = keys.filter((k) => !waiting.some((q) => q.order === k));
+  for (const k of sent) {
+    const c = state.photos[k];
+    if (c && c[s.kind] > 0) { c[s.kind]--; c.total = Math.max(0, (c.total || 0) - 1); }
+  }
+  scan.shots.shift();
+  state.recent = state.recent.filter((r) => r.id !== s.id);
+  lsSet(LS.recent, state.recent.map((r, i) => (i < 20 ? r : { ...r, thumb: "" })));
+  await loadQueue();
+  if (s.kind === "postoffice") {
+    // Its orders wait for their post office photo again, and aren't shipped on this phone's list any more.
+    scan.posted = scan.posted.filter((k) => !keys.includes(k) || photoCounts(k).postoffice > 0);
+    const again = keys.filter((k) => scan.found.includes(k) && !scan.posted.includes(k));
+    if (scan.steps.length) { if (again.length) scan.fresh = [again[0]]; } else for (const k of again) if (!scan.fresh.includes(k)) scan.fresh.push(k);
+    scan.lastPost = [];
+    for (const k of s.opened || []) {
+      const o = state.orders.find((x) => x.key === k);
+      if (o && !kept.includes(k) && !o.tracking && !scan.posted.includes(k)) o.shipped = "";
+    }
+    lsSet(LS.orders, { orders: state.orders, photos: state.photos, updated: state.updated });
+  }
+  const labels = kept.map((k) => orderLabel(state.orders.find((x) => x.key === k) || { id: k })).join(", ");
+  scanSay(kept.length ? `Photo taken back. Your PC had already marked ${labels} shipped: untick Shipped there if that's wrong.`
+    : s.kind === "postoffice" ? "Photo taken back. Take it again when you're ready." : "Photo taken back.");
+  render();
+  renderScan();
+  return true;
 }
 
 /** Open the camera screen: it reads codes (which pick orders) and takes photos until Done. */
 export async function openScanner(startWith = [], { steps = false } = {}) {
   startMotion();
+  soundOn(); // straight from the tap, so the scan beep is allowed
   scan.open = true;
   scan.found = [...startWith];
-  scan.fresh = [...startWith];
-  scan.lastPost = [];
-  scan.posted = [];
+  // Orders that already have a post office photo (saved or waiting) are done: the next post office photo is for the
+  // others only. This is what brings a visit back right after the screen locked or the page reloaded (2026-11-27:
+  // reopening put the next photo on every order done so far). All of them done = a retake for them.
+  scan.posted = steps ? [] : startWith.filter((k) => photoCounts(k).postoffice > 0);
+  scan.fresh = startWith.filter((k) => !scan.posted.includes(k));
+  scan.lastPost = startWith.length && !scan.fresh.length ? [...startWith] : [];
   scan.steps = steps ? [...startWith] : [];
   if (steps) nextStep();
   scan.shots = [];
@@ -995,10 +1169,21 @@ function renderScan() {
   $("#scan-found").replaceChildren(...scan.found.map((k) => {
     const o = byKey.get(k) || { key: k, id: k };
     const done = scan.posted.includes(k), now = scan.steps.length > 0 && scan.fresh[0] === k;
-    return el("li", { class: "chip" + (done ? " done" : "") + (now ? " now" : "") }, el("span", { text: (done ? "✓ " : now ? "▶ " : "") + orderLabel(o) }),
+    const next = !now && !done && state.kind === "postoffice" && scan.fresh.includes(k); // the next post office photo is for these
+    return el("li", { class: "chip" + (done ? " done" : "") + (now ? " now" : "") + (next ? " next" : "") }, el("span", { text: (done ? "✓ " : now ? "▶ " : "") + orderLabel(o) }),
       el("button", { type: "button", class: "chip-x", "data-unscan": k, "aria-label": `Remove ${orderLabel(o)}`, text: "×" }));
   }));
   const n = scan.found.length;
+  // With a pile of orders the chips scroll in their own small box (the buttons stay in sight): keep the current ones in view.
+  const chips = $("#scan-found");
+  const focus = chips.querySelector(".chip.now") || [...chips.querySelectorAll(".chip.next")].pop() || chips.lastElementChild;
+  if (focus && chips.scrollHeight > chips.clientHeight) chips.scrollTop = Math.max(0, focus.offsetTop - 4);
+  const doneN = scan.found.filter((k) => scan.posted.includes(k)).length;
+  const nextN = scan.found.filter((k) => scan.fresh.includes(k) && !scan.posted.includes(k)).length;
+  $("#scan-count").textContent = !n ? ""
+    : state.kind === "postoffice" ? `${doneN} of ${n} have their post office photo.` + (nextN && !scan.steps.length ? ` The next photo is for ${nextN === 1 ? "the outlined order" : `the ${nextN} outlined orders`}.` : "")
+      : `${plural(n, "order")} here: the photo goes to ${n === 1 ? "it" : "all of them"}.`;
+  $("#cam-undo").hidden = !(scan.shots || []).length;
   $("#scan-done").textContent = n ? `Done (${n})` : "Cancel";
   $("#scan-photo").disabled = !n;
   $("#cam-shutter").disabled = !n || !scan.stream;
@@ -1187,11 +1372,12 @@ export function render() {
 
 function renderRecent() {
   const card = $("#recent-card");
-  card.hidden = !state.recent.length && !waitingPhotos();
+  card.hidden = !state.recent.length && !waitingPhotos() && !state.queueError;
   const n = waitingPhotos();
   const failed = new Set(state.queue.filter((q) => q.error && !q.link).map((q) => q.id)).size;
-  $("#queue-note").textContent = !n ? "All saved on your PC (Ship Desk → History → Photos)."
-    : state.link === "ok" ? `${plural(n, "photo")} sending to your PC…`
+  $("#queue-note").textContent = state.queueError ? "This phone couldn't check its waiting photos. Close this page and open it again."
+    : !n ? "All saved on your PC (Ship Desk → History → Photos)."
+    : state.link === "ok" ? `${plural(n, "photo")} sending to your PC…` + (failed ? ` ${failed} couldn't be saved yet: see below.` : "")
       : `${plural(n, "photo")} kept on this phone. ${n === 1 ? "It goes" : "They go"} to your PC by ${n === 1 ? "itself" : "themselves"} when Ship Desk can be reached (open this page again then).`
         + (failed ? ` ${failed} couldn't be saved: see below.` : "");
   const kindLabel = (id) => (KINDS.find((k) => k.id === id) || {}).label || id;
@@ -1204,7 +1390,7 @@ function renderRecent() {
       el("span", { class: "s-txt" },
         el("strong", { text: kindLabel(r.kind) }),
         el("span", { text: r.labels }),
-        el("span", { class: "s-state", text: err ? err.error : items.length ? "Waiting to send" : "Saved on PC ✓" })),
+        el("span", { class: "s-state", text: err ? err.error : items.length ? "Waiting to send" : state.queueError ? "Not checked" : "Saved on PC ✓" })),
       items.length ? el("button", { type: "button", class: "link danger", "data-forget": r.id, text: "Delete" }) : null);
   }));
 }
@@ -1226,6 +1412,11 @@ function bind() {
     renderScan();
   });
   $("#cam-shutter").addEventListener("click", () => shoot());
+  $("#cam-undo").addEventListener("click", () => {
+    const s = (scan.shots || [])[0];
+    const what = s ? ((KINDS.find((k) => k.id === s.kind) || {}).label || "").toLowerCase() : "";
+    if (s && window.confirm(`Take back the last ${what} photo?`)) undoLast();
+  });
   $("#cam-turn").addEventListener("click", () => {
     // Each tap turns the next photos a quarter more; back at what the sensor says, it's automatic again.
     const next = (photoTurn() + 90) % 360;
@@ -1334,6 +1525,8 @@ function bind() {
       stopCamera(true); // don't keep the camera on in the background
     }
   });
+  // Leaving the page (a reload, the app swiped away): the scanned orders stay picked, like after Done.
+  window.addEventListener("pagehide", () => { if (scan.open) closeScanner(true); });
   window.addEventListener("pageshow", (e) => { if (e.persisted) refresh(); });
   setInterval(() => {
     if (document.visibilityState !== "visible" || state.sending) return;
@@ -1365,7 +1558,7 @@ export async function init() {
 }
 
 export const api = { state, scan, turn, stopCamera, init, refresh, pump, addFiles, queueAll, setCode, render, parseScan, handleScan, linkTracking, newMailerEntry,
-  shoot, photoTurn, onMotion, nextPhoto, todoGroups,
+  shoot, undoLast, photoTurn, onMotion, nextPhoto, todoGroups,
   openScanner, closeScanner, scanFile, decodeCanvas, decodeFrame, readers };
 
 if (document.querySelector("[data-shipdesk-phone]")) init();

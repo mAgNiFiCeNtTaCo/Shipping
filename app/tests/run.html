@@ -15,7 +15,12 @@
 import { runSuites, SUITES } from "./runner.js";
 const out = document.getElementById("out");
 const lines = [];
-const log = (s) => { lines.push(s); const d = document.createElement("div"); d.textContent = s; if (s.startsWith("FAIL")) d.className = "f"; out.appendChild(d); };
+const log = (s) => {
+  lines.push(s);
+  const d = document.createElement("div"); d.textContent = s; if (s.startsWith("FAIL")) d.className = "f"; out.appendChild(d);
+  // Each line goes to tools/test.py as it happens, so a run that stops half-way still shows how far it got.
+  fetch("/__test-line", { method: "POST", headers: { "Content-Type": "text/plain" }, body: s }).catch(() => {});
+};
 const q = new URLSearchParams(location.search).get("suites");
 const names = q ? q.split(",") : SUITES;
 let res;

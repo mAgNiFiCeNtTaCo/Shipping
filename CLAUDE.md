@@ -94,6 +94,18 @@ explain in plain words and finish jobs end to end.
 - Post office photos on the camera screen go only to `scan.fresh` (scanned since the last post office photo), else
   `scan.lastPost` (retake); `scan.posted` get a tick chip. Contents/packed photos go to all of `scan.found` (user's
   wish 2026-10-26).
+- Post office visit fixes (2026-11-27 review): `shoot` fixes the kind + target orders at the tap (`scan.shooting`
+  guard; `addFiles({ kind, keys })`) and only takes its own orders out of `scan.fresh` (a label read while the photo
+  saved used to be wiped). `openScanner` treats orders that already have a post office photo (`photoCounts`) as
+  `scan.posted`, so reopening after a screen lock doesn't put the next photo on every finished order. Stepping: a
+  scanned label of the pile becomes the current one (`addFound`). `decodeFrame` prefers the code nearest the middle
+  that still has something to do (`stillToDo`, `CENTRE`). `undoLast` / `#cam-undo` -> `POST /api/phone/photo-delete?id=`
+  (serve.py `take_photo_back`: photos received in the last `UNDO_MINUTES` = 120, file moved to Photos\Taken back on
+  the phone, unapplied "shipped" note withdrawn; `undone` set catches a copy still uploading). `#scan-count` line,
+  `.chip.next`, chips scroll in a 124 px box, beep on scan (`beep`, WebAudio). Queue: a refused photo backs off
+  (`retryAt`), Ship Desk's own 500/503 doesn't stop the rest; storage failures say so (`STORAGE_TROUBLE`,
+  `state.queueError`). serve.py `body()` refuses a cut-off upload (`cut_short` -> 503), `write_json` fsyncs,
+  `read_json` keeps a damaged file as `.bad`, `Handler.timeout` = 120.
 - Camera screen = the scanner (`#scanner`): shutter (`shoot`) takes any number of photos for `scan.found` without
   leaving; turn from `devicemotion` gravity (`onMotion`, iOS sign differs from Android; flat keeps the last turn;
   no turn when the page itself is landscape); `#cam-turn` overrides. A post office photo leaves a "shipped" note
@@ -230,7 +242,9 @@ the zip), and run it only when they ask (blocked in auto mode before; ran fine o
   sources must be allowed there. No innerHTML anywhere: keep building DOM with `el()` / textContent.
 
 ## Gotchas
-- No Node on this PC: JS tests only run through `tools/test.py` (headless Edge).
+- No Node on this PC: JS tests only run through `tools/test.py` (headless Edge). Each result line is posted as it
+  happens (`/__test-line`), one test may take 60 s (`runner.js` `TEST_MS`), and a stuck page prints the lines so far;
+  "before its first test" = a JS file that doesn't load (a syntax error shows as FAIL lines with the error).
 - tools/test.py gives Edge a Preferences file so a browser download in a test lands in the temp profile: before
   2026-11-27 test runs left sample "TCGplayer import ... - 1 order.csv" files in the user's real Downloads.
 - Testing the installer on this PC: install silently to a temp folder with `/MERGETASKS="!desktopicon,!autostart"
