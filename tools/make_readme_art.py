@@ -19,10 +19,10 @@ EDGE = next(p for p in [r"C:\Program Files (x86)\Microsoft\Edge\Application\msed
 
 # name -> (screenshot, crop box left, top, right, bottom, width to save at)
 CROPS = {
-    "plan": ("app-1280-sample.png", (60, 730, 1220, 1690), 1160),
-    "plan-dark": ("app-1280-sample-dark.png", (60, 730, 1220, 1690), 1160),
-    "print": ("app-1280-sample.png", (60, 1740, 1220, 2340), 1160),
-    "history": ("app-1280-history.png", (60, 130, 1220, 1000), 1160),
+    "plan": ("app-1280-sample.png", (60, 1625, 1220, 2625), 1160),
+    "plan-dark": ("app-1280-sample-dark.png", (60, 1625, 1220, 2625), 1160),
+    "print": ("app-1280-sample.png", (60, 2635, 1220, 3245), 1160),
+    "history": ("app-1280-history.png", (60, 130, 1220, 1400), 1160),
     "phone": ("phone-390.png", (0, 0, 390, 760), 390),
     "scan": ("phone-390-scan.png", (0, 0, 390, 844), 390),
     "labels": ("pdf-thermalCut.png", (0, 0, 600, 445), 600),

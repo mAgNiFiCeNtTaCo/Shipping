@@ -1,8 +1,12 @@
-"""QA helper: screenshots of Ship Desk for docs/screens (needs the app server running).
+"""QA helper: screenshots of Ship Desk for docs/screens.
 
-    python serve.py --no-browser --port 5098      (in another window)
-    python docs/make_screens.py [port]
-    python docs/make_screens.py phone             (only the phone photos shots; no server needed)
+    python docs/make_screens.py                   (every shot, on a private server of its own)
+    python docs/make_screens.py phone             (only the phone photos shots)
+    python docs/make_screens.py <port>            (a server you started yourself: only one with a throwaway Saved folder)
+
+Every shot runs on a private server with a throwaway Saved folder and a stand-in for Tailscale. Never point it at a
+Ship Desk that uses the real Saved folder: each page takes the phone's waiting tracking numbers when it opens, and
+a screenshot's throwaway browser would swallow them (2026-11-27 review).
 
 Takes the app at 1280 and 500 px wide, before and after loading the sample, and page 1 of each PDF format
 (plus a packing slip page) through app/tests/pdf-preview.html, with headless Edge.
@@ -188,9 +192,46 @@ def main():
         os.makedirs(OUT, exist_ok=True)
         phone_shots()
         return
-    port = sys.argv[1] if len(sys.argv) > 1 else "5098"
-    base = f"http://127.0.0.1:{port}/"
     os.makedirs(OUT, exist_ok=True)
+    srv = root = None
+    if len(sys.argv) > 1:
+        port = sys.argv[1]
+    else:
+        import threading
+        sys.path.insert(0, os.path.dirname(HERE))
+        import serve
+
+        root = tempfile.mkdtemp(prefix="shipdesk-shots-saved-")
+
+        class Handler(serve.Handler):
+            save_root = root
+
+            def tailscale_status(self):
+                return {"installed": True, "running": True, "dns": "your-pc.your-tailnet.ts.net", "serving": False}
+
+            def open_file(self, path):
+                pass
+
+            def open_folder(self, folder):
+                pass
+
+            def show_page(self, page):
+                return "tab"
+
+        srv = serve.make_server(0, Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        port = srv.server_address[1]
+    base = f"http://127.0.0.1:{port}/"
+    try:
+        app_shots(base)
+    finally:
+        if srv:
+            srv.shutdown()
+            shutil.rmtree(root, ignore_errors=True)
+    phone_shots()
+
+
+def app_shots(base):
     for w, h in [(1280, 4200), (500, 7600)]:
         light, dark = ["--blink-settings=preferredColorScheme=1"], ["--force-dark-mode", "--blink-settings=preferredColorScheme=0"]
         shot(base, f"app-{w}-empty.png", w, h, light)
@@ -206,7 +247,6 @@ def main():
     # A packing slip page: thermal slips follow the 10 labels; letter slips follow 1 (letter4 = 3 label pages).
     shot(f"{base}tests/pdf-preview.html?format=thermal4x6&page=11&width=600", "pdf-thermal4x6-slip.png", 600, 900)
     shot(f"{base}tests/pdf-preview.html?format=letter4&page=4&width=900", "pdf-letter-slip.png", 900, 1165)
-    phone_shots()
 
 
 if __name__ == "__main__":

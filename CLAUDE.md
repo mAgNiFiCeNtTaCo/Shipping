@@ -252,8 +252,11 @@ the zip), and run it only when they ask (blocked in auto mode before; ran fine o
   `--if-changed --test` = the save-progress build (see above). `python tools/test_installer.py <exe> [--upgrade-from <older exe>]`
   checks one by itself.
 - Tests: `python tools/test.py` (all) or `python tools/test.py data render ui e2e`; runs in headless Edge.
-- Screenshots: `python serve.py --no-browser --port 5098` in the background, then `python docs/make_screens.py`
-  (`python docs/make_screens.py phone` = only the phone shots, on a private server with fake Tailscale).
+- Screenshots: `python docs/make_screens.py` (every shot on a private server with a throwaway Saved folder and fake
+  Tailscale, since 2026-11-28; `phone` = only the phone shots). Never point it at a Ship Desk on the real Saved folder:
+  a page takes the phone's waiting tracking numbers when it opens. Then `python tools/make_readme_art.py` re-crops
+  `docs/readme/*.png` (crop boxes in `CROPS`; a fresh browser shows the setup checklist, so step 2 starts at y 1625).
+  `app/tests/history-preview.html` dates its sample orders 1 and 3 days back, so "Last 14 days" has them.
 
 ## Rules
 - Order files contain buyers' names and addresses: never save them into the project or commit them; the app keeps everything in the browser.
