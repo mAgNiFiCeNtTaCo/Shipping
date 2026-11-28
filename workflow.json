@@ -939,6 +939,66 @@
           ]
         }
       ]
+    },
+    {
+      "title": "Whole-app review, then fixes in rounds: privacy, post office phone flow, PC page",
+      "date": "2026-11-28",
+      "summary": "Three read-only review agents (PC page, phone + server, code and tooling) found about 25 problems; the same session checked them and fixed rounds 0 to 2 (242 tests), plus flexible-envelope defaults.",
+      "stages": [
+        {
+          "name": "Review",
+          "kind": "review",
+          "note": "read-only Explore agents, in parallel",
+          "sessions": [
+            {
+              "id": "e41cb2ca-pc",
+              "role": "Reviewer: PC page",
+              "start": "2026-11-27T22:55",
+              "end": "2026-11-27T23:01",
+              "did": "15 findings: pasted tracking on wrong orders, labels made twice, import file gaps, silent failed saves",
+              "outcome": "done",
+              "files": 0
+            },
+            {
+              "id": "e41cb2ca-ph",
+              "role": "Reviewer: phone + server",
+              "start": "2026-11-27T22:55",
+              "end": "2026-11-27T23:00",
+              "did": "15 findings: label scanned during a save wiped, screen lock re-targets photos, cut-off uploads saved, no undo",
+              "outcome": "done",
+              "files": 0
+            },
+            {
+              "id": "e41cb2ca-cd",
+              "role": "Reviewer: code and tooling",
+              "start": "2026-11-27T22:55",
+              "end": "2026-11-27T23:04",
+              "did": "14 findings: a real buyer name in the repo, stale docs, frozen stamp price, test runner blind on timeouts",
+              "outcome": "done",
+              "files": 0
+            }
+          ]
+        },
+        {
+          "name": "Fixes",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-27T21:30",
+              "end": "2026-11-28T00:15",
+              "did": "Flexible-envelope defaults; round 0 privacy (names, .gitignore, build guard); round 1 phone.js/serve.py post office fixes + Undo last photo; round 2 PC page fixes; test runner reports per line; 13 new tests (242 pass)",
+              "outcome": "done",
+              "files": 24
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        "A confirm() nobody answers hangs headless Edge: tests stub win.confirm, also after a reload.",
+        "The test runner now posts each line as it happens, so a hang names its test."
+      ]
     }
   ]
 }

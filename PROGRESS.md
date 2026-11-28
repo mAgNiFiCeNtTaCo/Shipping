@@ -4,10 +4,10 @@ Ship Desk: a local browser app that does what tcgspeedshipper.com does (our own 
 "Export Shipping" CSV and get address labels, packing slips and envelopes as one PDF, a shipping plan with
 stamps, and the TCGplayer import file that marks the batch shipped.
 
-## Where it stands (2026-11-26)
+## Where it stands (2026-11-28)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.12** (built and published 2026-11-27, latest on GitHub; History two weeks at a time); never publish 1.1.9. Windows installer for other people:
+- **Version 1.1.13** built 2026-11-28 (review fixes rounds 0-2; not published yet, 1.1.12 is the latest on GitHub); never publish 1.1.9. Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
   --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10, v1.1.11, v1.1.12 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
@@ -17,7 +17,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   18 checks).
 - Runs in the background (no window) and starts with Windows; on/off switch + "Start with Windows" box at the top of
   the page, or `Start Ship Desk.bat` / `Stop Ship Desk.bat` -> http://127.0.0.1:5091/ . Works offline.
-- Tests: `python tools/test.py` = **222 passed, 0 failed** (2026-11-26: 204 in the browser + 18 server checks);
+- Tests: `python tools/test.py` = **242 passed, 0 failed** (2026-11-28: 219 in the browser + 23 server checks);
   `tools/test_installer.py` 17 checks.
 - TCGplayer's own Order List export dropped on the page is checked against Ship Desk (forgotten uploads go back in the
   import file, missed and canceled orders listed); History has a "Not sent to TCGplayer yet" filter.
@@ -25,7 +25,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   tracked slip PDF (confirmed on a real slip 2026-11-19) and prints envelope labels for plain envelopes: 2 per 4x6
   cut apart, one 6x4 landscape, or 8 per letter sheet. A printed label's barcode was read back from a phone photo
   and matched TCGplayer's slip.
-- 9 print formats: thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
+- 12 print formats (9 below + the three envelope-label formats): thermal 4x6, thermal 6x4 sideways (upright page, turned layout), letter 1/2/3/4 per page,
   label + slip, Avery 5160, #10 envelope. Labels, envelopes and slips carry an order QR code (switchable).
 - History page (header switch) of every order labelled or shipped; generated files save into `Saved\` (gitignored),
   named by time and buyers (`Labels 2026-10-21 14-05 - 3 orders - A, B, C.pdf`). The loaded orders stay through
@@ -40,6 +40,45 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-28: whole-app review; fixes in rounds 0-2 (privacy, post office phone flow, PC page); flexible envelopes; 1.1.13
+- User: "review app and see what changes should be added or made to make this better". Three read-only review
+  agents (PC page; phone + server; code, tests, tooling) reported about 25 problems; the main ones were checked in the
+  code. User chose: everything in 3 rounds, the example name in the repo was a real buyer (replaced), History default
+  = rolling last 14 days. Plan: `~/.claude/plans/sparkling-moseying-fountain-of-e41cb2ca-...md`.
+- Before the review (same session): where to put an envelope label for USPS's reader (bottom 5/8 in clear, straight,
+  lower middle); a stiff toploader envelope is hand-sorted and may get no scans, so **envelopes are flexible by
+  default**: `rigid: false`, envelope orders count no toploader weight, packages still do; saved settings move over
+  once (`settingsVersion` 2). TCGplayer's 3-pocket envelope kit and cheaper options looked up for the user.
+- **Round 0, privacy** (d8c4145): example buyer name -> an invented one in app.js, README, phone.test.js and this log;
+  a patterned made-up tracking number in data.test.js; `.gitignore` `*.xlsx` (sample kept); build_installer.py
+  `stray_app_files` stops a build when app/ holds ignored or non-code untracked files. The old name is still in
+  earlier GitHub commits: only GitHub Support can purge it (same request as the earlier leak).
+- **Round 1, phone + server** (77dc18e): `shoot` fixes kind + orders at the tap and only takes its own orders out of
+  `scan.fresh` (cause of a post office photo landing on the order before); `openScanner` treats orders with a post
+  office photo as done (screen lock / reload no longer re-targets them); stepping jumps to a scanned label; count
+  line, outlined next orders, chips in a scrolling box, beep; `undoLast` + `POST /api/phone/photo-delete`;
+  `decodeFrame` prefers the middle code that still has something to do; queue skips a stuck item; storage failures
+  said out loud. serve.py: cut-off upload refused (503), `write_json` fsync, damaged JSON kept as `.bad`, handler
+  timeout 120 s. Looked at the camera screen with 25 chips on a private copy.
+- **Round 2, PC page** (d11dd6a): pasted bare tracking numbers go to tracked-plan orders without tracking; labels
+  already made aren't ticked again; $49.99+ without tracking isn't noted sent; old never-sent orders named with **Put
+  them in too**; Clear shipped marks clears step 4 + History after a named backup; Pirate Ship CSV skips ticked
+  Shipped; stamp price default follows the letter rate and only changed settings are saved; save-failed banner;
+  History restore merges field by field and is offered on the Ship page; History opens on the last 14 days; Today
+  line; warnings for unprintable letters, orders abroad, slip ZIP vs order ZIP. sw v43, phone sw v16.
+- Decided against: resetting the envelope-label format per batch (the user prints envelope labels daily).
+  Not done yet from round 1: `Stop Ship Desk.bat` via `--stop`, log rotation while running.
+- Test runner: each line posted as it happens, 60 s per test, a stuck page prints how far it got. Found on the way:
+  an unanswered `confirm()` hangs headless Edge (tests stub it, also after a reload).
+- Tests: **242 passed** (219 browser + 23 server; 13 new). Slop scan of README, index.html, phone.html: clean.
+- **1.1.13 built**: installer test over 1.1.12 and zip test all good. Not published (the user's call).
+- **Round 3 open:** health check page, photo storage clean-up, phone queue stores each picture once, make_screens on
+  a private Saved folder (a screenshot run on the real one can swallow pending phone links), build/test_installer
+  guards, docs (TEST_REPORT.md, CONTRACT.md), app.js split. User: restart Ship Desk, reopen the iPhone page, try 3
+  packages before the 40.
+- Resources (2026-11-28 00:23, server idle): Shipping 1 process, 0% of a core, 33 MB RAM, port 5091, disk 706 MB;
+  whole PC CPU 6% of 32 threads, RAM 29.3 of 64 GB, GPU 31%.
+
 ### 2026-11-27: History shows two weeks at a time; search still finds every order
 - User: "can we archive history too? dont need to see every order ever, just every 2 weeks but when we need to lookup a
   name or order we should always be able to find it". Nothing is moved or removed: History's All and Shipped show one
