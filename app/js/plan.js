@@ -1,12 +1,19 @@
 // Shipping plan per order: envelope / tracking / signature (TCGplayer thresholds), estimated packed
 // weight, USPS stamped-letter postage and forever stamps. See CONTRACT.md "plan.js".
 
+// USPS stamped letter prices (Notice 123). RATES_EFFECTIVE = the day they started: the settings say so, and ask
+// to check USPS once they are more than about half a year old (USPS usually changes prices in January and July).
+export const LETTER_RATES = { firstOz: 0.82, extraOz: 0.29, maxOz: 3.5, nonmachinable: 0.49 };
+export const RATES_EFFECTIVE = "2026-10-04";
+
 export const DEFAULT_PLAN_SETTINGS = {
   cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4,
   // rigid = envelopes have a toploader: counted in the envelope's weight, plus the $0.49 non-machinable charge.
   // Off by default since 2026-11-27 (flexible envelopes: penny sleeves and a thin backer or a pocket insert, so the
   // USPS sorting machines take them and scan TCGplayer's tracked-envelope barcode). Packages always count toploaders.
-  rigid: false, slips: true, foreverValue: 0.82,
+  // foreverValue: a Forever stamp is always worth the first-ounce price, so the usual value follows it (app.js saves
+  // only values the person changed, so a new price here reaches everyone who never touched it).
+  rigid: false, slips: true, foreverValue: LETTER_RATES.firstOz,
   // TCGplayer's free tracked envelopes (from November 2026): a USPS barcode on its packing slip, for orders under
   // $49.99 that fit a letter. Off until the person has the feature and switches it on.
   trackedEnvelopes: false,
@@ -25,8 +32,6 @@ export const TAG_LABELS = {
 /** Plan tags shipped in an envelope with stamps (no tracked label to buy). */
 export const isEnvelopeTag = (tag) => tag === "envelope" || tag === "tracked-envelope";
 
-// USPS stamped letter prices (Notice 123, effective 2026-10-04).
-export const LETTER_RATES = { firstOz: 0.82, extraOz: 0.29, maxOz: 3.5, nonmachinable: 0.49 };
 export const TOO_HEAVY_NOTE = "Too heavy for a letter: ship as a flat or package";
 
 const EXPEDITED = /expedited|priority|express|tracked/i;

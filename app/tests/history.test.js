@@ -383,20 +383,24 @@ tests["packing slip list: the button shows the folder's slips and loads the one 
   document.getElementById("history-frame").remove();
 };
 
-tests["history page: shows the latest two weeks, the menu picks another period, and search finds any date"] = async () => {
+tests["history page: opens on the last 14 days, the menu picks an older two weeks, and search finds any date"] = async () => {
   clearStore();
   const hist = {};
   recordPrinted(hist, [order("OLD-1", { name: "Wilma Oldfield" })], { when: "2026-10-20 09:00" });
   recordShipped(hist, order("OLD-1", { name: "Wilma Oldfield" }), { tracking: "", shipped: true }, { when: "2026-10-21 09:00" });
-  recordPrinted(hist, [order("NEW-1")], { when: "2026-11-27 10:00" });
-  recordShipped(hist, order("NEW-1"), { tracking: "", shipped: true }, { when: "2026-11-27 11:00" });
+  // (NEW-1 is from the day before yesterday: "the last 14 days" is counted from the real today)
+  const p = (n) => String(n).padStart(2, "0"), d = new Date(Date.now() - 2 * 864e5);
+  const recent = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  recordPrinted(hist, [order("NEW-1")], { when: recent + " 10:00" });
+  recordShipped(hist, order("NEW-1"), { tracking: "", shipped: true }, { when: recent + " 11:00" });
   save(KEYS.history, hist);
   const { doc, app, win } = await openApp("#history");
   await waitFor(() => doc.querySelector("#history-table tbody tr[data-key]"), "the History table");
   const keys = () => [...doc.querySelectorAll("#history-table tbody tr[data-key]")].map((tr) => tr.dataset.key);
-  eq(keys(), ["NEW-1"], "only the latest two weeks");
+  eq(keys(), ["NEW-1"], "only the last 14 days");
   const sel = doc.querySelector("#history-period");
-  ok(/2026-11-16 to 2026-11-29 \(1 order\)/.test(sel.options[0].textContent), "menu names the period: " + sel.options[0].textContent);
+  eq([sel.value, sel.options[0].textContent], ["recent", "Last 14 days (1 order)"], "the menu opens on the last 14 days");
+  ok([...sel.options].some((o) => /^2026-10-19 to 2026-11-01 \(1 order\)$/.test(o.textContent)), "and lists the older two-week blocks");
   ok(/Every order \(2 orders\)/.test(sel.options[sel.options.length - 1].textContent), "and every order");
   sel.value = "2026-10-19";
   sel.dispatchEvent(new win.Event("change", { bubbles: true }));
@@ -404,14 +408,35 @@ tests["history page: shows the latest two weeks, the menu picks another period, 
   sel.value = "";
   sel.dispatchEvent(new win.Event("change", { bubbles: true }));
   eq(keys().length, 2, "every order");
-  sel.value = "2026-11-16";
+  sel.value = "recent";
   sel.dispatchEvent(new win.Event("change", { bubbles: true }));
+  eq(keys(), ["NEW-1"], "back to the last 14 days");
   const search = doc.querySelector("#history-search");
   search.value = "oldfield";
   search.dispatchEvent(new win.Event("input", { bubbles: true }));
   eq(keys(), ["OLD-1"], "search finds an order from weeks ago");
   ok(sel.disabled && /every order/i.test(doc.querySelector("#history-period-note").textContent), "and says it searches every date");
   ok(app.state.history["OLD-1"], "nothing was removed");
+  clearStore();
+  document.getElementById("history-frame").remove();
+};
+
+tests["import file: an order shipped weeks ago and never sent is named in step 4, and goes in on request"] = async () => {
+  clearStore();
+  const p = (n) => String(n).padStart(2, "0");
+  const day = (ago) => { const d = new Date(Date.now() - ago * 864e5); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+  const hist = {};
+  recordShipped(hist, order("OLD-9"), { tracking: "", shipped: true }, { when: day(20) + " 09:00" });
+  recordShipped(hist, order("NEW-9"), { tracking: "", shipped: true }, { when: day(1) + " 09:00" });
+  save(KEYS.history, hist);
+  const { doc, app } = await openApp("");
+  await waitFor(() => visible(doc.querySelector("#ship-old")), "the note about the old order");
+  ok(/1 order shipped more than 14 days ago was never put in an import file.*OLD-9/.test(doc.querySelector("#ship-old-text").textContent), doc.querySelector("#ship-old-text").textContent);
+  eq(app.importFile().included.map((i) => i.id), ["NEW-9"], "left out, as before");
+  ok(/1 shipped/.test(doc.querySelector("#today-line").textContent) === false && /2 shipped orders not sent to TCGplayer yet/.test(doc.querySelector("#today-line").textContent), doc.querySelector("#today-line").textContent);
+  doc.querySelector("#btn-import-old").click();
+  eq(app.importFile().included.map((i) => i.id), ["NEW-9", "OLD-9"], "in on request");
+  ok(!visible(doc.querySelector("#ship-old")), "note gone");
   clearStore();
   document.getElementById("history-frame").remove();
 };

@@ -274,6 +274,7 @@ export const tests = {
     ok(/still here/.test(doc.querySelector("#load-msg").textContent), "says the orders are back");
     eq(app.importFile().count, 1, "import file made without dropping the CSV again");
 
+    doc.defaultView.confirm = () => true;
     doc.querySelector("#btn-clear-batch").click();
     eq(app.state.orders.length, 0, "cleared");
     eq(localStorage.getItem(KEYS.batch), null, "forgotten in the browser");

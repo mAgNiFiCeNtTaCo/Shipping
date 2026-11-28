@@ -862,7 +862,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             threading.Timer(0.3, self.stop_server).start()
             return
         if url.path == "/api/history-copy":
-            self.save_history_copy()
+            self.save_history_copy(arg("keep"))
             return
         if url.path == "/api/backup":
             if arg("open") == "1":
@@ -1031,7 +1031,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return {"history": None, "count": 0, "savedAt": ""}
         return {"history": hist, "count": len(hist), "savedAt": data.get("savedAt", "")}
 
-    def save_history_copy(self):
+    def save_history_copy(self, keep=""):
         d = self.read_json_body(MAX_HISTORY_BYTES)
         hist = d.get("history") if isinstance(d, dict) else None
         if not isinstance(hist, dict) or not all(isinstance(v, dict) for v in hist.values()):
@@ -1039,6 +1039,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         now = time.strftime("%Y-%m-%d %H:%M")
         data = {"savedAt": now, "history": hist}
+        if keep:
+            # Before a clear: this History goes aside under its own name (kept, never tidied away), and the saved
+            # copy stays as it is until the page sends the cleared one.
+            why = re.sub(r"[^A-Za-z ]", "", keep)[:40].strip() or "kept"
+            with lock:
+                path = unique_path(os.path.join(self.history_dir(), "Backups"), f"history-{now[:10]} {now[11:].replace(':', '-')} {why}.json")
+                write_json(path, data)
+            self.reply(200, {"ok": True, "count": len(hist), "kept": os.path.basename(path)})
+            return
         with lock:
             write_json(os.path.join(self.history_dir(), HISTORY_COPY), data)
             backups = os.path.join(self.history_dir(), "Backups")

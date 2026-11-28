@@ -2,15 +2,15 @@
 // and tracking panels to the Data modules (csv / plan / tracking / paste) and the PDF modules
 // (render / slips). See CONTRACT.md "app.js / store.js / UI".
 
-import { load, save, remove, KEYS } from "./store.js";
+import { load, save, remove, KEYS, onSaveFail } from "./store.js";
 import { parseOrders, splitName } from "./csv.js";
-import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS, isEnvelopeTag } from "./plan.js";
+import { planOrder, DEFAULT_PLAN_SETTINGS, FILTERS, filterOrders, summarize, TAG_LABELS, isEnvelopeTag, RATES_EFFECTIVE } from "./plan.js";
 import { detectCarrier, matchTracking, importFileCsv, pirateShipCsv, TCG_HEADERS } from "./tracking.js";
 import { parseAddresses } from "./paste.js";
-import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText } from "./render.js";
+import { renderPdf, FORMATS, slipsInLabelOrderPdf, cleanText, isAbroad, losesLetters } from "./render.js";
 import { readSlipPdf, attachSlips } from "./slips.js";
 import { readXlsx, isShipmentsHeader, readShipments, shipmentsFromCsv, matchShipments, isoDate } from "./pirate.js";
-import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv,
+import { HISTORY_FILTERS, recordPrinted, recordShipped, applyShipped, historyCounts, historyList, historyCsv, isRecent, RECENT_DAYS, mergeRecords, notSentYet,
   trackingUrl, formatName, historyKey, recordSeen, stamp, tcgSays, firstSentAt, barcodeNumber, barcodeTrackingUrl,
   historyPeriods, PERIOD_FILTERS } from "./history.js";
 import { orderListFromCsv, compareOrderList, listTime } from "./orderlist.js";
@@ -218,13 +218,25 @@ function loadSettings() {
     // to flexible envelopes (2026-11-27). Packages still count toploaders; every other value is kept.
     state.plan.rigid = false;
     state.plan.settingsVersion = DEFAULT_PLAN_SETTINGS.settingsVersion;
-    if (savedPlan && Object.keys(savedPlan).length) save(KEYS.plan, state.plan);
+    if (savedPlan && Object.keys(savedPlan).length) savePlan();
   }
   const shipped = load(KEYS.shipped, {});
   state.shipped = shipped && typeof shipped === "object" ? shipped : {};
   const history = load(KEYS.history, {});
   state.history = history && typeof history === "object" && !Array.isArray(history) ? history : {};
 }
+
+/**
+ * Keep the weights and postage settings: only the values that differ from the usual ones (plus the version), so a
+ * usual value that changes in a later Ship Desk (a new stamp price) isn't held back by an old saved copy of it.
+ */
+function savePlan() {
+  const changed = Object.fromEntries(Object.entries(state.plan).filter(([k, v]) => k === "settingsVersion" || v !== DEFAULT_PLAN_SETTINGS[k]));
+  save(KEYS.plan, changed);
+}
+
+// The browser couldn't keep something (its storage is full or switched off): say so until the page is reloaded.
+onSaveFail(() => { const n = document.querySelector("#save-note"); if (n) n.hidden = false; });
 
 const activeProfile = () => state.profiles.find((p) => p.id === state.activeProfile) || state.profiles[0];
 
@@ -273,6 +285,8 @@ export function printOrders() {
 }
 
 const isShippedNow = (o) => { const s = state.shipped[o.id]; return !!(o.tracking || (s && (s.tracking || s.shipped))); };
+/** The day this order's labels were last made here ("2026-11-26"), or "". */
+const labelsMade = (o) => { const r = own(state.history, historyKey(o, state.source)); return r && r.printCount > 0 ? String(r.lastPrintedAt || "").slice(0, 10) : ""; };
 
 // ---------- loading orders ----------
 
@@ -288,8 +302,11 @@ function setBatch(source, orders, fileName, text, kept = null) {
   state.lastPrinted = [];
   state.done = { 3: false, 4: false };
   replan();
-  const fresh = orders.filter((o) => !isShippedNow(o));
-  state.selected = new Set((fresh.length ? fresh : orders).map((o) => o.id));
+  // Ticked for printing: orders that aren't shipped and have no labels yet (TCGplayer's export still lists orders
+  // printed yesterday and dropped off today: they must not print twice). All done already = tick what isn't shipped.
+  const open = orders.filter((o) => !isShippedNow(o));
+  const fresh = open.filter((o) => !labelsMade(o));
+  state.selected = new Set((fresh.length ? fresh : open.length ? open : orders).map((o) => o.id));
   if (kept) {
     const ids = new Set(orders.map((o) => o.id));
     if (Array.isArray(kept.selected)) state.selected = new Set(kept.selected.filter((id) => ids.has(id)));
@@ -360,9 +377,14 @@ export function loadCsvText(text, fileName = "your file") {
   setBatch("csv", res.orders, fileName, text);
   keepRows(res.orders);
   const already = res.orders.filter(isShippedNow).length;
+  const made = res.orders.filter((o) => !isShippedNow(o) && labelsMade(o));
   const lines = [];
   if (res.skipped.length) lines.push(skippedList(res.skipped));
   if (already) lines.push(`${plural(already, "order was", "orders were")} already marked shipped, so ${already === 1 ? "it is" : "they are"} not ticked for printing.`);
+  if (made.length && made.length < res.orders.length - already) {
+    const last = made.map(labelsMade).sort().pop();
+    lines.push(`${plural(made.length, "order already has", "orders already have")} labels (made ${last}${made.some((o) => labelsMade(o) !== last) ? " or earlier" : ""}), so ${made.length === 1 ? "it is" : "they are"} not ticked: tick ${made.length === 1 ? "it" : "them"} to print again.`);
+  }
   showMsg(box, res.skipped.length ? "warn" : "ok",
     `Loaded ${plural(res.orders.length, "order")} from ${fileName}.` + (res.skipped.length ? ` ${plural(res.skipped.length, "row")} could not be used:` : ""), lines);
   return res;
@@ -592,6 +614,10 @@ async function loadSlipFile(file) {
     if (state.slips.unmatchedPages.length) lines.push(`${plural(state.slips.unmatchedPages.length, "page")} didn't mention any of your orders (page ${state.slips.unmatchedPages.join(", ")}).`);
     if (matched < state.orders.length) lines.push(`No slip found for: ${state.orders.filter((o) => !state.slips.byOrder[o.id]).map((o) => o.id).join(", ")}.`);
     const barcoded = state.orders.filter((o) => o.imb);
+    // The label prints the slip's address with its barcode: say so when that isn't the ZIP in the orders file.
+    const zip5 = (z) => String(z || "").replace(/\D/g, "").slice(0, 5);
+    const offZip = barcoded.filter((o) => zip5(o.imb.routing) && zip5(o.zip) && zip5(o.imb.routing) !== zip5(o.zip));
+    if (offZip.length) lines.push(`Check ${offZip.map((o) => `${o.id} (slip ${zip5(o.imb.routing)}, file ${zip5(o.zip)})`).join(", ")}: the ZIP in the slip's barcode isn't the ZIP in your orders file. The label prints the slip's address.`);
     if (barcoded.length) {
       lines.push(`${plural(barcoded.length, "slip has", "slips have")} TCGplayer's USPS tracking barcode: Ship Desk prints it with the address TCGplayer checked on ${barcoded.length === 1 ? "its label" : "their labels"} (every format but Avery). TCGplayer's protection is only sure with the slip in a #10 window envelope.`);
       if (!ENVELOPE_FORMATS.includes(state.output.format)) {
@@ -743,6 +769,8 @@ export function downloadPdf() {
   recordPrinted(state.history, orders, { source: state.source, format: state.output.format });
   saveHistory();
   renderSteps();
+  renderTable(); // "Labels made <date>" in the Shipped column
+  renderShip();  // the Today line
   renderHistory();
   return doc;
 }
@@ -806,8 +834,10 @@ const sameRecords = (a, b) => {
 };
 
 /** At start: link this browser to the copy, or (when it differs and this browser isn't linked) offer it. */
+let historyChoices = 0; // Restore / Keep pressed: a check that was still on its way mustn't ask again
 export async function checkHistoryCopy() {
   let copy;
+  const asked = historyChoices;
   try {
     const r = await shipdeskFetch("api/history-copy");
     if (!r.ok) return null;
@@ -815,10 +845,14 @@ export async function checkHistoryCopy() {
   } catch {
     return null;
   }
+  if (asked !== historyChoices) return "linked"; // answered while this was reading the copy
   state.historyCopy = null;
   state.historySavedAt = copy.savedAt || "";
   const linked = load(KEYS.historyCopy, "") === "on";
-  if (linked || !copy.count || sameRecords(state.history, copy.history)) {
+  // A linked browser normally just writes its History over the copy. Not when the copy has orders this browser
+  // doesn't know: then this browser lost something (its storage was full, or partly cleared), so it asks first.
+  const lacks = Object.keys(copy.history || {}).some((k) => !own(state.history, k));
+  if ((linked && !lacks) || !copy.count || sameRecords(state.history, copy.history)) {
     save(KEYS.historyCopy, "on");
     if (!sameRecords(state.history, copy.history)) await copyHistory();
   } else {
@@ -832,7 +866,10 @@ export async function checkHistoryCopy() {
 export async function restoreHistoryCopy() {
   const copy = state.historyCopy;
   if (!copy || !copy.history) return 0;
-  state.history = { ...copy.history, ...state.history };
+  historyChoices++;
+  const mine = state.history;
+  state.history = { ...copy.history };
+  for (const [k, r] of Object.entries(mine)) state.history[k] = own(copy.history, k) ? mergeRecords(copy.history[k], r) : r;
   for (const r of Object.values(state.history)) {
     if (r.source === "csv" && r.id && r.shipped && !state.shipped[r.id]) {
       state.shipped[r.id] = { tracking: r.tracking || "", carrier: r.carrier || "", shipped: true, at: String(r.shippedAt || "").slice(0, 10) };
@@ -844,12 +881,14 @@ export async function restoreHistoryCopy() {
   saveHistory();
   await copyHistory();
   renderAll();
+  showMsg($("#history-msg"), "ok", `History restored: ${plural(Object.keys(state.history).length, "order")}.`);
   toast(`History restored: ${plural(Object.keys(state.history).length, "order")}.`);
   return Object.keys(state.history).length;
 }
 
 /** Keep this browser's History and make it the copy from now on (the earlier copy stays in Saved\History\Backups). */
 export async function keepThisHistory() {
+  historyChoices++;
   state.historyCopy = null;
   save(KEYS.historyCopy, "on");
   renderHistory();
@@ -861,7 +900,10 @@ function renderHistoryCopy() {
   const box = $("#history-copy");
   const c = state.historyCopy;
   box.hidden = !c;
+  // Said on the Ship page too: until the choice is made, orders shipped earlier look not shipped there.
+  $("#history-offer").hidden = !c;
   if (!c) return;
+  $("#history-offer-text").textContent = `Ship Desk has a saved copy of your History (${plural(c.count, "order")}, saved ${c.savedAt || "earlier"}) and this browser's is different. Until you choose, orders you shipped before may show as not shipped here.`;
   $("#history-copy-text").textContent = `Ship Desk has a saved copy of your History: ${plural(c.count, "order")}, last saved ${c.savedAt || "earlier"}. `
     + "This browser's History is different (it may have been cleared). Restore the saved copy?";
 }
@@ -980,16 +1022,26 @@ function labelOrder() {
 export function matchPasted(text) {
   const box = $("#match-msg");
   if (!String(text || "").trim()) { showMsg(box, "warn", "Paste some tracking numbers first."); return null; }
-  const res = matchTracking(String(text), labelOrder());
+  // Numbers without an order # go to the orders that need a tracked label and have none yet, in label order.
+  const had = (o) => String((state.shipped[o.id] || {}).tracking || o.tracking || "").replace(/[\s-]/g, "").toUpperCase();
+  const res = matchTracking(String(text), labelOrder(), { skip: (o) => !!had(o), prefer: (o) => !!(o.plan && o.plan.tracked) });
+  const byId = new Map(state.orders.map((o) => [o.id, o]));
+  const replaced = res.matches.filter((m) => byId.has(m.orderId) && had(byId.get(m.orderId)) && had(byId.get(m.orderId)) !== m.tracking)
+    .map((m) => `Order ${m.orderId} had tracking …${had(byId.get(m.orderId)).slice(-6)}: it now has …${m.tracking.slice(-6)}.`);
   for (const m of res.matches) {
     state.shipped[m.orderId] = withSent(m.orderId, { tracking: m.tracking, carrier: m.carrier || detectCarrier(m.tracking) || "USPS", shipped: true, at: today() });
   }
   saveShipped();
   for (const m of res.matches) noteShipped(m.orderId);
-  const lines = [...(res.warnings || [])];
+  const lines = [...(res.warnings || []), ...replaced];
+  if (res.matches.length) {
+    lines.push(el("div", { class: "small" }, "Went to: ", res.matches.slice(0, 40).flatMap((m, i) => [i ? ", " : "", el("span", { text: `${m.orderId}${byId.has(m.orderId) ? " " + byId.get(m.orderId).name : ""} …${m.tracking.slice(-4)}` })]),
+      res.matches.length > 40 ? ` and ${res.matches.length - 40} more` : ""));
+  }
   for (const m of res.matches) { const other = trackingElsewhere(m.tracking, m.orderId); if (other) lines.push(alsoOn(m.tracking, other)); }
   if (res.unmatched && res.unmatched.length) lines.push(el("div", {}, "Not matched: ", res.unmatched.map((u) => el("code", { text: u }))));
-  showMsg(box, res.matches.length ? (lines.length ? "warn" : "ok") : "error",
+  const worry = (res.warnings || []).length + replaced.length + (res.unmatched || []).length + res.matches.filter((m) => trackingElsewhere(m.tracking, m.orderId)).length;
+  showMsg(box, res.matches.length ? (worry ? "warn" : "ok") : "error",
     res.matches.length ? `Matched ${plural(res.matches.length, "tracking number")}.` : "No tracking numbers matched your orders.", lines);
   renderAll();
   return res;
@@ -1006,7 +1058,7 @@ export function importFile({ skipSent = !state.importAgain } = {}) {
   const c = importCandidates();
   const r = importFileCsv(c.orders, c.shipped, { skipSent });
   const went = new Set(r.included.map((i) => i.id));
-  return { ...r, shipped: c.shipped, extra: c.extra.filter((o) => went.has(o.id)), waiting: c.extra };
+  return { ...r, shipped: c.shipped, extra: c.extra.filter((o) => went.has(o.id)), waiting: c.extra, old: c.old };
 }
 
 // ---------- every shipped order goes in, loaded or not ----------
@@ -1047,17 +1099,25 @@ function historyOnlyOrders() {
   const firstSent = firstSentAt(state.history);
   const since = stamp(new Date(Date.now() - ROW_DAYS * 864e5));
   const rows = keptRows();
-  const out = [];
+  const out = [], old = [];
   for (const r of recs) {
     const when = String(r.shippedAt || "");
     if (loaded.has(r.id) || !r.shipped) continue;
     // TCGplayer's Order List decides when there is one: shipped there = done; still Ready to Ship = goes in, however old.
     const says = tcgSays(r);
-    if (says === "shipped" || says === "canceled" || (says !== "open" && (when < since || (firstSent && when < firstSent)))) continue;
+    if (says === "shipped" || says === "canceled" || (says !== "open" && firstSent && when < firstSent)) continue;
+    if (says !== "open" && when < since && !state.importOld) {
+      // Shipped more than ROW_DAYS ago and never in an import file: left out, but said so in step 4 (it used to
+      // drop out without a word while History still listed it as not sent).
+      if (!r.sentAt && !(own(state.shipped, r.id) || {}).sent) old.push(r.id);
+      continue;
+    }
     const kept = own(rows, r.id);
     out.push({ id: r.id, name: r.name, value: r.value, barcode: recordBarcode(r), fromHistory: !kept, row: kept ? kept.row : rowFromHistory(r) });
   }
-  return out.sort((a, b) => a.id.localeCompare(b.id));
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  out.old = old.sort();
+  return out;
 }
 
 /** What the import file looks at: the loaded orders + History's shipped ones, and their shipped state. */
@@ -1076,7 +1136,7 @@ function importCandidates() {
     if (entry && !entry.sent && says === "shipped") entry = { ...entry, sent: { at: r.tcg.at, what: "TCGplayer", tcg: true } };
     if (entry) shipped[o.id] = entry;
   }
-  return { orders, extra, shipped };
+  return { orders, extra, shipped, old: extra.old || [] };
 }
 
 export function downloadImportFile() {
@@ -1091,18 +1151,22 @@ export function downloadImportFile() {
   }
   const name = fileName(["TCGplayer import", "TCGplayer import"], "csv", [], r.count);
   // Remember what went in, so the next import file only has what's new (or changed).
-  const at = stamp();
+  // ($49.99 or more with no tracking number: TCGplayer may refuse the row, so it isn't noted as sent and stays on
+  // the list until it has a number or TCGplayer's order list shows it shipped.)
+  const at = stamp(), unsure = new Set(r.missingRequired);
   for (const { id, what } of r.included) {
+    if (unsure.has(id)) continue;
     state.shipped[id] = { ...(own(state.shipped, id) || r.shipped[id] || { tracking: "", carrier: "", shipped: true, at: today() }), sent: { at, what } };
     const rec = own(state.history, id);
     if (rec) rec.sentAt = at;
   }
   state.importAgain = false;
+  state.importOld = false;
   saveShipped();
   saveHistory();
   state.lastSave = saveBlob(name, "import", new Blob([r.csv], { type: "text/csv" })).then((res) => {
     showMsg(box, r.missingRequired.length ? "warn" : "ok", `Saved ${res.name} with ${plural(r.count, "order")}.`,
-      [...savedLines(res), r.missingRequired.length ? `TCGplayer will refuse ${r.missingRequired.join(", ")} without a tracking number.` : null,
+      [...savedLines(res), r.missingRequired.length ? `${r.missingRequired.join(", ")}: $49.99 or more with no tracking number. TCGplayer may refuse ${r.missingRequired.length === 1 ? "it" : "them"}, so Ship Desk keeps ${r.missingRequired.length === 1 ? "it" : "them"} as not sent until ${r.missingRequired.length === 1 ? "it has" : "they have"} one.` : null,
         r.already.length ? `Left out ${plural(r.already.length, "order")} already in an earlier import file.` : null,
         r.extra.length ? `${plural(r.extra.length, "order")} in it ${r.extra.length === 1 ? "isn't" : "aren't"} in the loaded file (shipped since, from History): ${r.extra.map((o) => o.id).join(", ")}.` : null,
         r.extra.some((o) => o.fromHistory) ? "If TCGplayer refuses any of those, export them from TCGplayer (Orders → tick them → Export Shipping), drop that file here and make the import file again." : null,
@@ -1144,6 +1208,8 @@ function shipStatus(o) {
   if (s && s.tracking) return { kind: "done", text: `Shipped · ${s.carrier || "tracked"} …${s.tracking.replace(/\s/g, "").slice(-4)}`, title: s.tracking };
   if (s && s.shipped) return { kind: "done", text: "Shipped" };
   if (o.tracking) return { kind: "info", text: "Tracking in file", title: o.tracking };
+  const made = labelsMade(o);
+  if (made) return { kind: "todo", text: `Labels made ${made.slice(5)}, not shipped`, title: `Labels made ${made}` };
   return { kind: "todo", text: "Not shipped yet" };
 }
 
@@ -1164,8 +1230,10 @@ function rowFor(o) {
   return el("tr", { "data-id": o.id, class: sel ? "" : "off" },
     el("td", { class: "c-check" }, el("input", { type: "checkbox", checked: sel, "data-id": o.id, "aria-label": `Print order ${o.id} for ${o.name}` })),
     el("td", { class: "c-id" }, el("span", { class: "oid", text: o.id }), o.orderDate ? el("span", { class: "sub muted", text: o.orderDate }) : null),
-    el("td", { class: "c-buyer", text: o.name }),
-    el("td", { class: "c-dest", text: `${o.city}, ${o.state} ${o.zip}` }),
+    el("td", { class: "c-buyer" }, o.name,
+      losesLetters(o.name, o.address1, o.address2, o.city) ? el("span", { class: "sub warn-text", text: "Has letters the label can't print (they come out as ?): write them in by hand" }) : null),
+    el("td", { class: "c-dest" }, `${o.city}, ${o.state} ${o.zip}`,
+      isAbroad(o.country) ? el("span", { class: "sub warn-text", text: `Outside the US (${o.country}): US stamps and the plan here don't cover it` }) : null),
     el("td", { class: "c-items num", "data-label": "Items" }, items),
     el("td", { class: "c-value num", "data-label": "Value" }, money(o.value)),
     el("td", { class: "c-plan" }, chip(o.plan)),
@@ -1197,14 +1265,15 @@ function renderTable() {
 function renderTotals(rows) {
   const s = planSettings();
   const sum = summarize(rows, s);
-  const env = summarize(rows.filter((o) => o.plan && isEnvelopeTag(o.plan.tag)), s);
+  // Stamps to get ready: the envelopes ticked for this run that haven't shipped (not every row of a half-done batch).
+  const env = summarize(rows.filter((o) => o.plan && isEnvelopeTag(o.plan.tag) && state.selected.has(o.id) && !isShippedNow(o)), s);
   const tagNames = { envelope: "envelope OK", "tracked-envelope": "tracked envelope", "tracking-recommended": "tracking recommended", "tracking-required": "tracking required", signature: "signature" };
   const parts = Object.entries(tagNames).filter(([t]) => sum.byTag[t]).map(([t, name]) => el("span", { class: `dot tag-${t}`, text: `${sum.byTag[t]} ${name}` }));
   const box = $("#totals");
   box.replaceChildren(
     el("strong", { text: plural(sum.count, "order") }), " · ", money(sum.totalValue), " in cards",
     parts.length ? el("span", { class: "tags" }, parts) : null,
-    env.count ? el("span", { class: "stamps", text: `Envelopes need about ${plural(env.totalStamps, "stamp")} (${money(env.totalPostage)})` }) : null);
+    env.count ? el("span", { class: "stamps", text: `${plural(env.count, "ticked envelope needs", "ticked envelopes need")} about ${plural(env.totalStamps, "stamp")} (${money(env.totalPostage)})` }) : null);
 }
 
 function renderOutput() {
@@ -1237,9 +1306,26 @@ function renderOutput() {
   $("#btn-pdf").textContent = orders.length ? `Download PDF (${plural(orders.length, "order")})` : "Download PDF";
 }
 
+/** One line over step 4: what happened today and what is still open. */
+function renderToday() {
+  const t = today(), recs = Object.values(state.history).filter((r) => r && typeof r === "object");
+  const shipped = recs.filter((r) => r.shipped && String(r.shippedAt || "").slice(0, 10) === t).length;
+  const made = recs.filter((r) => !r.shipped && r.printCount > 0 && String(r.lastPrintedAt || "").slice(0, 10) === t);
+  const first = firstSentAt(state.history);
+  const unsent = recs.filter((r) => notSentYet(r, first)).length;
+  const box = $("#today-line");
+  box.hidden = !(shipped || made.length || unsent);
+  if (box.hidden) return;
+  box.replaceChildren(el("strong", { text: "Today: " }),
+    `${shipped} shipped · `,
+    made.length ? `${plural(made.length, "order")} with labels made, not shipped yet${made.length <= 6 ? " (" + made.map((r) => r.id || r.name).join(", ") + ")" : ""} · ` : "every label made today is shipped · ",
+    unsent ? `${plural(unsent, "shipped order")} not sent to TCGplayer yet (make the import file below)` : "nothing waiting to go to TCGplayer");
+}
+
 function renderShip() {
+  renderToday();
   const cand = importCandidates(), waiting = cand.extra;
-  const has = state.orders.length > 0 || waiting.length > 0;
+  const has = state.orders.length > 0 || waiting.length > 0 || cand.old.length > 0;
   $("#ship-empty").hidden = has;
   $("#ship-area").hidden = !has;
   if (!has) return;
@@ -1252,7 +1338,8 @@ function renderShip() {
         tcgChip(own(state.history, o.id), own(cand.shipped, o.id))),
       el("label", { class: "sr", for: id, text: `Tracking number for order ${o.id}` }),
       el("input", { id, class: "trk-input", type: "text", value: s.tracking || "", placeholder: o.tracking || "Tracking #", "data-id": o.id, autocomplete: "off", spellcheck: "false" }),
-      el("label", { class: "check ship-check" }, el("input", { type: "checkbox", "data-id": o.id, checked: !!(s.shipped || s.tracking), disabled: !!s.tracking }), " Shipped"));
+      el("label", { class: "check ship-check" }, el("input", { type: "checkbox", "data-id": o.id, checked: !!(s.shipped || s.tracking), disabled: !!s.tracking,
+        "aria-label": `Shipped: order ${o.id} for ${o.name}` }), " Shipped"));
   }));
   renderShipWarn();
   $("#btn-import").disabled = state.source !== "csv" && !waiting.length;
@@ -1275,10 +1362,15 @@ function renderShipWarn() {
   const fresh = r.waiting.filter((o) => r.included.some((i) => i.id === o.id));
   extra.hidden = !fresh.length;
   extra.textContent = fresh.length ? `Also going in: ${plural(fresh.length, "order")} you shipped that ${fresh.length === 1 ? "isn't" : "aren't"} in the loaded file (from History): ${fresh.map((o) => o.id).join(", ")}.` : "";
+  const oldBox = $("#ship-old");
+  oldBox.hidden = !r.old.length;
+  if (r.old.length) {
+    $("#ship-old-text").textContent = `${plural(r.old.length, "order")} shipped more than ${ROW_DAYS} days ago ${r.old.length === 1 ? "was" : "were"} never put in an import file, and ${r.old.length === 1 ? "is" : "are"} left out: ${r.old.slice(0, 20).join(", ")}${r.old.length > 20 ? ", …" : ""}.`;
+  }
   const box = $("#ship-warn");
   if (r.missingRequired.length) {
     showMsg(box, "warn", "These orders need a tracking number before TCGplayer will accept them:",
-      [r.missingRequired.join(", "), "Orders of $49.99 or more must have tracking. Type it in above, or leave them out of this upload by unticking Shipped."]);
+      [r.missingRequired.join(", "), "Orders of $49.99 or more must have tracking. Type it in above, or leave them out of this upload by unticking Shipped. Without one they stay \"not sent\" here."]);
   } else showMsg(box, "", "");
   // Orders already sent in an earlier import file (same tracking number or "Shipped").
   const all = importFile({ skipSent: true });
@@ -1323,7 +1415,7 @@ function historyRow(r) {
     el("td", { class: "c-ship" },
       el("div", { class: "hship" },
         el("label", { class: "check ship-check" },
-          el("input", { type: "checkbox", class: "h-shipped", checked: !!r.shipped, disabled: !!r.tracking }),
+          el("input", { type: "checkbox", class: "h-shipped", checked: !!r.shipped, disabled: !!r.tracking, "aria-label": `Shipped: ${label}` }),
           r.shipped ? ` Shipped ${String(r.shippedAt).slice(0, 10)}` : " Shipped"),
         el("label", { class: "sr", for: tid, text: `Tracking number for ${label}` }),
         el("input", { id: tid, class: "trk-input h-trk", type: "text", value: r.tracking || "", placeholder: "Tracking #", autocomplete: "off", spellcheck: "false" }),
@@ -1365,7 +1457,8 @@ export function renderHistory() {
   const rows = historyList(state.history, { filter: state.historyFilter, search: state.historySearch, period });
   const body = $("#history-table tbody");
   body.replaceChildren(...(rows.length ? rows.map(historyRow)
-    : [el("tr", { class: "none" }, el("td", { colspan: "9", text: state.historySearch ? "No orders match your search." : "No orders here." }))]));
+    : [el("tr", { class: "none" }, el("td", { colspan: "9", text: state.historySearch ? "No orders match your search."
+      : period === "recent" && PERIOD_FILTERS.includes(state.historyFilter) ? `No orders in the last ${RECENT_DAYS} days. Pick an older two weeks under Showing, or search.` : "No orders here." }))]));
 }
 
 /**
@@ -1375,9 +1468,11 @@ export function renderHistory() {
 function renderHistoryPeriod() {
   const periods = historyPeriods(state.history);
   const keyOf = (p) => p.start || "nodate";
-  if (state.historyPeriod !== "" && !periods.some((p) => keyOf(p) === state.historyPeriod)) state.historyPeriod = periods.length ? keyOf(periods[0]) : "";
+  if (state.historyPeriod == null || (!["", "recent"].includes(state.historyPeriod) && !periods.some((p) => keyOf(p) === state.historyPeriod))) state.historyPeriod = "recent";
   const sel = $("#history-period");
-  sel.replaceChildren(...periods.map((p, i) => el("option", { value: keyOf(p), text: `${i === 0 && p.start ? "Latest two weeks: " : ""}${p.label} (${plural(p.count, "order")})` })),
+  const recent = Object.values(state.history).filter((r) => isRecent(r)).length;
+  sel.replaceChildren(el("option", { value: "recent", text: `Last ${RECENT_DAYS} days (${plural(recent, "order")})` }),
+    ...periods.map((p) => el("option", { value: keyOf(p), text: `${p.label} (${plural(p.count, "order")})` })),
     el("option", { value: "", text: `Every order (${plural(Object.keys(state.history).length, "order")})` }));
   sel.value = state.historyPeriod;
   const searching = !!String(state.historySearch || "").trim();
@@ -1464,7 +1559,7 @@ function bindHistory() {
       const r = state.history[key];
       updateHistoryShipped(key, t ? { tracking: t, carrier: detectCarrier(t) || "USPS", shipped: true } : (r && r.shipped ? { shipped: true } : null));
       const other = t && trackingElsewhere(t, key);
-      if (other) toast(alsoOn(t, other));
+      showMsg($("#history-msg"), other ? "warn" : "", other ? alsoOn(t, other) : "");
     }
   });
   body.addEventListener("click", (e) => {
@@ -1476,8 +1571,10 @@ function bindHistory() {
     const r = state.history[key];
     if (!r || !window.confirm(`Remove ${r.id || r.name} from the history? (Nothing changes on TCGplayer.)`)) return;
     delete state.history[key];
+    // Its shipped mark goes with it, so step 4 and the import file don't keep an order History no longer has.
+    if (r.source === "csv" && r.id && own(state.shipped, r.id)) { delete state.shipped[r.id]; saveShipped(); }
     saveHistory();
-    renderHistory();
+    renderAll();
   });
   $("#btn-history-csv").addEventListener("click", () => {
     const n = historyList(state.history, { filter: state.historyFilter, search: state.historySearch }).length;
@@ -1498,7 +1595,18 @@ function bindHistory() {
   });
 }
 
+/**
+ * Before a clear: ask Ship Desk to put the saved History copy aside under its own name in Saved\History\Backups
+ * (the day's ordinary backup is overwritten within a second of the clear). Best effort: nothing when Ship Desk is off.
+ */
+function keepHistoryBackup(why) {
+  if (load(KEYS.historyCopy, "") !== "on" || !Object.keys(state.history).length) return;
+  shipdeskFetch("api/history-copy?keep=" + encodeURIComponent(why), { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ history: state.history }) }).catch(() => {});
+}
+
 export function clearHistory() {
+  keepHistoryBackup("before clearing History");
   state.history = {};
   saveHistory();
   renderHistory();
@@ -2347,6 +2455,9 @@ function renderPlanForm() {
     if (!input || document.activeElement === input) continue;
     if (input.type === "checkbox") input.checked = !!state.plan[k]; else input.value = state.plan[k];
   }
+  const days = (Date.now() - Date.parse(RATES_EFFECTIVE + "T00:00:00")) / 864e5;
+  $("#rates-note").textContent = `Stamp prices are USPS's from ${RATES_EFFECTIVE}.`
+    + (days > 200 ? " That is a while ago, and USPS usually changes them in January and July: check usps.com and the Forever stamp value above." : "");
 }
 
 function renderSteps() {
@@ -2495,6 +2606,7 @@ function bindTable() {
     const n = rows.filter((o) => state.selected.has(o.id)).length;
     $("#check-all").checked = n === rows.length;
     $("#check-all").indeterminate = n > 0 && n < rows.length;
+    renderTotals(rows); // the stamp count is for what is ticked
     renderOutput();
   });
   $("#check-all").addEventListener("change", (e) => {
@@ -2513,13 +2625,13 @@ function bindTable() {
       if (!(v >= 0) || (k === "cardsPerToploader" && v < 1) || (k === "foreverValue" && v <= 0)) { e.target.value = state.plan[k]; return; }
       state.plan[k] = k === "cardsPerToploader" ? Math.round(v) : v;
     }
-    save(KEYS.plan, state.plan);
+    savePlan();
     replan();
     renderAll();
   });
   $("#plan-reset").addEventListener("click", () => {
     state.plan = { ...DEFAULT_PLAN_SETTINGS };
-    save(KEYS.plan, state.plan);
+    savePlan();
     renderPlanForm();
     replan();
     renderAll();
@@ -2609,9 +2721,12 @@ function shrinkImage(file, max) {
 function bindShip() {
   $("#btn-paste").addEventListener("click", () => { const r = loadPastedText($("#paste-text").value); if (r.orders.length) jumpTo("#step2"); });
   $("#btn-sample").addEventListener("click", loadSample);
-  $("#btn-clear-batch").addEventListener("click", clearBatch);
+  $("#btn-clear-batch").addEventListener("click", () => {
+    if (!state.orders.length || window.confirm("Take the loaded orders off this page? Your History and shipped marks stay. What is ticked, and the label order that pasted tracking numbers follow, is forgotten.")) clearBatch();
+  });
   $("#btn-match").addEventListener("click", () => matchPasted($("#track-text").value));
   $("#import-again").addEventListener("change", (e) => { state.importAgain = e.target.checked; renderShipWarn(); });
+  $("#btn-import-old").addEventListener("click", () => { state.importOld = true; renderShip(); });
   const list = $("#ship-list");
   list.addEventListener("change", (e) => {
     const id = e.target.dataset.id;
@@ -2635,15 +2750,19 @@ function bindShip() {
   $("#btn-pirate").addEventListener("click", downloadPirateShip);
   $("#btn-clear-shipped").addEventListener("click", () => {
     if (!Object.keys(state.shipped).length) { toast("There's no shipped history to clear."); return; }
-    if (!window.confirm("Forget which orders you marked shipped, and the tracking numbers typed here?")) return;
+    if (!window.confirm("Forget which orders are shipped, and their tracking numbers, here and on the History page? (The labels-made dates stay, and nothing changes on TCGplayer.)")) return;
     clearShipped();
-    toast("Shipped history cleared.");
+    toast("Shipped marks cleared, here and in History.");
   });
 }
 
+/** Forget every shipped mark and tracking number: step 4's list and History's records together (they must agree). */
 export function clearShipped() {
+  keepHistoryBackup("before clearing shipped marks");
   state.shipped = {};
+  for (const r of Object.values(state.history)) if (r && (r.shipped || r.tracking)) { applyShipped(r, null); r.sentAt = ""; }
   saveShipped();
+  saveHistory();
   renderAll();
 }
 

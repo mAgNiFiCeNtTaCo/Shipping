@@ -64,7 +64,7 @@ explain in plain words and finish jobs end to end.
   Two-week view (2026-11-27): `historyPeriod` (Monday periods from `PERIOD_EPOCH` 2024-01-01 = serve.py ARCHIVE_EPOCH, so
   the same names as the Archive folders), `recordDay` (last labels/shipping, else order date), `historyPeriods`;
   `historyList({ period })` limits only `PERIOD_FILTERS` (all, shipped) and never while searching. app.js
-  `renderHistoryPeriod` = `#history-period` menu (null = newest period, "" = every order) + `#history-period-note`.
+  `renderHistoryPeriod` = `#history-period` menu ("recent" = last 14 days, the default; "" = every order) + `#history-period-note`.
 - `app/phone.html` + `js/phone.js` + `css/phone.css` + `phone-sw.js` (scope `./phone`, network-first): the iPhone page for
   order photos (contents / packed / post office). Photos wait in the phone's IndexedDB (`shipdesk-phone`) until
   `POST /api/phone/photo` succeeds; saved to `Saved/Photos/<order # buyer>/`, listed in `Saved/Photos/photos.json`.
@@ -140,6 +140,21 @@ explain in plain words and finish jobs end to end.
   left out). Their rows: `KEYS.rows` (every loaded file's rows by order #, `keepRows`, `ROW_DAYS` = 14) else
   `rowFromHistory` (no street). Left out: shipped more than 14 days ago, or before History's earliest `sentAt` (handled
   before the import file kept track). `#ship-extra` lists them; step 4 shows even with no file loaded.
+- PC page fixes of the 2026-11-27 review: `matchTracking(pasted, orders, { skip, prefer })`: bare numbers go to
+  tracked-plan orders without tracking (app.js `matchPasted`; more numbers than those = every order without tracking,
+  with a warning; "Went to:" line). Import file: $49.99+ with no tracking stays in the file but isn't noted `sent`;
+  shipped more than `ROW_DAYS` ago and never sent = `importCandidates().old` -> `#ship-old`, **Put them in too**
+  (`state.importOld`). `clearShipped` clears `state.shipped` and History's shipped/tracking/sentAt together (after
+  `keepHistoryBackup`: `POST /api/history-copy?keep=<why>` = a named copy in History\Backups that is never tidied
+  away); removing a History row drops its `state.shipped` entry. `pirateShipCsv` skips ticked-Shipped orders.
+  `setBatch` leaves orders with labels made (`labelsMade`) unticked; `shipStatus` says "Labels made MM-DD, not
+  shipped". Plan: `foreverValue` default = `LETTER_RATES.firstOz`, `savePlan` keeps only changed values,
+  `RATES_EFFECTIVE` -> `#rates-note` (asks to check USPS after 200 days). store.js `onSaveFail` -> `#save-note`.
+  History copy: `mergeRecords` (restore joins field by field), a linked browser lacking saved records gets the offer
+  (`#history-offer` on the Ship page too; `historyChoices` stops a late check asking again). History opens on period
+  "recent" (`isRecent`, `RECENT_DAYS` = 14, counted back from today). `renderToday` = `#today-line`. render.js
+  `isAbroad`, `losesLetters`, `COUNTRY_NAMES`; slip barcode ZIP vs order ZIP warned on slip load. "Clear these
+  orders" asks first (tests: `win.confirm = () => true`, also after a reload; an unanswered confirm hangs headless Edge).
 - Sent to TCGplayer: making the import file sets `state.shipped[id].sent = { at, what }` (what = tracking or
   "Shipped") and history `sentAt`; `importFileCsv(..., { skipSent })` leaves out same-`what` orders unless
   `state.importAgain` ("Put them in again"). Code that rewrites a shipped entry keeps `sent` (`withSent`).

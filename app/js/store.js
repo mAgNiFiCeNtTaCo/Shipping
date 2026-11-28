@@ -35,13 +35,22 @@ export function load(key, fallback) {
   return text == null ? fallback : parse(text, fallback);
 }
 
+// Called when a value couldn't be written to the browser (storage full or switched off): the page says so, because
+// what is only in memory is gone with the next reload.
+let failed = null;
+export function onSaveFail(fn) { failed = fn; }
+function tellFailed(key) {
+  try { if (failed) failed(key); } catch { /* telling is a bonus */ }
+  return false;
+}
+
 /** Save `value` (JSON). Returns true when it reached localStorage, false when only kept in memory. */
 export function save(key, value) {
   let text;
   try { text = JSON.stringify(value); } catch { return false; }
   if (text === undefined) return remove(key);
   memory.set(key, text);
-  try { const s = storage(); if (!s) return false; s.setItem(key, text); return true; } catch { return false; }
+  try { const s = storage(); if (!s) return tellFailed(key); s.setItem(key, text); return true; } catch { return tellFailed(key); }
 }
 
 /** Forget a saved value. */

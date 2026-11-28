@@ -68,6 +68,15 @@
     </div>
   </div>
 
+  <div id="save-note" class="msg warn update-note" role="alert" hidden>
+    <p class="msg-title">Ship Desk couldn't save to this browser.</p>
+    <p>The browser's storage is full or switched off, so what you do now is kept only until this page is closed or reloaded. Make room (press <strong>Clear these orders</strong> in step 1 when you're done with them, or remove the logo), then reload. Your History is still copied to the <code>Saved\History</code> folder.</p>
+  </div>
+  <div id="history-offer" class="msg info update-note" role="status" hidden>
+    <p class="msg-title">This browser's History doesn't match the saved copy.</p>
+    <p id="history-offer-text"></p>
+    <div class="row"><a class="btn primary" href="#history">Open History to choose</a></div>
+  </div>
   <div id="reload-note" class="msg info update-note" role="status" hidden>
     <p class="msg-title">Ship Desk was just updated.</p>
     <p>This page still runs the old version: reload it to use the new one. Your loaded orders stay; add packing-slip PDFs again.</p>
@@ -202,7 +211,7 @@
         <label class="check c6"><input name="rigid" type="checkbox"> Envelopes have a toploader (rigid): count its weight and add the USPS $0.49 non-machinable charge. Off = flexible envelopes (penny sleeves and a thin backer); packages always count toploaders.</label>
         <label class="check c6"><input name="trackedEnvelopes" type="checkbox"> I use TCGplayer's free tracked envelopes (orders under $49.99 that fit a letter go in an envelope with stamps; TCGplayer's packing slip carries the USPS tracking barcode)</label>
       </form>
-      <p class="muted small">Weights are estimates for stamps. Card weight from your TCGplayer file is used when it has one. <button type="button" id="plan-reset" class="link">Reset to the usual values</button></p>
+      <p class="muted small">Weights are estimates for stamps. Card weight from your TCGplayer file is used when it has one. <span id="rates-note"></span> <button type="button" id="plan-reset" class="link">Reset to the usual values</button></p>
     </details>
   </section>
 
@@ -287,12 +296,13 @@
   <!-- 4. Shipped -->
   <section id="step4" class="card" aria-labelledby="step4-h">
     <h2 id="step4-h"><span class="step-num" aria-hidden="true">4</span> Mark shipped</h2>
+    <p id="today-line" class="today-line small" role="status" hidden></p>
     <p id="ship-empty" class="empty-note">Add orders first. After you ship, tell TCGplayer here.</p>
     <div id="ship-area" hidden>
       <div class="ship-grid">
         <div>
           <label for="track-text" class="lbl">Paste tracking numbers</label>
-          <p class="muted small" id="track-help">One per line. Either just the numbers, in the same order as your labels, or the order number then the tracking number.</p>
+          <p class="muted small" id="track-help">One per line. Either just the numbers (they go to the orders that need a tracked label, in the same order as your labels), or the order number then the tracking number.</p>
           <textarea id="track-text" rows="5" aria-describedby="track-help" spellcheck="false" placeholder="9400 1000 0000 0000 0000 00&#10;or: SAMPLE-0005 9400 1000 0000 0000 0000 00"></textarea>
           <button type="button" id="btn-match" class="btn secondary">Match to orders</button>
           <p class="muted small" id="pirate-help">Bought the labels on Pirate Ship? Drop its Shipments export (.xlsx: Reports → View All Shipments → Export) anywhere on this page and the tracking numbers go on the right orders, by buyer name.</p>
@@ -306,6 +316,7 @@
       </div>
       <div id="ship-warn" class="msg warn" role="status" aria-live="polite" hidden></div>
       <p id="ship-extra" class="ship-sent small" hidden></p>
+      <p id="ship-old" class="ship-sent small" hidden><span id="ship-old-text"></span> <button type="button" id="btn-import-old" class="link">Put them in too</button></p>
       <p id="ship-sent" class="ship-sent small" hidden><span id="ship-sent-text"></span>
         <label class="check"><input type="checkbox" id="import-again"> Put them in again</label></p>
       <div class="row ship-actions">
@@ -315,7 +326,7 @@
       <p class="muted small">Upload the import file in the Seller Portal under <strong>Orders → Import Shipping Info</strong>. The Pirate Ship CSV lists the orders that need a tracked label and don't have one yet, with their estimated weight.</p>
       <div id="ship-msg" class="msg" role="status" aria-live="polite" hidden></div>
     </div>
-    <p class="clear-row small"><button type="button" id="btn-clear-shipped" class="link danger">Clear shipped history</button> <span class="muted">Ship Desk remembers which orders you marked shipped, so a re-uploaded file shows them as done.</span></p>
+    <p class="clear-row small"><button type="button" id="btn-clear-shipped" class="link danger">Clear shipped marks</button> <span class="muted">Ship Desk remembers which orders you marked shipped, so a re-uploaded file shows them as done. This forgets them here and on the History page.</span></p>
   </section>
 </main>
 

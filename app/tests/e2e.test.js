@@ -55,6 +55,7 @@ async function openApp({ width = 1200, returnAddress = true, keepStore = false }
     else click.call(this);
   };
   const doc = f.contentDocument, app = win.shipdesk;
+  win.confirm = () => true; // (the "are you sure" boxes: yes)
   // These tests catch browser downloads; the Saved-folder route is tested in history.test.js.
   app.state.output.saveTo = "downloads";
   if (returnAddress) {
@@ -166,6 +167,39 @@ export const tests = {
     ({ app } = await openApp({ keepStore: true }));
     eq([app.state.plan.toploaderOz, app.state.plan.rigid], [0.25, false], "own toploader weight kept");
     clearStore();
+  },
+
+  "labels already made aren't ticked again; pasted tracking numbers go to the orders that need them": async () => {
+    const { win, doc, app } = await openApp();
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => app.state.orders.length === 10, "orders");
+    // Labels for the four cheapest orders only.
+    for (const o of app.state.orders) if (!["SAMPLE-0001", "SAMPLE-0002", "SAMPLE-0003", "SAMPLE-0004"].includes(o.id)) doc.querySelector(`#orders-table input[data-id="${o.id}"]`).click();
+    eq(app.printOrders().length, 4, "four ticked");
+    ok(/4 ticked envelopes need about 4 stamps/.test(doc.querySelector("#totals").textContent), "stamps for what is ticked: " + doc.querySelector("#totals").textContent);
+    doc.querySelector("#btn-pdf").click();
+    await waitFor(() => app.state.history["SAMPLE-0004"] && app.state.history["SAMPLE-0004"].printCount === 1, "History");
+    ok(/Labels made \d\d-\d\d, not shipped/.test(doc.querySelector('#orders-table tr[data-id="SAMPLE-0001"] .c-status').textContent), "the table says labels were made");
+    ok(/4 orders with labels made, not shipped yet \(SAMPLE-0001, SAMPLE-0002, SAMPLE-0003, SAMPLE-0004\)/.test(doc.querySelector("#today-line").textContent), doc.querySelector("#today-line").textContent);
+    // The same export again (TCGplayer still lists them): the four don't get ticked a second time.
+    await dropFile(win, await sampleText(), "export.csv");
+    await waitFor(() => /already have labels/.test(doc.querySelector("#load-msg").textContent), "the load message: " + doc.querySelector("#load-msg").textContent);
+    eq(app.printOrders().map((o) => o.id).sort(), ["SAMPLE-0005", "SAMPLE-0006", "SAMPLE-0007", "SAMPLE-0008", "SAMPLE-0009", "SAMPLE-0010"], "only the ones without labels");
+    // Two numbers bought for two tracked orders, pasted bare: they skip the envelopes.
+    app.matchPasted("9400111899223344550001\n9400111899223344550002");
+    const tracked = app.state.orders.filter((o) => o.plan.tracked).map((o) => o.id);
+    eq(Object.keys(app.state.shipped).sort(), tracked.slice(0, 2), "the first two tracked orders: " + tracked);
+    ok(new RegExp("Went to: " + tracked[0] + " .* …0001, " + tracked[1] + " .* …0002").test(doc.querySelector("#match-msg").textContent), doc.querySelector("#match-msg").textContent);
+    ok(/for 5 orders that need a tracked label: the last 3 orders got none/.test(doc.querySelector("#match-msg").textContent), "says three tracked orders are still without");
+    // Another bare number never lands on an order that has one: it goes to the next tracked order.
+    app.matchPasted("9400111899223344550003");
+    eq(Object.keys(app.state.shipped).sort(), tracked.slice(0, 3));
+    ok(!app.pirateFile().includes(tracked[0]) && app.pirateFile().includes(tracked[3]), "Pirate Ship file: only the ones still without a label");
+    // Clear shipped marks: step 4 and History forget together.
+    ok(app.state.history[tracked[0]].shipped, "History had it shipped");
+    app.clearShipped();
+    eq([Object.keys(app.state.shipped).length, app.state.history[tracked[0]].shipped, app.state.history[tracked[0]].tracking], [0, false, ""], "both forgot");
+    eq(app.importFile().count, 0, "and the import file is empty again");
   },
 
   "every output format: the Download PDF path holds each buyer's name and ZIP, with the right page count": async () => {
@@ -331,7 +365,8 @@ export const tests = {
     doc.querySelector("#btn-import").click();
     const rows = parseCsv(await savedText(saved.pop()));
     eq(rows.slice(1).map((r) => [r[0], r[15], r[16]]), [["SAMPLE-0001", "Shipped", "USPS"], ["SAMPLE-0002", "Shipped", "USPS"], ["SAMPLE-0008", "Shipped", "USPS"]]);
-    ok(/refuse SAMPLE-0008/.test(doc.querySelector("#ship-msg").textContent), "warning repeated after saving");
+    ok(/SAMPLE-0008: \$49\.99 or more with no tracking number/.test(doc.querySelector("#ship-msg").textContent), "warning repeated after saving");
+    ok(app.state.shipped["SAMPLE-0001"].sent && !app.state.shipped["SAMPLE-0008"].sent, "the $49.99+ order without tracking isn't noted as sent");
     // A tracking number typed in the box replaces the keyword and clears the warning.
     const box = doc.querySelector('#ship-list .trk-input[data-id="SAMPLE-0008"]');
     box.value = "9400111899223344550008";
@@ -386,7 +421,7 @@ export const tests = {
     win.shipdesk = null;
     win.location.reload();
     win = await waitFor(() => frame.contentWindow.shipdesk && frame.contentDocument.readyState === "complete" && frame.contentWindow, "the app to restart", 20000);
-    doc = frame.contentDocument; app = win.shipdesk;
+    doc = frame.contentDocument; app = win.shipdesk; win.confirm = () => true;
     shipInHistory("SAMPLE-0003");
     r = app.importFile();
     eq(r.included.map((i) => i.id), ["SAMPLE-0003"]);

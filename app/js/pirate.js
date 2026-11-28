@@ -179,7 +179,7 @@ export function matchShipments(shipments, candidates) {
     let pool = s.orderId ? list.filter((c) => c.id === s.orderId) : [];
     if (!pool.length) {
       const key = nameKey(s.name);
-      pool = list.filter((c) => nameKey(c.name) === key);
+      pool = key ? list.filter((c) => nameKey(c.name) === key) : []; // (a name with no Latin letters has no key)
       if (!pool.length && key) pool = list.filter((c) => firstLast(nameKey(c.name)) === firstLast(key));
       if (s.zip) { const z = pool.filter((c) => !c.zip || normalizeZip(c.zip).slice(0, 5) === s.zip.slice(0, 5)); if (z.length) pool = z; }
     }

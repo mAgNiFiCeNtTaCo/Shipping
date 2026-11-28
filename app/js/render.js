@@ -86,6 +86,17 @@ function cityLine(a) {
   return [city && (st || zip) ? city + "," : city, st, zip].filter(Boolean).join(" ");
 }
 
+// Country codes a file may carry, as the full English name USPS wants on the last line ("CA" alone reads as California).
+const COUNTRY_NAMES = { CA: "CANADA", GB: "UNITED KINGDOM", UK: "UNITED KINGDOM", AU: "AUSTRALIA", NZ: "NEW ZEALAND", IE: "IRELAND",
+  DE: "GERMANY", FR: "FRANCE", ES: "SPAIN", IT: "ITALY", NL: "NETHERLANDS", BE: "BELGIUM", AT: "AUSTRIA", CH: "SWITZERLAND",
+  SE: "SWEDEN", NO: "NORWAY", DK: "DENMARK", FI: "FINLAND", PT: "PORTUGAL", PL: "POLAND", JP: "JAPAN", KR: "SOUTH KOREA",
+  SG: "SINGAPORE", MX: "MEXICO", BR: "BRAZIL", PR: "PUERTO RICO" };
+const US_NAMES = ["", "US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"];
+/** Is this order going outside the United States (by its country column)? */
+export const isAbroad = (country) => !US_NAMES.includes(cleanText(country).toUpperCase());
+/** Would any of these texts lose letters on a label (letters the PDF fonts don't have print as "?")? */
+export const losesLetters = (...texts) => texts.some((t) => cleanText(t).split("?").length > str(t).split("?").length);
+
 function shipToLines(o) {
   // TCGplayer's tracked slip prints the address its USPS barcode was made for (checked, with ZIP+4): use it with the barcode.
   const slip = o.imb && Array.isArray(o.imb.address) && o.imb.address.length >= 2 ? o.imb.address : null;
@@ -95,7 +106,7 @@ function shipToLines(o) {
   if (o.address2) lines.push({ t: cleanText(o.address2) });
   lines.push({ t: cityLine(o) });
   const c = cleanText(o.country).toUpperCase();
-  if (c && !["US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"].includes(c)) lines.push({ t: cleanText(o.country).toUpperCase() });
+  if (isAbroad(o.country)) lines.push({ t: COUNTRY_NAMES[c] || c });
   return lines.filter((l) => l.t);
 }
 

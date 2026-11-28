@@ -500,3 +500,7 @@ table.orders { width: 100%; border-collapse: collapse; font-size: .93rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* The day at a glance, over step 4. */
+.today-line { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.today-line[hidden] { display: none; }

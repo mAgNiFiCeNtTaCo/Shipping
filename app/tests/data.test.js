@@ -396,6 +396,36 @@ export const tests = {
     eq(r.unmatched, []);
     ok(r.warnings.some((w) => /got none/.test(w)), "fewer numbers warned: " + r.warnings);
   },
+  "matchTracking: bare numbers go to the orders that need a tracked label, never onto a number already there": async () => {
+    const os = [order({ id: "ENV-1" }), order({ id: "TRK-1" }), order({ id: "ENV-2" }), order({ id: "TRK-2" }), order({ id: "TRK-3" })];
+    const opts = { prefer: (o) => o.id.startsWith("TRK"), skip: (o) => o.id === "TRK-2" };
+    const r = matchTracking("9400100000000000000001\n9400100000000000000002", os, opts);
+    eq(r.matches.map((m) => [m.orderId, m.tracking.slice(-1)]), [["TRK-1", "1"], ["TRK-3", "2"]], "tracked orders without tracking, in label order");
+    eq(r.warnings, [], "nothing to warn about: " + r.warnings);
+    // More numbers than tracked orders: every order without tracking, in label order, and it says so.
+    const more = matchTracking("9400100000000000000001\n9400100000000000000002\n9400100000000000000003", os, opts);
+    eq(more.matches.map((m) => m.orderId), ["ENV-1", "TRK-1", "ENV-2"], "TRK-2 keeps the number it has");
+    ok(more.warnings.some((w) => /3 tracking numbers for 2 orders that need a tracked label/.test(w)), String(more.warnings));
+    // With its order # in front, a number goes where it says.
+    eq(matchTracking("TRK-2 9400100000000000000009", os, opts).matches.map((m) => m.orderId), ["TRK-2"]);
+  },
+  "labels: country names, orders going abroad, letters the PDF fonts don't have": async () => {
+    const { isAbroad, losesLetters } = await import("../js/render.js");
+    eq([isAbroad(""), isAbroad("US"), isAbroad("United States"), isAbroad("CA"), isAbroad("Canada")], [false, false, false, true, true]);
+    eq([losesLetters("José Müller", "12 Rue de l'Église"), losesLetters("Łukasz"), losesLetters("Who?")], [false, false, false], "accents and a real ? are fine");
+    ok(losesLetters("Ash", "\u0418\u0432\u0430\u043d"), "Cyrillic would print as ?");
+  },
+  "history: the last 14 days, and joining a saved record with this browser's": async () => {
+    const { historyList, mergeRecords, recentSince } = await import("../js/history.js");
+    eq(recentSince("2026-11-30"), "2026-11-17", "14 days, today included");
+    const h = { a: { id: "a", lastPrintedAt: "2026-11-17 09:00" }, b: { id: "b", lastPrintedAt: "2026-11-16 09:00" }, c: { id: "c", shippedAt: "2026-11-30 08:00", shipped: true } };
+    eq(historyList(h, { period: "recent", today: "2026-11-30" }).map((r) => r.id), ["c", "a"], "a Monday still shows last week");
+    eq(historyList(h, { period: "recent", today: "2026-11-30", search: "b" }).map((r) => r.id), ["b"], "search looks everywhere");
+    const saved = { id: "X", name: "Buyer X", shipped: true, shippedAt: "2026-11-01 10:00", tracking: "9400100000000000000001", sentAt: "2026-11-02 09:00", printCount: 2, value: 12 };
+    const mine = { id: "X", name: "", shipped: false, shippedAt: "", tracking: "", sentAt: "", printCount: 1, value: 0, lastPrintedAt: "2026-11-20 09:00" };
+    eq(mergeRecords(saved, mine), { ...saved, lastPrintedAt: "2026-11-20 09:00" }, "the saved copy fills in what this browser lost");
+    eq(mergeRecords(saved, { tracking: "1Z999AA10123456784" }).tracking, "1Z999AA10123456784", "this browser's own value wins");
+  },
   "matchTracking: order# + tracking (space, tab, comma, semicolon), mixed with bare": async () => {
     const os = [order({ id: "SAMPLE-0001" }), order({ id: "SAMPLE-0002" }), order({ id: "SAMPLE-0003" }), order({ id: "SAMPLE-0004" }), order({ id: "SAMPLE-0005" })];
     const r = matchTracking([
@@ -470,6 +500,10 @@ export const tests = {
     const rows = parseCsv(importFileCsv(r.orders, { "T-1": { tracking: "9400100000000000000001" } }).csv);
     eq(rows[0], ["Order Number", "Name", "Address 1", "City", "State", "Zip", "Tracking Number", "Carrier"]);
     eq(rows[1].slice(-2), ["9400100000000000000001", "USPS"]);
+  },
+  "pirateShipCsv: an order ticked Shipped is left out (it went another way)": async () => {
+    const os = [order({ id: "1", value: 30, weightOz: 0.1 }), order({ id: "2", value: 30, weightOz: 0.1 })];
+    eq(parseCsv(pirateShipCsv(os, null, { 1: { shipped: true, tracking: "" } })).slice(1).map((r) => r[0]), ["2"]);
   },
   "pirateShipCsv: tracked orders without tracking, weight rounded up to 0.1": async () => {
     const os = [

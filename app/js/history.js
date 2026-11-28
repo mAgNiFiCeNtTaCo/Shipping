@@ -214,6 +214,27 @@ export function historyPeriod(date) {
 /** The day a record belongs to: its last labels or shipping, else its order date. */
 export const recordDay = (r) => (lastActivity(r) || r.orderDate || r.sentAt || r.printedAt || "").slice(0, 10);
 
+// The History page opens on the last RECENT_DAYS days, counted back from today (period "recent"): a fixed two-week
+// block would open nearly empty every second Monday. The fixed blocks stay in the menu for older orders.
+export const RECENT_DAYS = 14;
+export const recentSince = (today = stamp().slice(0, 10)) => ymdOf(utcDay(today) - (RECENT_DAYS - 1) * DAY_MS);
+export const isRecent = (r, today) => { const d = recordDay(r); return !!d && d >= recentSince(today); };
+
+/**
+ * A record from the saved copy joined with this browser's: this browser's values win where it has one, the saved
+ * copy fills in what it lacks (a browser that lost its History only has bare records made since), and the label
+ * count is the larger one.
+ */
+export function mergeRecords(saved, mine) {
+  const out = { ...saved };
+  for (const [k, v] of Object.entries(mine || {})) {
+    const empty = v == null || v === "" || v === false || v === 0 || (typeof v === "object" && !Array.isArray(v) && !Object.keys(v).length);
+    if (!empty || !(k in out)) out[k] = v;
+  }
+  out.printCount = Math.max(Number(saved && saved.printCount) || 0, Number(mine && mine.printCount) || 0);
+  return out;
+}
+
 /** Every period that has records, newest first: [{ start, end, label, count }]. Records without any date: start "". */
 export function historyPeriods(hist) {
   const by = new Map();
@@ -230,11 +251,12 @@ export function historyPeriods(hist) {
  * Records matching a HISTORY_FILTERS id and a search text, newest activity first. `period` (a period's start date)
  * limits "all" and "shipped" to that two weeks, only while not searching; "" = every date.
  */
-export function historyList(hist, { filter = "all", search = "", period = "" } = {}) {
+export function historyList(hist, { filter = "all", search = "", period = "", today = undefined } = {}) {
   const q = String(search || "").trim().toLowerCase();
   const first = filter === "notsent" ? firstSentAt(hist) : "";
-  const inPeriod = period && !q && PERIOD_FILTERS.includes(filter)
-    ? (r) => ((historyPeriod(recordDay(r)) || { start: "" }).start === (period === "nodate" ? "" : period)) : () => true;
+  const inPeriod = !(period && !q && PERIOD_FILTERS.includes(filter)) ? () => true
+    : period === "recent" ? (r) => isRecent(r, today)
+      : (r) => ((historyPeriod(recordDay(r)) || { start: "" }).start === (period === "nodate" ? "" : period));
   return Object.values(hist || {})
     .filter(inPeriod)
     .filter((r) => (filter === "shipped" ? r.shipped : filter === "waiting" ? !r.shipped : filter === "notsent" ? notSentYet(r, first) : true))

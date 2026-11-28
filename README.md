@@ -251,7 +251,21 @@ TCGplayer's way is a window envelope with the slip showing through the window. S
   older than any order it knows. Dropping the same file again is harmless. Works with no orders loaded too
   (it marks them in History). The **Transactions** export is the money list and has no tracking numbers.
 - Ship Desk remembers what you marked shipped, so if you drop the same file again those orders aren't ticked
-  for printing. **Clear shipped history** forgets it.
+  for printing. Orders whose labels you already made aren't ticked again either (the table says "Labels made
+  11-26, not shipped" and the load message counts them): tick them to print again. **Clear shipped marks** forgets
+  which orders are shipped and their tracking numbers, in step 4 and on the History page together (a copy of
+  History is put aside in `Saved\History\Backups` first).
+- **Pasted tracking numbers without order numbers** go to the orders that need a tracked label and have no tracking
+  yet, in the order of your labels, never onto an order that already has a number. The message lists where each
+  number went. With more numbers than tracked orders they go to every order without tracking and Ship Desk says so.
+- **Orders of $49.99 or more with no tracking number** go in the import file as "Shipped", but TCGplayer may refuse
+  them, so Ship Desk keeps them as not sent until they have a number (or TCGplayer's order list shows them shipped).
+- **Shipped more than 14 days ago and never sent:** step 4 names such orders and leaves them out; **Put them in too**
+  adds them to the next import file.
+- **Today** (the line over step 4): how many orders shipped today, which have labels made today but aren't shipped,
+  and how many shipped orders still have to go to TCGplayer.
+- The Pirate Ship CSV leaves out orders you ticked Shipped. The stamp count over the table is for the envelopes
+  that are ticked and not shipped yet.
 - **Check against TCGplayer:** drop TCGplayer's order list (the export from the Seller Portal's Orders page, a file
   named `TCGplayer_OrderList_<date>_<time>.csv`) anywhere on Ship Desk. It compares what TCGplayer shows with what
   you did here and lists:
@@ -345,9 +359,9 @@ Click **History** at the top to see every order you made labels for or marked sh
   order then also counts as shipped in step 4, so it goes in the import file next time you load its CSV.
 - Buttons: **All / Labels made, not shipped / Shipped / Not sent to TCGplayer yet**, a search box (order #, buyer, city or tracking),
   **Download history (CSV)** for Excel or Google Sheets, **Remove** on a row, and **Clear history**.
-- **Two weeks at a time:** **All** and **Shipped** show the latest two weeks (Monday to the Sunday after next, the same
-  periods as the Archive folders for labels and slips). The **Showing** menu picks an older two weeks or **Every
-  order**. Nothing is removed: the **search box always looks through every order, any date**, and **Labels made, not
+- **Two weeks at a time:** **All** and **Shipped** open on the **last 14 days**, counted back from today. The
+  **Showing** menu picks an older two weeks (Monday to the Sunday after next, the same periods as the Archive folders
+  for labels and slips) or **Every order**. Nothing is removed: the **search box always looks through every order, any date**, and **Labels made, not
   shipped** and **Not sent to TCGplayer yet** always list every date, so nothing unfinished hides in an older period.
 - **A copy on this PC:** History is also saved in `Saved\History\ship-desk-history.json` after every change, plus one
   dated copy per day (last 30) in `Saved\History\Backups`. If the browser loses its History (cleared browsing data,

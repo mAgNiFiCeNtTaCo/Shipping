@@ -21,10 +21,14 @@ export function detectCarrier(trackingNo) {
 const looksLikeTracking = (t) => /^[0-9A-Z]{8,40}$/.test(t) && /\d/.test(t);
 
 /**
- * matchTracking(pasted, orders) -> { matches: [{orderId, tracking, carrier}], unmatched: [lines], warnings: [] }
+ * matchTracking(pasted, orders, { skip, prefer }) -> { matches: [{orderId, tracking, carrier}], unmatched: [lines], warnings: [] }
  * Each line is "<tracking>" (given to the orders in label order) or "<order#> <tracking>".
+ * A bare number never goes to an order skip(order) is true for (it has a tracking number already). With prefer, bare
+ * numbers go to the orders prefer(order) is true for (the ones that need a tracked label); only when there are more
+ * numbers than those do they go to every order without tracking, with a warning. (2026-11-27: five numbers bought
+ * for five tracked orders used to land on the first five labels printed, envelopes included.)
  */
-export function matchTracking(pasted, orders) {
+export function matchTracking(pasted, orders, { skip = null, prefer = null } = {}) {
   const byId = new Map(orders.map((o) => [String(o.id).trim().toUpperCase(), o]));
   const idsCompact = new Set(orders.map((o) => compact(o.id)));
   const lines = String(pasted ?? "").split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
@@ -73,7 +77,13 @@ export function matchTracking(pasted, orders) {
   }
 
   // Bare numbers go to the orders that didn't get one by order #, in label order.
-  const open = orders.filter((o) => !assigned.has(o.id));
+  const takes = orders.filter((o) => !assigned.has(o.id) && !(skip && skip(o)));
+  const first = prefer ? takes.filter(prefer) : takes;
+  const open = bare.length > first.length ? takes : first;
+  if (bare.length && open !== first && takes.length > first.length) {
+    warnings.push(`${bare.length === 1 ? "1 tracking number" : `${bare.length} tracking numbers`} for ${first.length === 1 ? "1 order" : `${first.length} orders`} that ${first.length === 1 ? "needs" : "need"} a tracked label: `
+      + "they went to the orders without tracking in label order, envelopes too. Check them, or paste the order number in front of each one.");
+  }
   bare.forEach(([line, tracking], i) => {
     if (i < open.length) assigned.set(open[i].id, { orderId: open[i].id, tracking, carrier: detectCarrier(tracking) });
     else unmatched.push(line);
@@ -83,7 +93,7 @@ export function matchTracking(pasted, orders) {
     warnings.push(`There ${extra === 1 ? "is 1 more tracking number" : `are ${extra} more tracking numbers`} than orders; the extra ${extra === 1 ? "one was" : "ones were"} not used.`);
   } else if (bare.length && bare.length < open.length) {
     const left = open.length - bare.length;
-    warnings.push(`Only ${bare.length} tracking number${bare.length === 1 ? "" : "s"} for ${open.length} orders: the last ${left} order${left === 1 ? "" : "s"} got none.`);
+    warnings.push(`Only ${bare.length} tracking number${bare.length === 1 ? "" : "s"} for ${open.length} orders${prefer ? " that need a tracked label" : ""}: the last ${left} order${left === 1 ? "" : "s"} got none.`);
   }
 
   const matches = orders.filter((o) => assigned.has(o.id)).map((o) => assigned.get(o.id));
@@ -156,7 +166,7 @@ export function pirateShipCsv(orders, planned, shippedState) {
   orders.forEach((o, i) => {
     const p = planFor(o, i);
     const st = state[o.id] || {};
-    if (!p.tracked || o.tracking || st.tracking) return;
+    if (!p.tracked || o.tracking || st.tracking || st.shipped) return; // (ticked Shipped: it went another way)
     const oz = Math.ceil(Math.round(p.weightOz * 1e4) / 1e3) / 10;
     rows.push([o.id, o.name, o.address1, o.address2 || "", o.city, o.state, o.zip, o.country || "US", oz.toFixed(1)]);
   });
