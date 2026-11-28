@@ -40,6 +40,17 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   on (tailnet only, https://<pc>.<tailnet>.ts.net:5091/phone.html).
 
 ## Log
+### 2026-11-28: GitHub page screenshots retaken; the screenshot tool runs on a private copy
+- User asked to sync GitHub (already level: 024b927, 1.1.14 latest), then to retake the screenshots. All 36 in
+  `docs/screens` and the crops in `docs/readme` redone with sample orders (ad5689f).
+- `docs/make_screens.py` now starts its own private server (throwaway Saved folder, stand-in Tailscale) for every
+  shot: one of round 3's items, done early because a run on the real Saved folder can swallow waiting phone links.
+- Fixed on the way: crop boxes for the plan and print pictures (a fresh browser shows the setup checklist, so step 2
+  starts lower); `history-preview.html` dates its sample orders 1 and 3 days back (History opens on the last 14 days,
+  the October dates gave an empty picture). Looked at plan, print, history and scan; the rest not checked by eye.
+- No new build (nothing in the installer changed since 1.1.14). `social-preview.png` redrawn, not uploaded.
+- Resources: see the brain's RESOURCES.md for this save's snapshot.
+
 ### 2026-11-28: open Ship Desk in its own window or a tab, in the browser you pick; 1.1.14
 - User: "can we have this optionally be installed as a standalone app or a web browser app or both", then asked
   whether it must be a browser at all (like TacoSort) and whether it can use any browser ("mine runs fine in opera

@@ -1021,6 +1021,28 @@
           ]
         }
       ]
+    },
+    {
+      "title": "GitHub page screenshots retaken",
+      "date": "2026-11-28",
+      "summary": "The same session retook all 36 screenshots on a private copy, fixed two crops and the History preview's dates, and made the screenshot tool always use a throwaway Saved folder.",
+      "stages": [
+        {
+          "name": "Solo",
+          "kind": "solo",
+          "sessions": [
+            {
+              "id": "e41cb2ca",
+              "role": "Builder",
+              "start": "2026-11-28T01:05",
+              "end": "2026-11-28T01:25",
+              "did": "make_screens.py private server; crops; history-preview dates; 36 screenshots + readme pictures",
+              "outcome": "done",
+              "files": 40
+            }
+          ]
+        }
+      ]
     }
   ]
 }
