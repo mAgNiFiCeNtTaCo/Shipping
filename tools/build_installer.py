@@ -154,7 +154,31 @@ def python_zip():
     return path
 
 
+APP_FILE_TYPES = {".js", ".mjs", ".css", ".html", ".svg", ".png", ".ico", ".webmanifest", ".wasm", ".txt", ".map"}
+
+
+def stray_app_files():
+    """Files under app/ that git doesn't track and that could be real order files: anything .gitignore'd (a
+    CSV, a Pirate Ship .xlsx, a packing-slip PDF) and untracked files that aren't app code. The installer and the
+    zip are public and are copied from the folder as it is on disk, so such a file must stop the build."""
+    def git(*args):
+        r = subprocess.run(["git", "-C", ROOT, *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        return None if r.returncode else [l for l in r.stdout.splitlines() if l.strip()]
+    ignored = git("ls-files", "--others", "--ignored", "--exclude-standard", "--", "app")
+    untracked = git("ls-files", "--others", "--exclude-standard", "--", "app")
+    if ignored is None or untracked is None:
+        return []  # not a git folder (a copy somewhere else): nothing to compare with
+    keep = lambda f: "__pycache__" not in f and not f.startswith("app/tests/")
+    odd = [f for f in untracked if os.path.splitext(f)[1].lower() not in APP_FILE_TYPES]
+    return sorted(f for f in set(ignored + odd) if keep(f))
+
+
 def copy_app(dest):
+    stray = stray_app_files()
+    if stray:
+        sys.exit("Not building: these files in app/ aren't part of Ship Desk and would go into the public installer "
+                 "(move them out of the project folder first):\n  " + "\n  ".join(stray))
+
     def skip(folder, names):
         rel = os.path.relpath(folder, os.path.join(ROOT, "app"))
         return [n for n in names if (rel == "." and n == "tests") or n == "__pycache__"]

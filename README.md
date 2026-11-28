@@ -181,6 +181,11 @@ buyer's name and ZIP).
 
 **Weights and postage settings** (under the table in step 2) set the weight of a card, envelope, slip and
 toploader, how many cards go in one toploader, whether your envelopes are rigid (adds USPS's non-machinable charge) and the Forever stamp price.
+The rigid box starts unticked: envelopes are flexible (cards in penny sleeves with a thin cardboard backer or a
+pocket insert), so no toploader weight and no non-machinable charge on them. Flexible envelopes go through USPS's
+sorting machines, which is where the barcode on a TCGplayer tracked envelope gets scanned; a stiff toploader
+envelope is sorted by hand and may get few or no tracking scans. Tracked packages (the Pirate Ship file) always
+count the toploader weight. Putting toploaders in envelopes? Tick the rigid box.
 
 ## TCGplayer tracked envelopes (from November 2026)
 
@@ -285,7 +290,7 @@ other downloads still go to Downloads as before.
 
 | Folder | What's in it |
 |---|---|
-| `Saved\Labels` | the label PDFs, named by time and buyers: `Labels 2026-10-21 14-05 - 3 orders - Zackery Twork, Ash Example, Pat Doe.pdf` (one order: `Label 2026-10-21 14-05 - Zackery Twork - <order #>.pdf`) |
+| `Saved\Labels` | the label PDFs, named by time and buyers: `Labels 2026-10-21 14-05 - 3 orders - Robin Sample, Ash Example, Pat Doe.pdf` (one order: `Label 2026-10-21 14-05 - Robin Sample - <order #>.pdf`) |
 | `Saved\Packing slips` | "Only my slips, in label order" PDFs |
 | `Saved\TCGplayer import files` | the files you upload under Orders -> Import Shipping Info |
 | `Saved\Pirate Ship` | Pirate Ship CSVs |

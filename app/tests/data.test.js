@@ -242,19 +242,35 @@ export const tests = {
     eq(letterPostage(0.5, false), { letterOk: true, postage: 0.82 });
   },
   "plan: estimated weight formula (weight given, weight missing, slips off, toploaders)": async () => {
-    const p = planOrder(order({ weightOz: 0.12, itemCount: 2 }));
+    const TOP = { rigid: true }; // envelopes with toploaders
+    const p = planOrder(order({ weightOz: 0.12, itemCount: 2 }), TOP);
     near(p.weightOz, 0.12 + 0.2 + 0.16 + 0.3, 1e-9); eq(p.postage, 1.31); eq(p.stamps, 2);
-    const q = planOrder(order({ weightOz: null, itemCount: 9 }), { slips: false });
+    const q = planOrder(order({ weightOz: null, itemCount: 9 }), { ...TOP, slips: false });
     near(q.weightOz, 0.06 * 9 + 0.2 + 0.3 * 3, 1e-9);
-    const r = planOrder(order({ weightOz: null, itemCount: 4 }), { cardsPerToploader: 4 });
+    const r = planOrder(order({ weightOz: null, itemCount: 4 }), { ...TOP, cardsPerToploader: 4 });
     near(r.weightOz, 0.24 + 0.2 + 0.16 + 0.3, 1e-9);
-    const s = planOrder(order({ weightOz: null, itemCount: 5 }));
+    const s = planOrder(order({ weightOz: null, itemCount: 5 }), TOP);
     near(s.weightOz, 0.30 + 0.2 + 0.16 + 0.6, 1e-9);
     const t = planOrder(order({ weightOz: 0.06 }), { foreverValue: 0.5, rigid: false });
     eq(t.postage, 0.82); eq(t.stamps, 2);
   },
   "plan: defaults": async () => {
-    eq(DEFAULT_PLAN_SETTINGS, { cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4, rigid: true, slips: true, foreverValue: 0.82, trackedEnvelopes: false });
+    eq(DEFAULT_PLAN_SETTINGS, { cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4, rigid: false, slips: true, foreverValue: 0.82, trackedEnvelopes: false, settingsVersion: 2 });
+    // Flexible envelope, no toploader: one card + envelope + slip = 0.42 oz = one Forever stamp.
+    const one = planOrder(order({ value: 5, weightOz: null, itemCount: 1 }));
+    eq(one.tag, "envelope");
+    near(one.weightOz, 0.06 + 0.2 + 0.16, 1e-9); eq([one.postage, one.stamps], [0.82, 1]);
+    // A package still counts its toploaders (the Pirate Ship weight).
+    const pack = planOrder(order({ value: 80, weightOz: null, itemCount: 5 }));
+    eq(pack.tag, "tracking-required");
+    near(pack.weightOz, 0.3 + 0.2 + 0.16 + 0.6, 1e-9);
+    // Rigid: the envelope counts its toploader and the non-machinable charge.
+    const stiff = planOrder(order({ value: 5, weightOz: null, itemCount: 1 }), { rigid: true });
+    near(stiff.weightOz, 0.06 + 0.2 + 0.16 + 0.3, 1e-9); eq([stiff.postage, stiff.stamps], [1.31, 2]);
+    // Tracked envelopes: whether it fits a letter is judged without toploaders when flexible.
+    const tr = planOrder(order({ value: 30, weightOz: null, itemCount: 40 }), { trackedEnvelopes: true });
+    eq([tr.tag, tr.letterOk], ["tracked-envelope", true], "40 cards = 2.76 oz, a letter without toploaders");
+    near(tr.weightOz, 0.06 * 40 + 0.2 + 0.16, 1e-9);
   },
   "plan: TCGplayer's tracked envelopes (when switched on) take letter-size orders under $49.99": async () => {
     const on = { ...DEFAULT_PLAN_SETTINGS, trackedEnvelopes: true };
@@ -334,8 +350,8 @@ export const tests = {
     eq(s.count, 4);
     eq(s.byTag, { signature: 1, "tracking-required": 1, "tracking-recommended": 1, "tracked-envelope": 0, envelope: 1 });
     near(s.totalValue, 390.5, 1e-9);
-    near(s.totalPostage, 1.31 * 3, 1e-9);
-    eq(s.totalStamps, 6);
+    near(s.totalPostage, 0.82 * 3, 1e-9);
+    eq(s.totalStamps, 3);
     eq(summarize([], undefined), { count: 0, byTag: { signature: 0, "tracking-required": 0, "tracking-recommended": 0, "tracked-envelope": 0, envelope: 0 }, totalValue: 0, totalPostage: 0, totalStamps: 0 });
   },
 
@@ -364,7 +380,7 @@ export const tests = {
     eq(detectCarrier("1z 999 aa1 0123 4567 84"), "UPS");
     eq(detectCarrier("9400 1000 0000 0000 0000 00"), "USPS");
     eq(detectCarrier("94001000000000000000"), "USPS");
-    eq(detectCarrier("9205590164917312751089"), "USPS");
+    eq(detectCarrier("9205512345678901234567"), "USPS");
     eq(detectCarrier("420627019400100000000000000000"), "USPS");
     eq(detectCarrier("42062701123494001000000000000000"), "USPS");
     eq(detectCarrier("EA123456789US"), "USPS");

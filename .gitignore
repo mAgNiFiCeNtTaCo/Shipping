@@ -22,6 +22,9 @@ Saved/
 *.csv
 !app/samples/tcgplayer-sample.csv
 *ShippingExport*
+# Pirate Ship's Shipments export (recipients, emails, tracking); only the invented sample is kept
+*.xlsx
+!app/samples/pirateship-shipments-sample.xlsx
 *PackingSlip*.pdf
 orders/
 

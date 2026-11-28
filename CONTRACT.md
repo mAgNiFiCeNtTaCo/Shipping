@@ -99,13 +99,16 @@ TCGplayer thresholds (order value = "Value Of Products"):
 - `planOrder(order, settings) -> { tag, label, tracked: bool, weightOz, postage, stamps, letterOk, note }`
   - `tracked` = tag is not `envelope`.
   - Estimated packed weight (oz) = `order.weightOz` (if null: `settings.cardOz * itemCount`) +
-    `settings.envelopeOz` + `settings.slipOz` (if slips are on) + `settings.toploaderOz * ceil(itemCount / settings.cardsPerToploader)`.
+    `settings.envelopeOz` + `settings.slipOz` (if slips are on) + `settings.toploaderOz * ceil(itemCount / settings.cardsPerToploader)`
+    (the toploader part on envelope orders only when `settings.rigid`; packages always count it, since 2026-11-27).
   - USPS stamped letter (Notice 123, effective 2026-10-04): up to 1 oz $0.82, each additional ounce or part
     +$0.29, max 3.5 oz (so 1/2/3/3.5 oz = 0.82/1.11/1.40/1.69). Nonmachinable (rigid / toploader) surcharge
     +$0.49 when `settings.rigid`. Over 3.5 oz: `letterOk=false`, postage null, note "Too heavy for a letter:
     ship as a flat or package".
   - `stamps` = forever stamps to cover it: `ceil(postage / settings.foreverValue)` (foreverValue 0.82).
-- `DEFAULT_PLAN_SETTINGS = { cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4, rigid: true, slips: true, foreverValue: 0.82 }`
+- `DEFAULT_PLAN_SETTINGS = { cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4, rigid: false, slips: true, foreverValue: 0.82, trackedEnvelopes: false, settingsVersion: 2 }`
+  (flexible envelopes since 2026-11-27; rigid was true before. app.js moves saved settings without `settingsVersion` 2
+  over once: rigid -> false, other values kept.)
 - `FILTERS`: `all` "All orders", `envelope` "Envelopes only (under $20)" (tag envelope), `tracked`
   "Tracked only ($20+ / expedited)" (tracked true), `unshipped` "Not yet marked shipped" (no tracking and
   not marked shipped). `filterOrders(orders, filterId, shippedState) -> Order[]` keeps file order.

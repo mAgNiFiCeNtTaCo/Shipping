@@ -29,8 +29,8 @@ const RETURN = { name: "Taco Cards", street: "12 Return Rd", city: "Austin", sta
  * Open the app in an iframe. Saves are caught instead of downloaded: `saved` collects
  * { name, doc } for PDFs (jsPDF .save) and { name, href } for files saved through a download link.
  */
-async function openApp({ width = 1200, returnAddress = true } = {}) {
-  clearStore();
+async function openApp({ width = 1200, returnAddress = true, keepStore = false } = {}) {
+  if (!keepStore) clearStore();
   const old = document.getElementById("e2e-frame");
   if (old) old.remove();
   const f = document.createElement("iframe");
@@ -133,17 +133,39 @@ export const tests = {
       "SAMPLE-0005": "tracking-recommended", "SAMPLE-0006": "tracking-recommended", "SAMPLE-0007": "tracking-required",
       "SAMPLE-0008": "tracking-required", "SAMPLE-0009": "signature", "SAMPLE-0010": "envelope",
     }, "plan tags by TCGplayer thresholds");
-    // SAMPLE-0001: 0.12 + 0.2 envelope + 0.16 slip + 0.3 toploader = 0.78 oz -> $0.82 + $0.49 rigid = $1.31 = 2 stamps.
-    near(by["SAMPLE-0001"].plan.weightOz, 0.78, 0.001, "SAMPLE-0001 weight");
-    near(by["SAMPLE-0001"].plan.postage, 1.31, 0.001, "SAMPLE-0001 postage");
-    eq(by["SAMPLE-0001"].plan.stamps, 2, "SAMPLE-0001 stamps");
-    // SAMPLE-0007: 0.48 + 0.2 + 0.16 + 0.6 (2 toploaders) = 1.44 oz -> $1.11 + $0.49 = $1.60 = 2 stamps.
-    near(by["SAMPLE-0007"].plan.postage, 1.60, 0.001, "SAMPLE-0007 postage");
-    eq(by["SAMPLE-0007"].plan.stamps, 2, "SAMPLE-0007 stamps");
-    // Slips off: one slip lighter. SAMPLE-0001 = 0.62 oz, still $1.31.
+    // Flexible envelopes (the usual values): SAMPLE-0001: 0.12 + 0.2 envelope + 0.16 slip = 0.48 oz -> $0.82 = 1 stamp.
+    near(by["SAMPLE-0001"].plan.weightOz, 0.48, 0.001, "SAMPLE-0001 weight");
+    near(by["SAMPLE-0001"].plan.postage, 0.82, 0.001, "SAMPLE-0001 postage");
+    eq(by["SAMPLE-0001"].plan.stamps, 1, "SAMPLE-0001 stamps");
+    // SAMPLE-0007 is a package: toploaders still count. 0.48 + 0.2 + 0.16 + 0.6 (2 toploaders) = 1.44 oz.
+    near(by["SAMPLE-0007"].plan.weightOz, 1.44, 0.001, "SAMPLE-0007 weight");
+    // Slips off: one slip lighter. SAMPLE-0001 = 0.32 oz.
     setOutput(win, doc, "slips", false);
-    near(app.state.orders[0].plan.weightOz, 0.62, 0.001, "weight without a slip");
+    near(app.state.orders[0].plan.weightOz, 0.32, 0.001, "weight without a slip");
     ok(/10 orders/.test(doc.querySelector("#totals").textContent), "totals line counts 10 orders");
+  },
+
+  "weights and postage: saved settings from before flexible envelopes move over once, other values kept": async () => {
+    clearStore();
+    // Settings saved by an older Ship Desk: the old usual toploader + rigid values, and a changed envelope weight.
+    localStorage.setItem(KEYS.plan, JSON.stringify({ cardOz: 0.06, envelopeOz: 0.25, slipOz: 0.16, toploaderOz: 0.3,
+      cardsPerToploader: 4, rigid: true, slips: true, foreverValue: 0.82, trackedEnvelopes: true }));
+    let { win, doc, app } = await openApp({ keepStore: true });
+    eq([app.state.plan.rigid, app.state.plan.toploaderOz, app.state.plan.envelopeOz, app.state.plan.trackedEnvelopes],
+      [false, 0.3, 0.25, true], "rigid off, the rest kept");
+    eq(JSON.parse(localStorage.getItem(KEYS.plan)).settingsVersion, 2, "moved over once");
+    eq(doc.querySelector('#plan-form [name="rigid"]').checked, false, "the form shows it unticked");
+    // Ticking rigid again afterwards stays ticked across a reload.
+    const box = doc.querySelector('#plan-form [name="rigid"]');
+    box.checked = true;
+    box.dispatchEvent(new win.Event("change", { bubbles: true }));
+    ({ win, doc, app } = await openApp({ keepStore: true }));
+    eq(app.state.plan.rigid, true, "a later choice is kept");
+    // A custom toploader weight saved by an older version is kept.
+    localStorage.setItem(KEYS.plan, JSON.stringify({ toploaderOz: 0.25, rigid: true }));
+    ({ app } = await openApp({ keepStore: true }));
+    eq([app.state.plan.toploaderOz, app.state.plan.rigid], [0.25, false], "own toploader weight kept");
+    clearStore();
   },
 
   "every output format: the Download PDF path holds each buyer's name and ZIP, with the right page count": async () => {

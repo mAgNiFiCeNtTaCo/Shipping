@@ -661,7 +661,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 
 ### 2026-10-21: file names that say what's inside, camera asked for once
 - **File names** (user: label names too generic, e.g. `labels-2026-10-20 (2).pdf` ... `(5)`): app.js `fileName()`
-  names every saved file by date, time and buyers: `Labels 2026-10-21 14-05 - 3 orders - Zackery Twork, Ash Example,
+  names every saved file by date, time and buyers: `Labels 2026-10-21 14-05 - 3 orders - Robin Sample, Ash Example,
   Pat Doe.pdf` ("... and N more" past 3; one order: `Label <date time> - <buyer> - <order #>.pdf`), `Packing slips ...`,
   `TCGplayer import <date time> - 5 orders.csv`, `Pirate Ship ...`, `Ship Desk history ...`. serve.py `NAME_OK`
   now allows letters of any language, commas, apostrophes, `&`, `+` (max 150). The 5 old `labels-2026-10-20*.pdf`

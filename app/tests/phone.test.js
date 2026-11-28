@@ -772,24 +772,24 @@ Object.assign(tests, {
     ok(!doc.querySelector("#scan-new").closest("#scan-ask").hidden, "offers a new entry");
     doc.querySelector("#scan-new").dispatchEvent(new win.Event("submit", { cancelable: true }));
     ok(!(await phone.queueAll()).length, "no name: nothing made yet");
-    doc.querySelector("#scan-new-name").value = "Zackery Twork";
+    doc.querySelector("#scan-new-name").value = "Robin Sample";
     doc.querySelector("#scan-new").dispatchEvent(new win.Event("submit", { cancelable: true }));
     const key = "mailer:9400111899223344550077";
     await waitFor(() => phone.scan.found.includes(key), "the new entry to be picked");
     phone.closeScanner(true);
     eq([...phone.state.pick], [key]);
-    ok(doc.querySelector("#picked").textContent.includes("Zackery Twork"), doc.querySelector("#picked").textContent);
+    ok(doc.querySelector("#picked").textContent.includes("Robin Sample"), doc.querySelector("#picked").textContent);
     doc.querySelector('#kinds button[data-kind="packed"]').click();
     await phone.addFiles([await photoFile("mailer.png", 800, 600)]);
     await waitFor(async () => (await phone.queueAll()).length === 0, "the tracking # and photo to reach the PC");
     let pc = await photosOnPc();
-    ok(/^Zackery Twork 9400111899223344550077\/Packed /.test(pc[key].photos[0].file), "photo folder: " + pc[key].photos[0].file);
+    ok(/^Robin Sample 9400111899223344550077\/Packed /.test(pc[key].photos[0].file), "photo folder: " + pc[key].photos[0].file);
     await phone.refresh();
     ok(phone.state.orders.some((o) => o.key === key && o.tracking === "9400111899223344550077"), "the PC's list keeps the entry");
     ok(doc.querySelector("#orders").textContent.includes("No order # yet"), "shown without an order #");
     eq(await app.takePhoneLinks(), 1);
     const r = app.state.history[key];
-    ok(r && r.name === "Zackery Twork" && r.tracking === "9400111899223344550077" && r.shipped && r.source === "mailer" && !r.id, JSON.stringify(r));
+    ok(r && r.name === "Robin Sample" && r.tracking === "9400111899223344550077" && r.shipped && r.source === "mailer" && !r.id, JSON.stringify(r));
     // On the PC, type the TCGplayer order # into the entry in History.
     app.showView("history");
     const box = await waitFor(() => pcDoc.querySelector(`#history-table tr[data-key="${key}"] .h-oid`), "the order # box");
@@ -798,16 +798,16 @@ Object.assign(tests, {
     box.dispatchEvent(new pcDoc.defaultView.Event("change", { bubbles: true }));
     await waitFor(() => app.state.history["TCG-ABC-123"] && !app.state.history[key], "the entry to become the order");
     const now = app.state.history["TCG-ABC-123"];
-    ok(now.id === "TCG-ABC-123" && now.source === "csv" && now.name === "Zackery Twork" && now.tracking === "9400111899223344550077", JSON.stringify(now));
+    ok(now.id === "TCG-ABC-123" && now.source === "csv" && now.name === "Robin Sample" && now.tracking === "9400111899223344550077", JSON.stringify(now));
     eq(app.state.shipped["TCG-ABC-123"].tracking, "9400111899223344550077", "step 4 knows it");
     pc = await waitFor(async () => { const all = await photosOnPc(); return all["TCG-ABC-123"] && all; }, "the photo to move to the order");
     ok(!pc[key], "no photos left under the mailer");
-    ok(/^TCG-ABC-123 Zackery Twork\/Packed /.test(pc["TCG-ABC-123"].photos[0].file), "photo moved: " + pc["TCG-ABC-123"].photos[0].file);
+    ok(/^TCG-ABC-123 Robin Sample\/Packed /.test(pc["TCG-ABC-123"].photos[0].file), "photo moved: " + pc["TCG-ABC-123"].photos[0].file);
     // A photo the phone took before it heard about the order # still goes to the order.
     const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
-    const late = await (await fetch("/api/phone/photo?" + new URLSearchParams({ order: key, name: "Zackery Twork", kind: "contents", id: "late12345", taken: "2026-10-20T18:00:00" }),
+    const late = await (await fetch("/api/phone/photo?" + new URLSearchParams({ order: key, name: "Robin Sample", kind: "contents", id: "late12345", taken: "2026-10-20T18:00:00" }),
       { method: "POST", headers: { "X-Ship-Desk-Key": (await link()).code }, body: jpeg })).json();
-    ok(late.ok && late.file.startsWith("TCG-ABC-123 Zackery Twork/"), "late photo: " + late.file);
+    ok(late.ok && late.file.startsWith("TCG-ABC-123 Robin Sample/"), "late photo: " + late.file);
     await app.syncPhoneOrders(true);
     await phone.refresh();
     ok(!phone.state.orders.some((o) => o.key === key), "the phone drops the mailer entry");

@@ -3,10 +3,15 @@
 
 export const DEFAULT_PLAN_SETTINGS = {
   cardOz: 0.06, envelopeOz: 0.2, slipOz: 0.16, toploaderOz: 0.3, cardsPerToploader: 4,
-  rigid: true, slips: true, foreverValue: 0.82,
+  // rigid = envelopes have a toploader: counted in the envelope's weight, plus the $0.49 non-machinable charge.
+  // Off by default since 2026-11-27 (flexible envelopes: penny sleeves and a thin backer or a pocket insert, so the
+  // USPS sorting machines take them and scan TCGplayer's tracked-envelope barcode). Packages always count toploaders.
+  rigid: false, slips: true, foreverValue: 0.82,
   // TCGplayer's free tracked envelopes (from November 2026): a USPS barcode on its packing slip, for orders under
   // $49.99 that fit a letter. Off until the person has the feature and switches it on.
   trackedEnvelopes: false,
+  // Saved settings from before version 2 (rigid on by default) move over once: app.js loadSettings.
+  settingsVersion: 2,
 };
 
 export const TAG_LABELS = {
@@ -61,14 +66,17 @@ export function planOrder(order, settings) {
   const contents = order.weightOz == null || order.weightOz === "" || isNaN(order.weightOz)
     ? s.cardOz * count : Number(order.weightOz);
   const perToploader = Math.max(1, s.cardsPerToploader || 1);
-  const weightOz = round(contents + s.envelopeOz + (s.slips ? s.slipOz : 0) +
-    s.toploaderOz * Math.ceil(count / perToploader), 4);
-  const { letterOk, postage } = letterPostage(weightOz, s.rigid);
+  const base = contents + s.envelopeOz + (s.slips ? s.slipOz : 0);
+  const toploaders = s.toploaderOz * Math.ceil(count / perToploader);
+  const letterOz = round(base + (s.rigid ? toploaders : 0), 4); // an envelope has a toploader only when rigid
   // TCGplayer's tracked envelope covers orders under $49.99 that fit a letter; a buyer who paid for faster shipping
   // still gets a tracked label.
-  if (s.trackedEnvelopes && letterOk && (tag === "envelope" || (tag === "tracking-recommended" && !EXPEDITED.test(order.shippingMethod || "")))) {
+  if (s.trackedEnvelopes && letterPostage(letterOz, s.rigid).letterOk &&
+      (tag === "envelope" || (tag === "tracking-recommended" && !EXPEDITED.test(order.shippingMethod || "")))) {
     tag = "tracked-envelope";
   }
+  const weightOz = isEnvelopeTag(tag) ? letterOz : round(base + toploaders, 4); // packages: always toploaders
+  const { letterOk, postage } = letterPostage(weightOz, s.rigid);
   return {
     tag, label: TAG_LABELS[tag], tracked: !isEnvelopeTag(tag), weightOz,
     postage, stamps: stampsFor(postage, s.foreverValue), letterOk,

@@ -50,8 +50,8 @@ export function today(d = new Date()) {
 }
 
 /**
- * A file name that says what's inside: "Labels 2026-10-21 14-05 - 3 orders - Zackery Twork, Ash Example, Pat Doe.pdf",
- * "Label 2026-10-21 14-05 - Zackery Twork - 1A2B3C4D.pdf", or with no orders given "TCGplayer import 2026-10-21 14-05 - 5 orders.csv".
+ * A file name that says what's inside: "Labels 2026-10-21 14-05 - 3 orders - Robin Sample, Ash Example, Pat Doe.pdf",
+ * "Label 2026-10-21 14-05 - Robin Sample - 1A2B3C4D.pdf", or with no orders given "TCGplayer import 2026-10-21 14-05 - 5 orders.csv".
  * what = [one, several] words; count = how many orders when `orders` isn't the list.
  */
 export function fileName(what, ext, orders = [], count = orders.length, d = new Date()) {
@@ -211,7 +211,15 @@ function loadSettings() {
   state.output = { ...DEFAULT_OUTPUT, ...load(KEYS.output, {}) };
   state.output.slipsInLabelOrder = false; // always starts unticked (the user's wish 2026-11-26); tick it per batch
   if (!formatList.some((f) => f.id === state.output.format)) state.output.format = formatList[0] ? formatList[0].id : "";
-  state.plan = { ...DEFAULT_PLAN_SETTINGS, ...load(KEYS.plan, {}) };
+  const savedPlan = load(KEYS.plan, {});
+  state.plan = { ...DEFAULT_PLAN_SETTINGS, ...(savedPlan && typeof savedPlan === "object" ? savedPlan : {}) };
+  if (!(savedPlan && savedPlan.settingsVersion >= 2)) {
+    // Before version 2 envelopes had a toploader by default (rigid: the $0.49 non-machinable charge); the user moved
+    // to flexible envelopes (2026-11-27). Packages still count toploaders; every other value is kept.
+    state.plan.rigid = false;
+    state.plan.settingsVersion = DEFAULT_PLAN_SETTINGS.settingsVersion;
+    if (savedPlan && Object.keys(savedPlan).length) save(KEYS.plan, state.plan);
+  }
   const shipped = load(KEYS.shipped, {});
   state.shipped = shipped && typeof shipped === "object" ? shipped : {};
   const history = load(KEYS.history, {});
