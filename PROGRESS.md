@@ -7,10 +7,10 @@ stamps, and the TCGplayer import file that marks the batch shipped.
 ## Where it stands (2026-11-26)
 - Working and in daily use: real thermal labels printed and real phone photos/scans sent 2026-10-20; TCGplayer
   import confirmed 2026-10-25; real packing slip read correctly 2026-10-26. Every part has now met real data.
-- **Version 1.1.12** built 2026-11-27 (History two weeks at a time; not published yet, 1.1.11 is the latest on GitHub); never publish 1.1.9. Windows installer for other people:
+- **Version 1.1.12** (built and published 2026-11-27, latest on GitHub; History two weeks at a time); never publish 1.1.9. Windows installer for other people:
   `dist\ShipDesk-Setup-<version>.exe` (13 MB, own Python, per-user, no admin), every build kept in `dist\` (log
   `dist\builds.json`). Every /save-progress builds a new one when something changed (`tools/build_installer.py
-  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10, v1.1.11 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
+  --if-changed --test`). MIT licence. Published: https://github.com/mAgNiFiCeNtTaCo/Shipping/releases (v1.0.0, v1.1.0, v1.1.1, v1.1.3, v1.1.4, v1.1.5, v1.1.6, v1.1.10, v1.1.11, v1.1.12 = latest; 1.1.2 and 1.1.7-1.1.9 skipped). A fresh install sets itself up
   completely: first-run checklist, guided Tailscale phone setup, update notice. Since 2026-11-20 every build also
   makes `dist\ShipDesk-<version>-portable.zip` (no installer: unzip, double-click "Start Ship Desk"), for PCs where
   Windows or an antivirus objects to the unsigned installer; 1.1.4's zip is on the release (`tools/test_portable.py`
@@ -53,7 +53,7 @@ stamps, and the TCGplayer import file that marks the batch shipped.
   section, sw v41. Slop scan clean.
 - Answered: 40 post office photos don't need backing out: each post office photo goes to the orders scanned since
   the last one (phone.js `shoot`, `scan.fresh`); scanning all 40 then one photo gives that photo to all 40.
-- **1.1.12 built**: 228 tests, installer test over 1.1.11 and zip test all good. Not published yet.
+- **1.1.12 built**: 228 tests, installer test over 1.1.11 and zip test all good. Published 2026-11-27 at the user's request (checked for buyer data first; latest).
 - Resources (2026-11-27, during the build): Shipping 18 processes, 150% of a core (tests), 2470 MB RAM, ports
   4450 5091, disk 644 MB; whole PC CPU 11% of 32 threads, RAM 29.0 of 64 GB, GPU 39%.
 
