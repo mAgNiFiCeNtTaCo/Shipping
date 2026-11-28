@@ -291,6 +291,13 @@ the Start menu, Stop Ship Desk.bat, a restart of the PC), the page notices withi
   Windows, without opening the browser. It's in Windows' own startup list, so **Task Manager → Startup apps**
   shows it as "Ship Desk" (and can switch it off too).
 - While it's off, files save to your Downloads folder and the phone's photos wait on the phone.
+- **Its own window, or a browser tab:** on the **History** page, **Open Ship Desk in** picks the browser the Ship Desk
+  icon uses (Windows' default, or any browser on this PC), and **in its own window** opens it like a program of its
+  own, without tabs or an address bar. Edge, Chrome, Brave and Vivaldi can do that; Opera, Opera GX and Firefox
+  can't, so they open a tab. **Open it that way now** tries it. The installer asks the same question, and the Start
+  menu has **Ship Desk (own window)** and **Ship Desk (browser tab)** for either way at any time. Your History and
+  settings are kept per browser: in a browser you didn't use before, History offers **Restore the saved copy** and
+  the return address and other settings start fresh.
 - **Turn on** works because Ship Desk registers a `shipdesk://start` link with Windows (for your Windows user
   only) each time it starts. It only ever starts Ship Desk in the background (`pythonw serve.py`). To remove it: `reg delete
   HKCU\Software\Classes\shipdesk /f`.

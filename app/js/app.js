@@ -1621,7 +1621,7 @@ export function showView(name) {
   for (const [id, on] of [["#view-ship", !hist], ["#view-history", hist]]) {
     if (on) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
   }
-  if (hist) { renderHistory(); refreshPhotos(); loadBackup(); }
+  if (hist) { renderHistory(); refreshPhotos(); loadBackup(); loadOpenMode(); }
 }
 
 function bindViews() {
@@ -1656,6 +1656,48 @@ const shipdeskFetch = (path, opts = {}) => fetch(path, { ...opts, headers: { ...
 const backup = { status: null, busy: false };
 
 /** How the backup stands, from Ship Desk ({ on, to, name, available, places, folder, at, copied, files, error }; null when it's off). */
+// ---------- how the Ship Desk icon opens the page: which browser, own window or tab (serve.py open_status) ----------
+const opening = { status: null };
+
+export async function loadOpenMode() {
+  try {
+    const r = await shipdeskFetch("api/open-mode");
+    opening.status = r.ok ? await r.json() : null;
+  } catch { opening.status = null; }
+  renderOpenMode();
+  return opening.status;
+}
+
+export async function setOpenMode(query) {
+  try {
+    const data = await (await shipdeskFetch(`api/open-mode?${query}`, { method: "POST" })).json();
+    if (data && data.ok) opening.status = data;
+    else if (data && data.error) toast(data.error);
+    renderOpenMode();
+    return data;
+  } catch {
+    toast("Ship Desk isn't running, so this can't be changed now.");
+    return null;
+  }
+}
+
+function renderOpenMode() {
+  const s = opening.status;
+  $("#open-row").hidden = !s;
+  if (!s) return;
+  const sel = $("#open-browser");
+  sel.replaceChildren(el("option", { value: "default", text: `Windows' default browser${s.defaultName ? ` (${s.defaultName})` : ""}` }),
+    ...s.browsers.map((b) => el("option", { value: b.id, text: b.name })));
+  sel.value = s.browser;
+  const box = $("#open-window");
+  box.checked = !!s.window && s.canWindow;
+  box.disabled = !s.canWindow;
+  // History and settings live in the browser: say so when the choice is another browser than this page's.
+  $("#open-text").textContent = !s.canWindow ? `${s.opensIn} can't open a page in its own window (Edge, Chrome, Brave and Vivaldi can), so it opens as a tab.`
+    : s.window ? `The Ship Desk icon opens its own ${s.opensIn} window from now on.` : `The Ship Desk icon opens a tab in ${s.opensIn}.`;
+  $("#open-text").textContent += " Your History and settings are kept per browser: in another browser, History offers \"Restore the saved copy\" and settings start fresh.";
+}
+
 export async function loadBackup() {
   try {
     const r = await shipdeskFetch("api/backup");
@@ -1779,6 +1821,9 @@ function renderUpdate() {
 function bindUpdates() {
   $("#update-later").addEventListener("click", () => { if (update.status) save(KEYS.updateSkip, update.status.latest); renderUpdate(); });
   $("#update-on").addEventListener("change", (e) => setUpdates(e.target.checked));
+  $("#open-browser").addEventListener("change", (e) => setOpenMode("browser=" + encodeURIComponent(e.target.value)));
+  $("#open-window").addEventListener("change", (e) => setOpenMode("window=" + (e.target.checked ? "1" : "0")));
+  $("#open-now").addEventListener("click", () => setOpenMode("now=1"));
 }
 
 // ---------- the first-run checklist ----------

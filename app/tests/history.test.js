@@ -441,6 +441,33 @@ tests["import file: an order shipped weeks ago and never sent is named in step 4
   document.getElementById("history-frame").remove();
 };
 
+tests["opening Ship Desk: pick the browser, and its own window where the browser can do that"] = async () => {
+  clearStore();
+  const H = { "X-Ship-Desk": "1" };
+  eq((await fetch("/api/open-mode", { method: "POST" })).status, 403, "only Ship Desk's own page");
+  eq((await fetch("/api/open-mode?browser=Nope", { method: "POST", headers: H })).status, 400, "a browser this PC doesn't have");
+  const { doc, win } = await openApp("#history");
+  await waitFor(() => visible(doc.querySelector("#open-row")), "the row on the History page");
+  const sel = doc.querySelector("#open-browser"), box = doc.querySelector("#open-window");
+  eq([...sel.options].map((o) => o.textContent), ["Windows' default browser (Edge Test)", "Edge Test", "Opera Test"]);
+  eq([sel.value, box.checked, box.disabled], ["default", false, false], "a tab in the default browser to start with");
+  const pick = async (v) => { sel.value = v; sel.dispatchEvent(new win.Event("change", { bubbles: true })); await waitFor(() => win.shipdesk && doc.querySelector("#open-text").textContent.includes(v === "OperaTest" ? "Opera Test" : "Edge Test"), "the choice " + v); };
+  await pick("OperaTest");
+  ok(box.disabled && /Opera Test can't open a page in its own window/.test(doc.querySelector("#open-text").textContent), doc.querySelector("#open-text").textContent);
+  doc.querySelector("#open-now").click();
+  await waitForServer(async () => ((await (await fetch("/__opened")).json()).opened || []).some((x) => x === "SHOW tab Opera Test"), "a tab in the chosen browser");
+  await pick("EdgeTest");
+  box.click();
+  await waitFor(() => /opens its own Edge Test window/.test(doc.querySelector("#open-text").textContent), "own window: " + doc.querySelector("#open-text").textContent);
+  doc.querySelector("#open-now").click();
+  await waitForServer(async () => ((await (await fetch("/__opened")).json()).opened || []).some((x) => x === "SHOW window Edge Test"), "its own window");
+  const kept = await (await fetch("/api/open-mode", { headers: H })).json();
+  eq([kept.browser, kept.window], ["EdgeTest", true], "remembered");
+  await fetch("/api/open-mode?browser=default&window=0", { method: "POST", headers: H });
+  clearStore();
+  document.getElementById("history-frame").remove();
+};
+
 tests["saved folder: unticking 'Open each PDF' saves without opening, and it's remembered"] = async () => {
   clearStore();
   const { doc, app, win } = await openApp("", { folder: true });

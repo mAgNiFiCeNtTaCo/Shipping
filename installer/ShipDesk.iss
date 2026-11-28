@@ -48,6 +48,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Put a Ship Desk icon on the desktop"; GroupDescription: "Shortcuts:"
+Name: "ownwindow"; Description: "Open Ship Desk in its own window, without tabs or an address bar (Edge, Chrome, Brave or Vivaldi; other browsers open a tab). It can be changed later on Ship Desk's History page."; GroupDescription: "Window:"; Flags: unchecked
 Name: "autostart"; Description: "Start Ship Desk in the background when I sign in to Windows (it can be changed later at the top of the Ship Desk page)"; GroupDescription: "Starting:"
 Name: "phonesetup"; Description: "Help me set up phone photos and label scanning when setup finishes (installs Tailscale, free)"; GroupDescription: "Phone:"; Flags: unchecked
 
@@ -56,6 +57,8 @@ Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs i
 
 [Icons]
 Name: "{group}\Ship Desk"; Filename: "{#Pyw}"; Parameters: """{app}\serve.py"""; WorkingDir: "{app}"; IconFilename: "{app}\shipdesk.ico"; Comment: "Open Ship Desk (starts it if it's off)"
+Name: "{group}\Ship Desk (own window)"; Filename: "{#Pyw}"; Parameters: """{app}\serve.py"" --window"; WorkingDir: "{app}"; IconFilename: "{app}\shipdesk.ico"; Comment: "Open Ship Desk in its own window"
+Name: "{group}\Ship Desk (browser tab)"; Filename: "{#Pyw}"; Parameters: """{app}\serve.py"" --tab"; WorkingDir: "{app}"; IconFilename: "{app}\shipdesk.ico"; Comment: "Open Ship Desk as a tab in your browser"
 Name: "{group}\Turn off Ship Desk"; Filename: "{#Pyw}"; Parameters: """{app}\serve.py"" --stop"; WorkingDir: "{app}"; IconFilename: "{app}\shipdesk.ico"; Comment: "Stop Ship Desk running in the background"
 Name: "{group}\Ship Desk files"; Filename: "{code:GetDataDir}"; Comment: "The labels, slips, photos and other files Ship Desk made"
 Name: "{group}\Ship Desk guide"; Filename: "{app}\Ship Desk guide.html"
@@ -198,6 +201,12 @@ begin
       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
+{ "true" / "false" for install.json: the "own window" answer (serve.py installer_wants_window). }
+function OwnWindowText(): String;
+begin
+  if WizardIsTaskSelected('ownwindow') then Result := 'true' else Result := 'false';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Fresh: Boolean;
@@ -216,7 +225,7 @@ begin
         'This folder holds the files Ship Desk makes (labels, packing slips, import files, phone photos, History).' + #13#10 +
         'Uninstalling Ship Desk offers to delete them only from a folder with this file in it.' + #13#10, False);
     SaveStringToFile(ExpandConstant('{app}\install.json'),
-      '{"dataDir": ' + JsonText(DataPage.Values[0]) + ', "version": "{#AppVersion}"}' + #13#10, False);
+      '{"dataDir": ' + JsonText(DataPage.Values[0]) + ', "version": "{#AppVersion}", "ownWindow": ' + OwnWindowText() + '}' + #13#10, False);
   end;
 end;
 

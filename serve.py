@@ -31,6 +31,8 @@ the phone API also needs the pairing code (X-Ship-Desk-Key) that the PC page sho
     PC page:  GET  /api/ping                  "Ship Desk is on" (+ the shipdesk://start link once registered)
               POST /api/shutdown              the page's Turn off (shipdesk://start turns it on again)
               POST /api/autostart?on=1|0      start with Windows (this user's startup list) or not
+              GET/POST /api/open-mode         which browser opens Ship Desk and whether in its own window
+                                              (POST browser=<id>|default, window=1|0, now=1 = open it that way)
               GET/POST /api/history-copy      the History list's copy in Saved/History (+ a dated copy per day)
               GET  /api/backup                backup of Saved to Dropbox or OneDrive: on/off, where, last run
               POST /api/backup?on=1|0&to=dropbox|onedrive | ?now=1 | ?open=1   switch it / pick the place (backs up
@@ -635,6 +637,135 @@ def fetch_latest_release():
     return str(data.get("tag_name") or "").lstrip("vV"), page
 
 
+# ---------- how Ship Desk's page opens: which browser, and in its own window or a tab ----------
+# Saved/open.json {"browser": "default" | <id from browsers()>, "window": bool}; before the person chooses, the
+# installer's answer (install.json "ownWindow"). Own window = the browser's --app mode (no tabs, no address bar):
+# Edge, Chrome, Brave and Vivaldi have it; Opera / Opera GX open a Speed Dial window instead (tried 2026-11-28)
+# and Firefox has none, so those open a tab.
+WINDOW_BROWSERS = {"msedge.exe", "chrome.exe", "brave.exe", "vivaldi.exe"}
+NOT_BROWSERS = {"iexplore.exe"}
+
+
+def exe_of(command):
+    """The program in a registry "open" command line ('"C:\\x\\y.exe" --flag %1' -> C:\\x\\y.exe), or ""."""
+    c = str(command or "").strip()
+    m = re.match(r'^"([^"]+)"', c) or re.match(r"^(\S+\.exe)", c, re.I) or re.match(r"^(.+?\.exe)", c, re.I)
+    path = os.path.expandvars(m.group(1)) if m else ""
+    return path if path.lower().endswith(".exe") and os.path.isfile(path) else ""
+
+
+def browsers():
+    """The web browsers Windows lists on this PC: [{id, name, exe, window}] (window = it can open a page in its own window)."""
+    out = {}
+    try:
+        import winreg
+    except ImportError:
+        return []
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(root, r"Software\Clients\StartMenuInternet") as k:
+                for i in range(100):
+                    try:
+                        sub = winreg.EnumKey(k, i)
+                    except OSError:
+                        break
+                    try:
+                        name = winreg.QueryValue(k, sub) or sub
+                        exe = exe_of(winreg.QueryValue(k, sub + r"\shell\open\command"))
+                    except OSError:
+                        continue
+                    base = os.path.basename(exe).lower()
+                    if exe and base not in NOT_BROWSERS and sub not in out:
+                        out[sub] = {"id": sub, "name": re.sub(r"\s+Stable$", "", name), "exe": exe, "window": base in WINDOW_BROWSERS}
+        except OSError:
+            continue
+    return sorted(out.values(), key=lambda b: b["name"].lower())
+
+
+def default_browser():
+    """Windows' default browser as {name, exe, window}, or None when it can't be told."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice") as k:
+            prog = winreg.QueryValueEx(k, "ProgId")[0]
+        exe = ""
+        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                exe = exe_of(winreg.QueryValue(root, rf"Software\Classes\{prog}\shell\open\command"))
+            except OSError:
+                exe = ""
+            if exe:
+                break
+    except (ImportError, OSError):
+        return None
+    if not exe:
+        return None
+    known = next((b for b in browsers() if os.path.normcase(b["exe"]) == os.path.normcase(exe)), None)
+    base = os.path.basename(exe).lower()
+    return {"name": known["name"] if known else os.path.splitext(os.path.basename(exe))[0], "exe": exe, "window": base in WINDOW_BROWSERS}
+
+
+def installer_wants_window():
+    try:
+        with open(os.path.join(HERE, "install.json"), encoding="utf-8-sig") as f:
+            d = json.load(f)
+        return bool(isinstance(d, dict) and d.get("ownWindow"))
+    except (OSError, ValueError):
+        return False
+
+
+def open_setting(save_root):
+    """{"browser", "window"}: the person's choice, else the installer's answer, else the default browser in a tab."""
+    d = read_json(os.path.join(save_root, "open.json"), None)
+    if isinstance(d, dict):
+        return {"browser": str(d.get("browser") or "default"), "window": bool(d.get("window"))}
+    return {"browser": "default", "window": installer_wants_window()}
+
+
+def open_status(save_root, list_browsers=browsers, find_default=default_browser):
+    """What the page shows: the choice, the browsers to choose from, and how the page will really open."""
+    s = open_setting(save_root)
+    found = list_browsers()
+    dflt = find_default()
+    chosen = next((b for b in found if b["id"] == s["browser"]), None)
+    if not chosen:
+        s["browser"] = "default"
+    use = chosen or dflt
+    return {**s,
+            "browsers": [{"id": b["id"], "name": b["name"], "window": b["window"]} for b in found],
+            "defaultName": dflt["name"] if dflt else "", "defaultWindow": bool(dflt and dflt["window"]),
+            "canWindow": bool(use and use["window"]), "opensIn": use["name"] if use else "your browser",
+            "exe": use["exe"] if use else ""}
+
+
+def set_open(save_root, browser=None, window=None):
+    s = open_setting(save_root)
+    if browser is not None:
+        s["browser"] = browser
+    if window is not None:
+        s["window"] = bool(window)
+    write_json(os.path.join(save_root, "open.json"), s)
+    return s
+
+
+def open_page(page, save_root=None, force=""):
+    """Show Ship Desk's page the way the person chose. force = "window" / "tab" (a shortcut that always opens one way)."""
+    st = open_status(save_root or SAVE_ROOT)
+    exe = st["exe"]
+    window = force == "window" or (st["window"] and force != "tab")
+    try:
+        if exe and window and st["canWindow"]:
+            subprocess.Popen([exe, f"--app={page}"], close_fds=True)
+            return "window"
+        if exe and st["browser"] != "default":
+            subprocess.Popen([exe, page], close_fds=True)
+            return "tab"
+    except OSError:
+        pass
+    webbrowser.open(page)
+    return "tab"
+
+
 def update_status(save_root):
     s = read_json(os.path.join(save_root, UPDATE_SETTINGS), {})
     s = s if isinstance(s, dict) else {}
@@ -793,6 +924,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.reply(200, {"ok": True, **backup_status(self.save_root, self.backup_folder_for)})
         elif path == "/api/update":
             self.reply(200, {"ok": True, **update_status(self.save_root)})
+        elif path == "/api/open-mode":
+            self.reply(200, {"ok": True, **self.open_mode()})
         elif path == "/api/slip-files":
             folder, files = slip_files(self.save_root)
             self.reply(200, {"ok": True, "folder": folder, "files": files})
@@ -849,7 +982,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if url.path not in ("/api/save", "/api/open-folder", "/api/open-file", "/api/phone-orders", "/api/phone-key", "/api/phone-access",
                             "/api/links-done", "/api/photos-rekey", "/api/photo-rotate", "/api/shutdown",
-                            "/api/autostart", "/api/history-copy", "/api/backup", "/api/update",
+                            "/api/autostart", "/api/history-copy", "/api/backup", "/api/update", "/api/open-mode",
                             "/api/tailscale-install", "/api/tailscale-login"):
             self.send_error(404)
             return
@@ -863,6 +996,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         if url.path == "/api/history-copy":
             self.save_history_copy(arg("keep"))
+            return
+        if url.path == "/api/open-mode":
+            # browser=<id>|default, window=1|0: how the icon opens Ship Desk from now on; now=1: open it that way now.
+            known = {b["id"] for b in self.open_mode()["browsers"]} | {"default"}
+            if arg("browser") and arg("browser") not in known:
+                self.reply(400, {"ok": False, "error": "That browser isn't on this PC."})
+                return
+            if arg("browser") or arg("window") in ("0", "1"):
+                set_open(self.save_root, arg("browser") or None, {"0": False, "1": True}.get(arg("window")))
+            how = self.show_page(f"http://127.0.0.1:{self.server.server_address[1]}/") if arg("now") == "1" else ""
+            self.reply(200, {"ok": True, "opened": how, **self.open_mode()})
             return
         if url.path == "/api/backup":
             if arg("open") == "1":
@@ -1059,6 +1203,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 except OSError:
                     pass
         self.reply(200, {"ok": True, "count": len(hist), "savedAt": now})
+
+    # (methods, so the tests can stand in for this PC's browsers and never open one)
+    def open_mode(self):
+        st = open_status(self.save_root)
+        st.pop("exe", None)
+        return st
+
+    def show_page(self, page):
+        return open_page(page, self.save_root)
 
     # (methods, so the tests can stand in for the Windows startup list)
     def autostart_enabled(self):
@@ -1702,6 +1855,8 @@ def main():
     ap.add_argument("--stop", action="store_true", help="turn off this copy of Ship Desk if it is the one running")
     ap.add_argument("--open", default="", choices=["", "phone", "history"], help="open the page at this part (installer)")
     ap.add_argument("--stop-any", action="store_true", help="turn off whichever Ship Desk runs on the port")
+    ap.add_argument("--window", action="store_true", help="open the page in its own window, whatever the setting says")
+    ap.add_argument("--tab", action="store_true", help="open the page as a browser tab, whatever the setting says")
     a = ap.parse_args()
     hidden = sys.stdout is None  # started with pythonw: no window
     if a.stop or a.stop_any:
@@ -1713,6 +1868,7 @@ def main():
         start_log()
     url = f"http://127.0.0.1:{a.port}/"
     page = url + (f"#{a.open}" if a.open else "")  # the browser opens this (url stays the plain address)
+    force = "window" if a.window else "tab" if a.tab else""
     try:
         srv = make_server(a.port)
     except OSError:
@@ -1720,7 +1876,7 @@ def main():
             # Started twice: the first one keeps running; just show the page.
             print("Ship Desk is already running.")
             if not a.no_browser:
-                webbrowser.open(page)
+                open_page(page, force=force)
             return
         tell(f"Ship Desk couldn't start: another program is using port {a.port}.", hidden)
         sys.exit(1)
@@ -1741,7 +1897,7 @@ def main():
         if st["on"]:
             print(f"Backs up the Saved folder to {st['folder'] or st['name'] + ' (not found)'} every hour.")
     if not a.no_browser:
-        threading.Timer(0.5, webbrowser.open, [page]).start()
+        threading.Timer(0.5, open_page, [page, None, force]).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

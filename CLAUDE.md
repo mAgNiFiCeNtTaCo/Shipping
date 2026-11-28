@@ -116,6 +116,15 @@ explain in plain words and finish jobs end to end.
   (PC page only; `stop_server` -> the .bat ends, window closes). Turn on = link `shipdesk://start`, registered by
   serve.py `register_launcher()` in HKCU\Software\Classes\shipdesk on each start (port 5091 only); it runs
   `pythonw serve.py --no-browser` (no window; the .bat only without pythonw) and never passes the link's text on.
+- Own window or tab, any browser (2026-11-28, the user's wish): serve.py `open_page(page, save_root, force)` replaces
+  `webbrowser.open`. `Saved/open.json` {browser: "default" | id, window} (`open_setting`; before a choice:
+  install.json "ownWindow" from the installer task `ownwindow`); `browsers()` = HKCU/HKLM
+  Software\Clients\StartMenuInternet, `default_browser()` = the http UserChoice ProgId; own window = `<exe>
+  --app=<url>` for `WINDOW_BROWSERS` (msedge, chrome, brave, vivaldi) only. Tried 2026-11-28: Opera GX opens a Speed
+  Dial window for `--app`, so it gets a tab; Edge gives a window titled "Ship Desk". `GET/POST /api/open-mode`
+  (browser=, window=1|0, now=1), History page `#open-row` (app.js `loadOpenMode` / `setOpenMode`), `serve.py
+  --window` / `--tab` (Start menu "Ship Desk (own window)" / "(browser tab)"). This PC: default browser Edge, Opera
+  GX also installed. tools/test.py stands in for both (`open_mode`, `show_page` -> "SHOW <how> <browser>" in /__opened).
 - Background: `Start Ship Desk.bat` starts `pythonw serve.py` and closes (falls back to a visible window without
   pythonw); with no console serve.py logs to `Saved/ship-desk.log` and shows start problems in a message box.
   Port claimed exclusively (`Server.server_bind`, SO_EXCLUSIVEADDRUSE): a second start sees `already_running()`

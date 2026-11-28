@@ -53,6 +53,20 @@ class Handler(serve.Handler):
     def open_folder(self, folder):
         opened.append(folder)
 
+    # This PC's browsers are stood in for, and none is ever opened ("SHOW <how>" in /__opened).
+    def open_mode(self):
+        fake = [{"id": "EdgeTest", "name": "Edge Test", "exe": "edge", "window": True},
+                {"id": "OperaTest", "name": "Opera Test", "exe": "opera", "window": False}]
+        st = serve.open_status(self.save_root, lambda: fake, lambda: fake[0])
+        st.pop("exe", None)
+        return st
+
+    def show_page(self, page):
+        st = self.open_mode()
+        how = "window" if st["window"] and st["canWindow"] else "tab"
+        opened.append(f"SHOW {how} {st['opensIn']}")
+        return how
+
     def open_file(self, path):
         opened.append(path)
 

@@ -346,6 +346,13 @@
       <label class="check"><input type="checkbox" id="update-on"> Tell me when a new version of Ship Desk is out</label>
       <span id="update-row-text" class="muted"></span>
     </div>
+    <div id="open-row" class="backup-row small" hidden>
+      <label for="open-browser">Open Ship Desk in</label>
+      <select id="open-browser"></select>
+      <label class="check"><input type="checkbox" id="open-window"> in its own window (no tabs or address bar)</label>
+      <button type="button" id="open-now" class="link">Open it that way now</button>
+      <span id="open-text" class="muted" aria-live="polite"></span>
+    </div>
     <div id="backup-row" class="backup-row small" hidden>
       <label class="check"><input type="checkbox" id="backup-on"> Back up the <code>Saved</code> folder every hour to</label>
       <label class="sr" for="backup-to">Where the backup goes</label>
